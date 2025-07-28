@@ -5,6 +5,7 @@ from typing import TypedDict
 
 from langgraph.graph import add_messages
 from typing_extensions import Annotated
+from .tools.schemas import PHMOperator
 
 
 import operator
@@ -46,3 +47,25 @@ class WebSearchState(TypedDict):
 @dataclass(kw_only=True)
 class SearchStateOutput:
     running_summary: str = field(default=None)  # Final report
+
+class PHMState(TypedDict):
+    """Graph state for PHM system."""
+
+    user_instruction: str
+    reference_signal: list
+    test_signal: list
+
+    initial_plan: list[dict]
+    current_plan: list[PHMOperator]
+    needs_deep_research: bool
+    iteration_count: int
+
+    processed_signals: Annotated[list, operator.add]
+    extracted_features: Annotated[list, operator.add]
+    analysis_summary: str | None
+    bug_report: dict | None
+    reflection_history: list
+
+    final_markdown_report: str
+    latex_sections: dict
+    final_latex_report: str | None
