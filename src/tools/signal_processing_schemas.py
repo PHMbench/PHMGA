@@ -4,7 +4,7 @@ import abc
 import functools
 import logging
 from typing import Any, ClassVar, Dict, Tuple, Literal, Type
-
+import uuid
 import numpy as np
 from pydantic import BaseModel, Field
 
@@ -30,28 +30,41 @@ def register_op(cls: Type["PHMOperator"]) -> Type["PHMOperator"]:
     OP_REGISTRY[op_name] = cls
     logger.debug(f"Registered operator: '{op_name}' -> {cls.__name__}")
     return cls
+def get_operator(op_name: str) -> Type["PHMOperator"]:
+    """
+    根据算子名称获取注册的算子类。
+    如果未找到，抛出 KeyError。
+    """
+    if op_name not in OP_REGISTRY:
+        raise KeyError(f"Operator '{op_name}' is not registered.")
+    return OP_REGISTRY[op_name]
+
 
 
 # ---------- 2. 抽象基类 ---------- #
-RankClass = Literal["EXPAND", "TRANSFORM", "AGGREGATE", "DECISION"]
+RankClass = Literal["EXPAND", "TRANSFORM", "AGGREGATE", "DECISION", "MultiVariable"]
 
 class PHMOperator(BaseModel, abc.ABC):
     """
     所有 PHM 算子的共同抽象父类。
     它定义了统一的接口、生命周期钩子和与 LangGraph 的集成点。
     """
+    node_id: str = Field(default_factory=lambda: f"op_{uuid.uuid4().hex[:8]}")
     op_name: ClassVar[str]
     rank_class: ClassVar[RankClass]
     description: ClassVar[str]
+    parent: str | list[str] = Field(default=None, description="上游节点 ID 或 ID 列表，表示依赖的输入节点。")
+
 
     # 运行时状态，由钩子自动填充，便于调试和检查点
     in_shape: Tuple[int, ...] | None = Field(default=None, description="最近一次执行时的输入形状。")
     out_shape: Tuple[int, ...] | None = Field(default=None, description="最近一次执行时的输出形状。")
+    params: Dict[str, Any] = Field(default_factory=dict, description="算子参数字典，包含所有可配置的参数。")
 
-    class Config:
-        extra = "forbid"  # 不允许未定义的字段
-        arbitrary_types_allowed = True
-        frozen = True  # 算子实例一旦创建即不可变，保证图执行的纯粹性
+    # class Config:
+    #     extra = "forbid"  # 不允许未定义的字段
+    #     arbitrary_types_allowed = True
+    #     frozen = True  # 算子实例一旦创建即不可变，保证图执行的纯粹性
 
     # --- 对 LangGraph 公开的统一接口 --- #
     def __call__(self, x: np.ndarray, **kwargs) -> np.ndarray | dict:
@@ -99,6 +112,13 @@ class TransformOp(PHMOperator):
 class AggregateOp(PHMOperator):
     """降维聚合算子的基类 (rank ↓)"""
     rank_class: ClassVar[RankClass] = "AGGREGATE"
+
+class MultiVariableOp(PHMOperator):
+    """拼接算子的基类，通常用于将多个输入沿特定轴拼接或拆分成若干个输出。"""
+    rank_class: ClassVar[RankClass] = "MultiVariable"
+    input_dict: Dict[str, np.ndarray] = Field(default_factory=dict, description="输入字典，键为输入名称，值为对应的 NumPy 数组。")
+    output_dict: Dict[str, np.ndarray] = Field(default_factory=dict, description="输出字典，键为输出名称，值为对应的 NumPy 数组。")
+
 
 class DecisionOp(PHMOperator):
     """决策算子的基类，通常输出字典而非数组。"""
