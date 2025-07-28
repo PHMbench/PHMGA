@@ -46,3 +46,80 @@ class WebSearchState(TypedDict):
 @dataclass(kw_only=True)
 class SearchStateOutput:
     running_summary: str = field(default=None)  # Final report
+
+
+# === PHM System Models ===
+import uuid
+from typing import List, Dict, Any, Annotated
+from pydantic import BaseModel, Field
+
+
+class SignalData(BaseModel):
+    """Represents a batch of raw input signals."""
+
+    signal_id: str = Field(default_factory=lambda: f"sig_{uuid.uuid4().hex[:8]}")
+    data: List[List[List[float]]]
+    sampling_rate: int
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ProcessedSignal(BaseModel):
+    """Output of a single signal processing method."""
+
+    processed_id: str = Field(default_factory=lambda: f"proc_{uuid.uuid4().hex[:8]}")
+    source_signal_id: str
+    method: str
+    processed_data: Any
+
+
+class ExtractedFeatures(BaseModel):
+    """Feature set extracted from a batch of signals."""
+
+    feature_set_id: str = Field(default_factory=lambda: f"feat_{uuid.uuid4().hex[:8]}")
+    source_processed_id: str
+    features: List[Dict[str, float]]
+
+
+class AnalysisInsight(BaseModel):
+    """Concrete insight produced by analysis or reflection."""
+
+    insight_id: str = Field(default_factory=lambda: f"ins_{uuid.uuid4().hex[:8]}")
+    content: str
+    severity_score: float = Field(ge=0.0, le=1.0)
+    supporting_feature_ids: List[str]
+
+
+class PHMState(TypedDict):
+    """Central state for the PHM LangGraph pipeline."""
+
+    user_instruction: str
+    reference_signal: SignalData
+    test_signal: SignalData
+
+    plan: Dict[str, Any]
+    reflection_history: List[str]
+    is_sufficient: bool
+    iteration_count: int
+
+    processed_signals: Annotated[List[ProcessedSignal], operator.add]
+    extracted_features: Annotated[List[ExtractedFeatures], operator.add]
+
+    analysis_results: List[AnalysisInsight]
+    final_decision: str
+
+    final_report: str
+
+
+__all__ = [
+    "OverallState",
+    "ReflectionState",
+    "Query",
+    "QueryGenerationState",
+    "WebSearchState",
+    "SearchStateOutput",
+    "SignalData",
+    "ProcessedSignal",
+    "ExtractedFeatures",
+    "AnalysisInsight",
+    "PHMState",
+]

@@ -12,3 +12,5 @@ tavily-python
 wikipedia
 trustcall
 langgraph-cli[inmem]
+numpy
+jinja2

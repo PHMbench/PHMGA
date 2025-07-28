@@ -58,3 +58,23 @@ class Configuration(BaseModel):
         values = {k: v for k, v in raw_values.items() if v is not None}
 
         return cls(**values)
+
+
+from dataclasses import dataclass, field
+from typing import List
+
+
+@dataclass
+class Config:
+    """Configuration for the PHM pipeline."""
+
+    use_patch: bool = False
+    patch_size: int = 256
+    signal_processing_methods: List[str] = field(default_factory=list)
+    feature_methods: List[str] = field(default_factory=list)
+    similarity_method: str = "cosine"
+    decision_model: str = "simple"
+    max_loops: int = 3
+
+
+__all__ = ["Configuration", "Config"]

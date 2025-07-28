@@ -94,3 +94,25 @@ User Context:
 
 Summaries:
 {summaries}"""
+
+
+# Prompts for PHM system
+PROMPT_PLANNER = (
+    "Plan the PHM analysis workflow using available signal processing and "
+    "feature extraction methods."
+)
+
+PROMPT_REFLECTOR = (
+    "Assess if the current analysis adequately transformed the data "
+    "(B,L,C) -> (B,P,L',C) -> (B,C') and produced satisfactory insights."
+)
+
+__all__ = [
+    "get_current_date",
+    "query_writer_instructions",
+    "web_searcher_instructions",
+    "reflection_instructions",
+    "answer_instructions",
+    "PROMPT_PLANNER",
+    "PROMPT_REFLECTOR",
+]

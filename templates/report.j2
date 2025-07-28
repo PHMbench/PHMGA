@@ -1,0 +1,12 @@
+# Analysis Report
+
+Instruction: {{ state.user_instruction }}
+
+Plan: {{ state.plan }}
+
+{% for insight in state.analysis_results %}
+- {{ insight.content }} (severity {{ insight.severity_score }})
+{% endfor %}
+
+Decision: {{ state.final_decision }}
+

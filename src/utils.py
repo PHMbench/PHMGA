@@ -1,5 +1,14 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
+import numpy as np
+
+__all__ = [
+    "get_research_topic",
+    "resolve_urls",
+    "insert_citation_markers",
+    "get_citations",
+    "assert_shape",
+]
 
 
 def get_research_topic(messages: List[AnyMessage]) -> str:
@@ -164,3 +173,38 @@ def get_citations(response, resolved_urls_map):
                     pass
         citations.append(citation)
     return citations
+
+
+def assert_shape(array: np.ndarray, expected: Sequence[Optional[int]]) -> None:
+    """Assert that a NumPy array matches an expected shape.
+
+    ``None`` in the expected shape acts as a wildcard for that dimension.
+
+    Args:
+        array: Array whose shape will be validated.
+        expected: Expected shape tuple where each element can be an ``int`` or
+            ``None``.
+
+    Raises:
+        AssertionError: If the number of dimensions or any specified dimension
+            does not match ``expected``.
+
+    Examples:
+        >>> import numpy as np
+        >>> assert_shape(np.zeros((2, 3)), (2, 3))
+        >>> assert_shape(np.zeros((2, 3)), (2, None))
+        >>> assert_shape(np.zeros((2, 3)), (1, 3))
+        Traceback (most recent call last):
+        ...
+        AssertionError: Expected shape (1, 3), got (2, 3)
+    """
+
+    actual = array.shape
+    if len(actual) != len(expected):
+        raise AssertionError(
+            f"Expected {len(expected)} dimensions, got {len(actual)}"
+        )
+    for idx, (act, exp) in enumerate(zip(actual, expected)):
+        if exp is not None and act != exp:
+            raise AssertionError(f"Expected shape {tuple(expected)}, got {actual}")
+
