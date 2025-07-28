@@ -46,3 +46,4 @@ class WebSearchState(TypedDict):
 @dataclass(kw_only=True)
 class SearchStateOutput:
     running_summary: str = field(default=None)  # Final report
+
