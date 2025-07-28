@@ -1,0 +1,9 @@
+# PHM Report
+
+Instruction: {{ state.user_instruction }}
+
+Decision: {{ state.final_decision }}
+
+Insights:
+{% for ins in state.analysis_results %}- {{ ins.content }} (score={{ ins.severity_score }})
+{% endfor %}
