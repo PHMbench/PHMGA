@@ -1,3 +1,6 @@
-from .graph import graph
+"""PHMGA package."""
 
-__all__ = ["graph"]
+from typing import List
+
+__all__: List[str] = []
+

@@ -6,7 +6,7 @@ langsmith
 langchain-community
 langchain-core
 langchain-openai
-langchain_google_genai 
+langchain_google_genai
 notebook
 tavily-python
 wikipedia
@@ -14,3 +14,5 @@ trustcall
 langgraph-cli[inmem]
 google-generativeai
 google.genai
+numpy
+scipy
