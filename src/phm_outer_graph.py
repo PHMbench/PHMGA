@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from langgraph.graph import StateGraph
-from langgraph.checkpointers.sqlite import SqliteCheckpointer
+from langgraph.checkpoint.sqlite import SqliteSaver as SqliteCheckpointer
 
 from .states.phm_states import PHMState
 from .agents.plan_agent import plan_agent
@@ -24,7 +24,7 @@ def build_outer_graph() -> StateGraph:
     builder.add_node("execute", execute_agent)
     builder.add_node("reflect", reflect_agent)
     builder.add_node("report", report_agent)
-    
+
     builder.set_entry_point("plan")
     builder.add_edge("plan", "execute")
     builder.add_edge("execute", "reflect")

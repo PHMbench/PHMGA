@@ -62,10 +62,10 @@ class PHMOperator(BaseModel, abc.ABC):
     out_shape: Tuple[int, ...] | None = Field(default=None, description="最近一次执行时的输出形状。")
     params: Dict[str, Any] = Field(default_factory=dict, description="算子参数字典，包含所有可配置的参数。")
 
-    # class Config:
-    #     extra = "forbid"  # 不允许未定义的字段
-    #     arbitrary_types_allowed = True
-    #     frozen = True  # 算子实例一旦创建即不可变，保证图执行的纯粹性
+    class Config:
+        extra = "forbid"  # 不允许未定义的字段
+        arbitrary_types_allowed = True
+        frozen = True  # 算子实例一旦创建即不可变，保证图执行的纯粹性
 
     # --- 对 LangGraph 公开的统一接口 --- #
     def __call__(self, x: np.ndarray, **kwargs) -> np.ndarray | dict:

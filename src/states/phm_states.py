@@ -62,6 +62,15 @@ class DAGState(BaseModel):
     test_root: str
     nodes: Dict[str, Any] = {}
     leaves: List[str] = []           # 当前末端信号节点
+    def __init__(self, **data):
+        super().__init__(**data)
+        # 初始化时确保至少有一个叶子节点
+        if not self.leaves:
+            self.leaves = [self.reference_root, self.test_root]
+        # 确保根节点存在
+        if not self.nodes:
+            self.nodes[self.reference_root] = InputData(node_id=self.reference_root, parents=[], shape=(0,), stage="input")
+            self.nodes[self.test_root] = InputData(node_id=self.test_root, parents=[], shape=(0,), stage="input")
 
 
 
@@ -169,10 +178,16 @@ class PHMState(BaseModel):
     is_sufficient: bool = False
     iteration_count: int = 0
 
-    processed_signals: Annotated[Dict[str, ProcessedData], lambda x, y: {**x, **y}] = Field(
+    processed_reference_signals: Annotated[Dict[str, ProcessedData], lambda x, y: {**x, **y}] = Field(
         default_factory=dict
     )
-    extracted_features: Annotated[Dict[str, FeatureData], lambda x, y: {**x, **y}] = Field(
+    processed_test_signals: Annotated[Dict[str, ProcessedData], lambda x, y: {**x, **y}] = Field(
+        default_factory=dict
+    )
+    extracted_reference_features: Annotated[Dict[str, FeatureData], lambda x, y: {**x, **y}] = Field(
+        default_factory=dict
+    )
+    extracted_test_features: Annotated[Dict[str, FeatureData], lambda x, y: {**x, **y}] = Field(
         default_factory=dict
     )
 
@@ -187,7 +202,10 @@ class PHMState(BaseModel):
         default_factory=lambda: DAGState(user_instruction="", reference_root="", test_root="")
     )
 
-    dag_tracker: DAGTracker | None = None
+    dag_tracker: DAGTracker | None = Field(default=None, exclude=True) # 1. Exclude from serialization
+
+    class Config: # 2. Allow arbitrary types
+        arbitrary_types_allowed = True
 
     # ---- 快捷方法供 Agents 使用 ---- #
     def tracker(self) -> DAGTracker:
