@@ -15,18 +15,18 @@ def load_signal_data(path: str) -> Dict[str, np.ndarray]:
     为演示目的，生成包含四种不同状态信号的表格化数据（字典）。
     """
     print(f"Generating dummy signal data for 4 states (ignoring path: {path})")
-    
+
     states = ["normal", "inner_race_fault", "outer_race_fault", "ball_fault"]
     signal_length = 8192
     num_channels = 1
-    
+
     signals = {}
     for state in states:
         # 基础正弦波
         base_signal = np.sin(np.linspace(0, 100, signal_length))
         # 添加高斯噪声
         noise = np.random.randn(signal_length) * 0.5
-        
+
         # 为不同故障类型添加特征
         if state == "inner_race_fault":
             impulses = np.zeros(signal_length)
@@ -43,15 +43,18 @@ def load_signal_data(path: str) -> Dict[str, np.ndarray]:
             for i in range(5):
                 impulses[np.random.randint(0, signal_length)] = 2.5
             signal = base_signal + noise + impulses
-        else: # normal
+        else:  # normal
             signal = base_signal + noise
-            
+
         # 统一格式为 (B, L, C)，其中 B=1
         signals[state] = signal.reshape(1, signal_length, num_channels)
-        
+
     return signals
 
-def initialize_state(user_instruction: str, ref_signal_path: str, test_signal_path: str) -> PHMState:
+
+def initialize_state(
+    user_instruction: str, ref_signal_path: str, test_signal_path: str
+) -> PHMState:
     """
     根据初始输入，创建并初始化整个系统的状态（PHMState）。
     这对应您描述的 "START -> 接收 llm指令 | 参考信号 | 测试信号" 阶段。
@@ -65,13 +68,13 @@ def initialize_state(user_instruction: str, ref_signal_path: str, test_signal_pa
         node_id="ref_signal_node",
         data=all_ref_data,
         parents=[],
-        shape=next(iter(all_ref_data.values())).shape  # 获取第一个信号的形状
+        shape=next(iter(all_ref_data.values())).shape,  # 获取第一个信号的形状
     )
     test_data_node = InputData(
         node_id="test_signal_node",
         data=all_test_data,
         parents=[],
-        shape=next(iter(all_test_data.values())).shape  # 获取第一个信号的形状
+        shape=next(iter(all_test_data.values())).shape,  # 获取第一个信号的形状
     )
     # # 从字典中选取一个作为代表，在实际应用中应有更明确的选择逻辑
     # ref_data_array = next(iter(all_ref_data.values()))
@@ -81,7 +84,7 @@ def initialize_state(user_instruction: str, ref_signal_path: str, test_signal_pa
     #    我们为根节点定义清晰的ID，并用 InputData 对象填充初始节点。
     ref_root_id = "ref_root_node_01"
     test_root_id = "test_root_node_01"
-    
+
     # 修正：在创建 InputData 时提供所有必需的字段
 
     dag_state = DAGState(
@@ -103,6 +106,7 @@ def initialize_state(user_instruction: str, ref_signal_path: str, test_signal_pa
     )
     return initial_state
 
+
 def main():
     """
     程序主入口，执行一次完整的故障诊断流程。
@@ -113,7 +117,9 @@ def main():
     test_signal_path = "data/faulty_bearing.csv"
 
     # 2. 初始化状态
-    initial_phm_state = initialize_state(user_instruction, ref_signal_path, test_signal_path)
+    initial_phm_state = initialize_state(
+        user_instruction, ref_signal_path, test_signal_path
+    )
 
     # 3. 构建并编译外层图
     app = build_outer_graph()
@@ -127,17 +133,28 @@ def main():
     #     for node_name, state_update in event.items():
     #         print(f"--- Executing Node: {node_name} ---")
     #         print("...done.\n")
-    state = app.invoke(initial_phm_state, config=config)    
-    # 5. 获取最终结果
-    final_state = app.get_state(config)
+    # state = app.invoke(initial_phm_state, config=config)    
+    # # 5. 获取最终结果
+    # final_state = app.get_state(config)
+    final_state = None
+    for event in app.stream(initial_phm_state, config=config):
+        for node_name, state_update in event.items():
+            print(f"--- Executing Node: {node_name} ---")
+            print("...done.\n")
+            final_state = state_update
+
+    # 5. 获取最终结果（直接使用最后一次状态）
     print("--- Workflow Finished ---")
-    if final_state and final_state.final_report_md:
+    if isinstance(final_state, dict) and final_state.get("final_report"):
+        report = final_state["final_report"]
         print("\nFinal Report:")
-        print(final_state.final_report_md)
+        print(report)
+        with open("final_report.md", "w", encoding="utf-8") as f:
+            f.write(report)
+        print("Report saved to final_report.md")
     else:
         print("No final report was generated or an error occurred.")
 
 
 if __name__ == "__main__":
     main()
-
