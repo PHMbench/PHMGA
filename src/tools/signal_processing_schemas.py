@@ -54,6 +54,7 @@ class PHMOperator(BaseModel, abc.ABC):
     rank_class: ClassVar[RankClass]
     description: ClassVar[str]
     parent: str | list[str] = Field(default=None, description="上游节点 ID 或 ID 列表，表示依赖的输入节点。")
+    kind: Literal["op"] = "op"
 
 
     # 运行时状态，由钩子自动填充，便于调试和检查点
