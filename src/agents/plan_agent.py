@@ -4,7 +4,7 @@ import os
 from typing import List
 
 from langchain_core.prompts import ChatPromptTemplate
-from ..model import get_default_llm
+from ..model import get_llm
 
 from ..states.phm_states import PHMState
 
@@ -22,7 +22,7 @@ def plan_agent(state: PHMState) -> PHMState:
     PHMState
         The state with ``high_level_plan`` populated.
     """
-    llm = get_default_llm()
+    llm = get_llm()
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", "You are a goal decomposition assistant."),

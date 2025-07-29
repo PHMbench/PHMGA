@@ -7,7 +7,7 @@ from typing import Optional
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from .configuration import Configuration
+from ..configuration import Configuration
 
 
 def get_llm(configurable: Optional[Configuration] = None,

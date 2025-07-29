@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from langchain_core.prompts import ChatPromptTemplate
-from ..model import get_default_llm
+from ..model import get_llm
 
 from ..states.phm_states import PHMState
 
@@ -21,7 +21,7 @@ def report_agent(state: PHMState) -> PHMState:
     """
     tracker = state.tracker()
     tracker.write_png("final_dag")
-    llm = get_default_llm()
+    llm = get_llm()
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", "Write a concise PHM report."),

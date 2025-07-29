@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import numpy as np
 from langchain_core.prompts import ChatPromptTemplate
-from ..model import get_default_llm
+from ..model import get_llm
 
 from ..states.phm_states import PHMState
 from ..tools.signal_processing_schemas import OP_REGISTRY, get_operator
@@ -26,7 +26,7 @@ def execute_agent(state: PHMState) -> PHMState:
     PHMState
         The updated state with a richer inner DAG.
     """
-    llm = get_default_llm()
+    llm = get_llm()
 
     signal = np.asarray(state.test_signal.data.get("signal", []))
     tracker = state.tracker()

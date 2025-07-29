@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from langchain_core.prompts import ChatPromptTemplate
-from ..model import get_default_llm
+from ..model import get_llm
 
 from ..states.phm_states import PHMState
 from ..utils import dag_to_llm_payload
@@ -20,7 +20,7 @@ def reflect_agent(state: PHMState) -> PHMState:
     PHMState
         Updated state with ``needs_revision`` and log entry appended.
     """
-    llm = get_default_llm()
+    llm = get_llm()
     dag_json = dag_to_llm_payload(state)
     prompt = ChatPromptTemplate.from_messages(
         [
