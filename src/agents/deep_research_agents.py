@@ -7,6 +7,7 @@ from ..states import (
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from ..configuration import Configuration
+from ..model import get_default_llm
 import os
 
 from src.tools.research_schemas import SearchQueryList, Reflection
@@ -62,12 +63,7 @@ def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerati
         state["initial_search_query_count"] = configurable.number_of_initial_queries
 
     # init Gemini 2.0 Flash
-    llm = ChatGoogleGenerativeAI(
-        model=configurable.query_generator_model,
-        temperature=1.0,
-        max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    llm = get_default_llm(configurable)
     structured_llm = llm.with_structured_output(SearchQueryList)
 
     # Format the prompt
@@ -164,12 +160,7 @@ def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
         summaries="\n\n---\n\n".join(state["web_research_result"]),
     )
     # init Reasoning Model
-    llm = ChatGoogleGenerativeAI(
-        model=reasoning_model,
-        temperature=1.0,
-        max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    llm = get_default_llm(configurable, model_name=reasoning_model)
     result = llm.with_structured_output(Reflection).invoke(formatted_prompt)
 
     return {
@@ -243,12 +234,7 @@ def finalize_answer(state: OverallState, config: RunnableConfig):
     )
 
     # init Reasoning Model, default to Gemini 2.5 Flash
-    llm = ChatGoogleGenerativeAI(
-        model=reasoning_model,
-        temperature=0,
-        max_retries=2,
-        api_key=os.getenv("GEMINI_API_KEY"),
-    )
+    llm = get_default_llm(configurable, model_name=reasoning_model, temperature=0)
     result = llm.invoke(formatted_prompt)
 
     # Replace the short urls with the original urls and add all used urls to the sources_gathered

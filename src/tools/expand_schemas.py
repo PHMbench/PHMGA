@@ -57,5 +57,22 @@ class PatchOp(ExpandOp):
             end_idx = L
             actual_size = end_idx - start_idx
             result[..., P_complete, :actual_size, :] = x[..., start_idx:end_idx, :]
-        
+
         return result
+
+
+@register_op
+class ScalogramOp(ExpandOp):
+    """Compute scalogram using continuous wavelet transform."""
+
+    op_name = "scalogram"
+    description = "Continuous wavelet scalogram"
+
+    wavelet: str = "morl"
+    scales: list[int] = [1, 2, 3]
+
+    def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
+        import pywt
+
+        coeffs, _ = pywt.cwt(x, self.scales, self.wavelet, axis=-2)
+        return np.abs(coeffs)

@@ -166,3 +166,22 @@ def get_citations(response, resolved_urls_map):
     return citations
 
 
+def dag_to_llm_payload(state: "PHMState", max_nodes: int = 40) -> str:
+    """Return a JSON string representing the latest portion of the DAG.
+
+    Parameters
+    ----------
+    state : PHMState
+        State whose internal DAG should be exported.
+    max_nodes : int, optional
+        Maximum number of nodes to include from the tail of the DAG.
+
+    Returns
+    -------
+    str
+        JSON payload for use in LLM prompts.
+    """
+    return state.tracker().export_json(max_nodes=max_nodes)
+
+
+
