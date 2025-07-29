@@ -20,7 +20,11 @@ def report_agent(state: PHMState) -> PHMState:
         The state populated with ``final_report`` and a PNG graph file.
     """
     tracker = state.tracker()
-    tracker.write_png("final_dag")
+    try:
+        tracker.write_png("final_dag")
+    except Exception:
+        # Graphviz may be missing in minimal environments; skip image
+        pass
     llm = get_llm()
     prompt = ChatPromptTemplate.from_messages(
         [

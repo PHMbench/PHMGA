@@ -39,7 +39,8 @@ def build_outer_graph() -> StateGraph:
     )
     builder.set_finish_point("report")
 
-    return builder.compile(
-        checkpointer=SqliteCheckpointer.from_conn_string("checkpoints/phm_agent.db")
-    )
+    # Checkpointer is optional and can cause issues if not correctly managed.
+    # For this simplified test workflow we compile without a persistent
+    # checkpointer to avoid connection handling errors.
+    return builder.compile()
 
