@@ -14,3 +14,6 @@ trustcall
 langgraph-cli[inmem]
 google-generativeai
 google.genai
+networkx
+graphviz
+PyWavelets
