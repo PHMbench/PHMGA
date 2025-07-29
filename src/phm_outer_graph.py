@@ -1,14 +1,16 @@
 from __future__ import annotations
 
 from langgraph.graph import StateGraph
-from langgraph.checkpoint.sqlite import SqliteSaver as SqliteCheckpointer
+from langgraph.checkpoint.sqlite import SqliteSaver 
 
 from .states.phm_states import PHMState
 from .agents.plan_agent import plan_agent
 from .agents.execute_agent import execute_agent
 from .agents.reflect_agent import reflect_agent
 from .agents.report_agent import report_agent
+from langgraph.graph import START, END
 
+import sqlite3
 
 def build_outer_graph() -> StateGraph:
     """Construct the static outer workflow graph.
@@ -25,6 +27,7 @@ def build_outer_graph() -> StateGraph:
     builder.add_node("reflect", reflect_agent)
     builder.add_node("report", report_agent)
 
+    # builder.add_edge(START, "plan")
     builder.set_entry_point("plan")
     builder.add_edge("plan", "execute")
     builder.add_edge("execute", "reflect")
@@ -38,8 +41,11 @@ def build_outer_graph() -> StateGraph:
         },
     )
     builder.set_finish_point("report")
+    # builder.add_edge("report", END)
+    conn = sqlite3.connect("database/phm_agent.db", check_same_thread=False)
+    # Here is our checkpointer 
 
-    return builder.compile(
-        checkpointer=SqliteCheckpointer.from_conn_string("checkpoints/phm_agent.db")
-    )
+    memory = SqliteSaver(conn)
+    return builder.compile(checkpointer=memory)
+
 

@@ -7,6 +7,8 @@ from typing import Dict
 from src.phm_outer_graph import build_outer_graph
 from src.states.phm_states import PHMState, DAGState, InputData
 
+from langchain_core.messages import SystemMessage, HumanMessage, RemoveMessage
+
 def load_signal_data(path: str) -> Dict[str, np.ndarray]:
     """
     一个加载信号数据的辅助函数。
@@ -71,9 +73,9 @@ def initialize_state(user_instruction: str, ref_signal_path: str, test_signal_pa
         parents=[],
         shape=next(iter(all_test_data.values())).shape  # 获取第一个信号的形状
     )
-    # 从字典中选取一个作为代表，在实际应用中应有更明确的选择逻辑
-    ref_data_array = next(iter(all_ref_data.values()))
-    test_data_array = next(iter(all_test_data.values()))
+    # # 从字典中选取一个作为代表，在实际应用中应有更明确的选择逻辑
+    # ref_data_array = next(iter(all_ref_data.values()))
+    # test_data_array = next(iter(all_test_data.values()))
 
     # 4. 创建 DAGState，这是状态的核心。
     #    我们为根节点定义清晰的ID，并用 InputData 对象填充初始节点。
@@ -81,26 +83,11 @@ def initialize_state(user_instruction: str, ref_signal_path: str, test_signal_pa
     test_root_id = "test_root_node_01"
     
     # 修正：在创建 InputData 时提供所有必需的字段
-    initial_nodes = {
-        ref_root_id: InputData(
-            node_id=ref_root_id,
-            data=ref_data_node,
-            parents=[],
-            shape=ref_data_array.shape
-        ),
-        test_root_id: InputData(
-            node_id=test_root_id,
-            data=test_data_node,
-            parents=[], 
-            shape=test_data_array.shape
-        )
-    }
 
     dag_state = DAGState(
         user_instruction=user_instruction,
         reference_root=ref_root_id,
         test_root=test_root_id,
-        nodes=initial_nodes,
         leaves=[ref_root_id, test_root_id]
     )
 
@@ -136,11 +123,11 @@ def main():
     config = {"configurable": {"thread_id": thread_id}}
 
     print("\n--- Starting PHM Analysis Workflow ---\n")
-    for event in app.stream(initial_phm_state, config=config):
-        for node_name, state_update in event.items():
-            print(f"--- Executing Node: {node_name} ---")
-            print("...done.\n")
-    
+    # for event in app.stream(initial_phm_state, config=config):
+    #     for node_name, state_update in event.items():
+    #         print(f"--- Executing Node: {node_name} ---")
+    #         print("...done.\n")
+    state = app.invoke(initial_phm_state, config=config)    
     # 5. 获取最终结果
     final_state = app.get_state(config)
     print("--- Workflow Finished ---")

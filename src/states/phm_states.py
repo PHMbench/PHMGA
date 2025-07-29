@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Dict, Any, Annotated, Tuple
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 import uuid
 from langgraph.graph import add_messages
 from typing_extensions import Annotated
@@ -27,7 +27,7 @@ class InputData(_NodeBase):
         default_factory=dict,
         description="A dictionary containing raw signal data, where keys are signal names and values are the corresponding signal data."
     )
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict) # see metadata 
 
 
 class ProcessedData(_NodeBase):
@@ -39,12 +39,12 @@ class ProcessedData(_NodeBase):
     processed_data: Any
 
 
-class FeatureData(_NodeBase):
-    """Feature set extracted from a batch of signals."""
-    stage: str = "output"
-    feature_set_id: str = Field(default_factory=lambda: f"feat_{uuid.uuid4().hex[:8]}")
-    source_processed_id: str
-    features: List[Dict[str, float]]
+# class FeatureData(_NodeBase):
+#     """Feature set extracted from a batch of signals."""
+#     stage: str = "output"
+#     feature_set_id: str = Field(default_factory=lambda: f"feat_{uuid.uuid4().hex[:8]}")
+#     source_processed_id: str
+#     features: List[Dict[str, float]]
 
 # TODO
 class AnalysisInsight(BaseModel):
@@ -54,6 +54,27 @@ class AnalysisInsight(BaseModel):
     content: str
     severity_score: float = Field(ge=0.0, le=1.0)
     supporting_feature_ids: List[str]
+
+class Result(BaseModel):
+    """
+    Represents the final result of a PHM analysis, structured to constrain LLM output based on a predefined schema.
+    """
+
+    dataset: str | None = Field(None, description="Identifier for the dataset used.")
+    Description: str | None = Field(None, description="A brief description of the analysis performed.")
+    Label: int | None = Field(None, description="The primary label assigned to the result (e.g., fault type).")
+    Label_Description: str | None = Field(None, description="Description of the assigned label.")
+    Fault_level: float | None = Field(None, description="Severity level of the detected fault (e.g., 'Normal', 'Warning', 'Critical').")
+    RUL_label: float | None = Field(None, description="Categorical label for Remaining Useful Life.")
+    RUL_label_description: str | None = Field(None, description="Description of the RUL label.")
+    Domain_id: int | None = Field(None, description="Identifier for the operational domain.")
+    Domain_description: str | None = Field(None, description="Description of the operational domain.")
+    Sample_rate: int | None = Field(None, description="The sample rate of the signal data in Hz.")
+    Sample_length: int | None = Field(None, description="The length of the data sample used.")
+    Channel: int | None = Field(None, description="The specific data channel or sensor analyzed.")
+    Fault_Diagnosis: str = Field(..., description="The conclusive diagnosis of the fault. This field is mandatory.")
+    Anomaly_Detection: str = Field(..., description="Results of the anomaly detection process. This field is mandatory.")
+    Remaining_Life: str | None = Field(None, description="Predicted Remaining Useful Life in appropriate units (e.g., cycles, hours).")
 
 class DAGState(BaseModel):
     """只保存拓扑信息，不含业务数据"""
@@ -160,6 +181,21 @@ class DAGTracker:
     def transfer_to_langgraph(self) -> nx.DiGraph:
         """将 DAGState 转换为 LangGraph 可用的 networkx 图."""
         return self.g
+    def save(self, path: str) -> None:
+        """将 DAG 状态保存到指定路径."""
+        import json
+        with open(path, 'w') as f:
+            json.dump(self.state.dict(), f, indent=4)
+    def load(self, path: str) -> None:
+        """从指定路径加载 DAG 状态."""
+        import json
+        with open(path, 'r') as f:
+            data = json.load(f)
+            self.state = DAGState(**data)
+            self.g = nx.DiGraph()
+            for n in self.state.nodes.values():
+                self._add_node(n)
+            self.state.leaves = [self.state.reference_root, self.state.test_root]
 
 
 
@@ -184,10 +220,10 @@ class PHMState(BaseModel):
     processed_test_signals: Annotated[Dict[str, ProcessedData], lambda x, y: {**x, **y}] = Field(
         default_factory=dict
     )
-    extracted_reference_features: Annotated[Dict[str, FeatureData], lambda x, y: {**x, **y}] = Field(
+    extracted_reference_features: Annotated[Dict[str, ProcessedData], lambda x, y: {**x, **y}] = Field(
         default_factory=dict
     )
-    extracted_test_features: Annotated[Dict[str, FeatureData], lambda x, y: {**x, **y}] = Field(
+    extracted_test_features: Annotated[Dict[str, ProcessedData], lambda x, y: {**x, **y}] = Field(
         default_factory=dict
     )
 
@@ -202,16 +238,16 @@ class PHMState(BaseModel):
         default_factory=lambda: DAGState(user_instruction="", reference_root="", test_root="")
     )
 
-    dag_tracker: DAGTracker | None = Field(default=None, exclude=True) # 1. Exclude from serialization
+    # _dag_tracker: DAGTracker | None = PrivateAttr(default=None) # 1. Exclude from serialization
 
     class Config: # 2. Allow arbitrary types
         arbitrary_types_allowed = True
 
     # ---- 快捷方法供 Agents 使用 ---- #
     def tracker(self) -> DAGTracker:
-        if self.dag_tracker is None:
-            self.dag_tracker = DAGTracker(self.dag_state)
-        return self.dag_tracker
+        if not hasattr(self, "_dag_tracker") or self._dag_tracker is None:
+            self._dag_tracker = DAGTracker(self.dag_state)
+        return self._dag_tracker
 
     def add_execution(self, *args, **kw) -> str:
         """代理给 DAGTracker.add_execution 并返回新 signal node_id."""
