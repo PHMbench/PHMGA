@@ -81,19 +81,21 @@ def initialize_state(user_instruction: str, ref_signal_path: str, test_signal_pa
     test_root_id = "test_root_node_01"
     
     # 修正：在创建 InputData 时提供所有必需的字段
+    # DAGState 节点存储实际的数据信息，不能再嵌套 InputData
+    # 因此直接复用上面创建的 InputData 对象作为根节点
     initial_nodes = {
         ref_root_id: InputData(
             node_id=ref_root_id,
-            data=ref_data_node,
+            data=all_ref_data,
             parents=[],
-            shape=ref_data_array.shape
+            shape=ref_data_array.shape,
         ),
         test_root_id: InputData(
             node_id=test_root_id,
-            data=test_data_node,
-            parents=[], 
-            shape=test_data_array.shape
-        )
+            data=all_test_data,
+            parents=[],
+            shape=test_data_array.shape,
+        ),
     }
 
     dag_state = DAGState(
@@ -136,17 +138,21 @@ def main():
     config = {"configurable": {"thread_id": thread_id}}
 
     print("\n--- Starting PHM Analysis Workflow ---\n")
+    final_state = None
     for event in app.stream(initial_phm_state, config=config):
         for node_name, state_update in event.items():
             print(f"--- Executing Node: {node_name} ---")
             print("...done.\n")
-    
-    # 5. 获取最终结果
-    final_state = app.get_state(config)
+            final_state = state_update
+
+    # 5. 获取最终结果（直接使用最后一次状态）
     print("--- Workflow Finished ---")
-    if final_state and final_state.final_report_md:
+    if isinstance(final_state, dict):
+        final_state = PHMState.model_validate(final_state)
+
+    if final_state and final_state.final_report:
         print("\nFinal Report:")
-        print(final_state.final_report_md)
+        print(final_state.final_report)
     else:
         print("No final report was generated or an error occurred.")
 
