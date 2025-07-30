@@ -1,9 +1,19 @@
+"""Reporter agent that assembles the final PHM report."""
+
 from __future__ import annotations
 
-from langchain_core.prompts import ChatPromptTemplate
-from ..model import get_llm
-
 from ..states.phm_states import PHMState
+
+
+def _build_insight_table(state: PHMState) -> str:
+    """Create a Markdown table summarizing all insights."""
+
+    header = "| Insight | Severity | Nodes |\n|---|---|---|\n"
+    rows = [
+        f"| {ins.content} | {ins.severity_score:.2f} | `{ins.compared_nodes[0]}` ↔ `{ins.compared_nodes[1]}` |"
+        for ins in state.insights
+    ]
+    return header + "\n".join(rows) + "\n"
 
 
 def report_agent(state: PHMState) -> PHMState:
@@ -19,21 +29,15 @@ def report_agent(state: PHMState) -> PHMState:
     PHMState
         The state populated with ``final_report`` and a PNG graph file.
     """
+
     tracker = state.tracker()
     try:
-        tracker.write_png("final_dag")
+        tracker.write_png("final_dag.png")
     except Exception:
-        # Graphviz may be missing in minimal environments; skip image
+        # Visualization failure should not halt report generation
         pass
-    llm = get_llm()
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", "Write a concise PHM report."),
-            ("human", "Plan: {plan}"),
-        ]
-    )
-    chain = prompt | llm
-    resp = chain.invoke({"plan": "\n".join(state.high_level_plan)})
-    state.final_report = resp.content + "\n\n![](final_dag.png)"
+
+    table = _build_insight_table(state)
+    state.final_report = f"# PHM Report\n\n## Insights\n{table}\n\n## DAG\n![](final_dag.png)"
     return state
 

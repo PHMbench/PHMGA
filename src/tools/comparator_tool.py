@@ -1,0 +1,42 @@
+"""Tool functions used by the inquirer agent for node comparison."""
+
+from __future__ import annotations
+
+from typing import Any
+import numpy as np
+
+from ..states.phm_states import PHMState, ProcessedData, InputData
+from ..schemas.insight_schema import AnalysisInsight
+
+
+def compare_processed_nodes(
+    state: PHMState,
+    reference_node_id: str,
+    test_node_id: str,
+) -> AnalysisInsight:
+    """Compare the signal values from two nodes and return an insight."""
+    ref_node = state.dag_state.nodes.get(reference_node_id)
+    test_node = state.dag_state.nodes.get(test_node_id)
+    if isinstance(ref_node, ProcessedData):
+        ref = np.asarray(ref_node.processed_data)
+    elif isinstance(ref_node, InputData):
+        ref = np.asarray(ref_node.data.get("signal", []))
+    else:
+        raise ValueError("Invalid reference node")
+
+    if isinstance(test_node, ProcessedData):
+        test = np.asarray(test_node.processed_data)
+    elif isinstance(test_node, InputData):
+        test = np.asarray(test_node.data.get("signal", []))
+    else:
+        raise ValueError("Invalid test node")
+    diff = float(np.mean(np.abs(ref - test)))
+    severity = min(1.0, diff / (np.mean(np.abs(ref)) + 1e-6))
+
+    content = f"Difference between {reference_node_id} and {test_node_id} is {diff:.3f}"
+    insight = AnalysisInsight(
+        content=content,
+        severity_score=severity,
+        compared_nodes=(reference_node_id, test_node_id),
+    )
+    return insight
