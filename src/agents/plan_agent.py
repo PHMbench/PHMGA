@@ -6,8 +6,11 @@ from typing import List
 from langchain_core.prompts import ChatPromptTemplate
 from ..model import get_llm
 
-from ..states.phm_states import PHMState
+from ..states.phm_states import PHMState, InputData
 from ..schemas.plan_schema import AnalysisPlan
+from ..prompts.plan_prompt import PLANNER_PROMPT 
+from ..tools.signal_processing_schemas import OP_REGISTRY
+import json
 
 
 def _parse_plan(text: str) -> AnalysisPlan:
@@ -15,6 +18,13 @@ def _parse_plan(text: str) -> AnalysisPlan:
     lines = [line.strip(" -") for line in text.splitlines() if line.strip()]
     return AnalysisPlan(steps=lines)
 
+
+def get_available_nodes(state: PHMState) -> tuple:
+    # Helper to categorize nodes for the prompt
+    refs = [nid for nid, node in state.dag_state.nodes.items() if isinstance(node, InputData) and 'ref' in nid]
+    tests = [nid for nid, node in state.dag_state.nodes.items() if isinstance(node, InputData) and 'test' in nid]
+    others = [nid for nid, node in state.dag_state.nodes.items() if not isinstance(node, InputData)]
+    return refs, tests, others
 
 def plan_agent(state: PHMState) -> PHMState:
     """Generate a high-level analysis plan from the user instruction.
@@ -30,19 +40,18 @@ def plan_agent(state: PHMState) -> PHMState:
         Updated state with ``analysis_plan`` and ``high_level_plan`` filled.
     """
     llm = get_llm()
+
+    # Prepare context for the prompt
+    tools_schemas = json.dumps([cls.model_json_schema() for cls in OP_REGISTRY.values()], indent=2)
+    ref_nodes, test_nodes, other_nodes = get_available_nodes(state)
+    
+    prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT)
+    
     try:
         structured_llm = llm.with_structured_output(AnalysisPlan)
     except NotImplementedError:
         structured_llm = None
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", "You are a goal decomposition assistant."),
-            (
-                "human",
-                "User instruction: {instruction}\nReturn the plan as a numbered list",
-            ),
-        ]
-    )
+
     if structured_llm:
         chain = prompt | structured_llm
         plan = chain.invoke({"instruction": state.user_instruction})

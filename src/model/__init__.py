@@ -39,20 +39,10 @@ def get_llm(
     """
     if configurable is None:
         configurable = Configuration.from_runnable_config(None)
+    fake_llm = configurable.fake_llm
+    if fake_llm:
+        # Use a mock model for testing
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    use_real = os.getenv("USE_REAL_LLM") == "1"
-    if api_key and use_real:
-        return ChatGoogleGenerativeAI(
-            model=configurable.query_generator_model,
-            temperature=temperature,
-            max_retries=max_retries,
-            api_key=api_key,
-        )
-
-    # Fallback mock model for offline testing
-    global _FAKE_LLM
-    if _FAKE_LLM is None:
         responses = [
             "1. compute fft\n2. compare features\n3. stop",
             '{"op_name": "stop"}',
@@ -60,4 +50,16 @@ def get_llm(
             "Dummy report",
         ]
         _FAKE_LLM = FakeListChatModel(responses=responses)
-    return _FAKE_LLM
+        return _FAKE_LLM
+    # Use real model with API key
+    else:
+        api_key = os.getenv("GEMINI_API_KEY")
+        return ChatGoogleGenerativeAI(
+                model=configurable.query_generator_model,
+                temperature=temperature,
+                max_retries=max_retries,
+                api_key=api_key,
+            )
+
+    # Fallback mock model for offline testing
+   

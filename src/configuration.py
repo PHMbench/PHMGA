@@ -46,6 +46,13 @@ class Configuration(BaseModel):
         metadata={"description": "The maximum number of research loops to perform."},
     )
 
+    fake_llm: bool = Field(
+        default=True,
+        metadata={
+            "description": "Use a fake LLM for testing purposes. If set to True, the model will not make real API calls."
+        },
+    )
+
     @classmethod
     def from_runnable_config(
         cls, config: Optional[RunnableConfig] = None

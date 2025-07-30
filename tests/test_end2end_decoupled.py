@@ -1,4 +1,10 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from dotenv import load_dotenv
+load_dotenv()
+
+
 import numpy as np
 from src.phm_outer_graph import build_outer_graph
 from src.states.phm_states import PHMState, DAGState, InputData
@@ -19,7 +25,7 @@ def make_state():
     )
 
 
-def test_full_workflow(tmp_path):
+def test_full_workflow():
     state = make_state()
     app = build_outer_graph()
     final_state = app.invoke(state, {"configurable": {"thread_id": "dec"}})
@@ -29,3 +35,6 @@ def test_full_workflow(tmp_path):
     assert final_state["needs_revision"] is False
     assert "| Insight | Severity | Nodes |" in final_state["final_report"]
     assert os.path.exists("final_dag.png")
+if __name__ == "__main__":
+    test_full_workflow()
+    print("All tests passed!")

@@ -76,8 +76,10 @@ class DAGState(BaseModel):
     user_instruction: str
     reference_root: str
     test_root: str
-    nodes: Dict[str, Any] = {}
-    leaves: List[str] = []           # 当前末端信号节点
+    nodes: Dict[str, Any] = Field(default_factory=dict)
+    leaves: List[str] = Field(default_factory=list)           # 当前末端信号节点
+
+    
     def __init__(self, **data):
         super().__init__(**data)
         # 初始化时确保至少有一个叶子节点
@@ -96,22 +98,45 @@ class DAGTracker:
     def __init__(self, dag_state: DAGState):
         self.state = dag_state
         self.g = nx.DiGraph()
-        for n in dag_state.nodes.values():
-            self.g.add_node(n.node_id)
-            for p in n.parents:
-                self.g.add_edge(p, n.node_id)
+        if dag_state.nodes:
+            for node_id, node in dag_state.nodes.items():
+                self.g.add_node(node_id)
+                # Ensure parents is a list before iterating
+                parents = node.parents if isinstance(node.parents, list) else [node.parents]
+                for p in parents:
+                    if p: # Avoid adding edges for empty parent lists
+                        self.g.add_edge(p, node_id)
 
     # ---------- 写入一次执行 ---------- #
-    def add_execution(
-        self,
-        op: _NodeBase | PHMOperator | List[_NodeBase],
+    # Let's rename add_execution to add_node for clarity. Its job is to add a node to the graph structure.
+    def add_node(self, node: _NodeBase) -> str:
+        """
+        Adds a new node to the state, updates the networkx graph, and correctly updates leaves.
+        """
+        if node.node_id in self.state.nodes:
+            # Avoid adding duplicate nodes
+            return node.node_id
 
-    ) -> str:
+        self.state.nodes[node.node_id] = node
+        self.g.add_node(node.node_id)
+        
+        parents = node.parents if isinstance(node.parents, list) else [node.parents]
+        
+        for p in parents:
+            if p and p in self.g:
+                self.g.add_edge(p, node.node_id)
 
-        self._add_node(op)
-
-        self.state.leaves = [op.node_id]
-        return op.node_id  # 返回新信号 node_id
+        # --- CRITICAL FIX FOR LEAVES ---
+        # 1. Start with the existing leaves.
+        # 2. Remove any parents of the new node from the leaves list.
+        # 3. Add the new node to the leaves list.
+        # This correctly handles branching and merging.
+        current_leaves = self.state.leaves[:]
+        new_leaves = [leaf for leaf in current_leaves if leaf not in parents]
+        new_leaves.append(node.node_id)
+        self.state.leaves = new_leaves
+        
+        return node.node_id
 
     # ---------- 导出给 LLM ---------- #
     def export_json(self, max_nodes: int = 40) -> str:
@@ -137,7 +162,8 @@ class DAGTracker:
                     }
                 )
             )
-        return json.dumps({"graph": mini, "user_instruction": self.state.user_instruction})
+        # return json.dumps({"graph": mini, "user_instruction": self.state.user_instruction})
+        return json.dumps({"graph": mini})
 
     # ---------- 可视化 ---------- #
     def to_dot(self) -> "graphviz.Digraph":
@@ -249,6 +275,6 @@ class PHMState(BaseModel):
 
     def add_execution(self, *args, **kw) -> str:
         """代理给 DAGTracker.add_execution 并返回新 signal node_id."""
-        return self.tracker().add_execution(*args, **kw)
+        return self.tracker().add_node(*args, **kw)
     
 
