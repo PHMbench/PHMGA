@@ -7,31 +7,50 @@ from langchain_core.prompts import ChatPromptTemplate
 from ..model import get_llm
 
 from ..states.phm_states import PHMState
+from ..schemas.plan_schema import AnalysisPlan
+
+
+def _parse_plan(text: str) -> AnalysisPlan:
+    """Convert raw numbered list text to an ``AnalysisPlan`` instance."""
+    lines = [line.strip(" -") for line in text.splitlines() if line.strip()]
+    return AnalysisPlan(steps=lines)
 
 
 def plan_agent(state: PHMState) -> PHMState:
-    """Generate a list of coarse analysis steps from the user instruction.
+    """Generate a high-level analysis plan from the user instruction.
 
     Parameters
     ----------
     state : PHMState
-        State object containing the original user instruction.
+        State containing the user's initial request.
 
     Returns
     -------
     PHMState
-        The state with ``high_level_plan`` populated.
+        Updated state with ``analysis_plan`` and ``high_level_plan`` filled.
     """
     llm = get_llm()
+    try:
+        structured_llm = llm.with_structured_output(AnalysisPlan)
+    except NotImplementedError:
+        structured_llm = None
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", "You are a goal decomposition assistant."),
-            ("human", "User instruction: {instruction}\nReturn each step as a list"),
+            (
+                "human",
+                "User instruction: {instruction}\nReturn the plan as a numbered list",
+            ),
         ]
     )
-    chain = prompt | llm
-    result = chain.invoke({"instruction": state.user_instruction})
-    lines = [line.strip(" -") for line in result.content.splitlines() if line.strip()]
-    state.high_level_plan = lines
+    if structured_llm:
+        chain = prompt | structured_llm
+        plan = chain.invoke({"instruction": state.user_instruction})
+    else:
+        chain = prompt | llm
+        resp = chain.invoke({"instruction": state.user_instruction})
+        plan = _parse_plan(resp.content)
+    state.analysis_plan = plan
+    state.high_level_plan = plan.steps
     return state
 
