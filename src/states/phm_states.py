@@ -9,6 +9,8 @@ import operator
 from typing import Literal
 import networkx as nx
 from ..tools.signal_processing_schemas import PHMOperator
+from ..schemas.insight_schema import AnalysisInsight
+from ..schemas.plan_schema import AnalysisPlan
 
 Shape = Tuple[int, ...]  # 支持多维形状
 
@@ -47,13 +49,6 @@ class ProcessedData(_NodeBase):
 #     features: List[Dict[str, float]]
 
 # TODO
-class AnalysisInsight(BaseModel):
-    """Concrete insight produced by analysis or reflection."""
-
-    insight_id: str = Field(default_factory=lambda: f"ins_{uuid.uuid4().hex[:8]}")
-    content: str
-    severity_score: float = Field(ge=0.0, le=1.0)
-    supporting_feature_ids: List[str]
 
 class Result(BaseModel):
     """
@@ -207,6 +202,7 @@ class PHMState(BaseModel):
     test_signal: InputData
 
     high_level_plan: List[str] = Field(default_factory=list)
+    analysis_plan: AnalysisPlan | None = None
     needs_revision: bool = False
 
 
@@ -227,7 +223,7 @@ class PHMState(BaseModel):
         default_factory=dict
     )
 
-    analysis_results: List[AnalysisInsight] = Field(default_factory=list)
+    insights: List[AnalysisInsight] = Field(default_factory=list)
     final_decision: str = ""
 
     final_report: str = ""
