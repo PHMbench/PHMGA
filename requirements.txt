@@ -17,5 +17,5 @@ google.genai
 networkx
 graphviz
 PyWavelets
-auto-sklearn
+scikit-learn
 dtw

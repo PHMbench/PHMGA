@@ -1,8 +1,4 @@
-from __future__ import annotations
 
-"""Agent responsible for generating analysis insights."""
-
-from __future__ import annotations
 import json
 from langchain_core.prompts import ChatPromptTemplate
 from ..model import get_llm

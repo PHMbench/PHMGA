@@ -152,9 +152,9 @@ def generate_final_report(final_state, save_dir="./save"):
         report = final_state["final_report"]
         print("\nFinal Report:")
         print(report)
-        with open("final_report.md", "w", encoding="utf-8") as f:
+        with open(save_dir + "final_report.md", "w", encoding="utf-8") as f:
             f.write(report)
-        print("Report saved to final_report.md")
+        print(f"Report saved to {save_dir}final_report.md")
     else:
         print("No final report was generated or an error occurred.")
 
