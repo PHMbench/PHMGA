@@ -1,9 +1,9 @@
 from __future__ import annotations
 import numpy as np
 from pydantic import Field
-from typing import Literal, Dict, List
+from typing import Literal, Dict, List, ClassVar
 # ... (other imports)
-from .signal_processing_schemas import register_op, DecisionOp
+from .signal_processing_schemas import register_op, DecisionOp, OP_REGISTRY
 from ..states.phm_states import PHMState, ProcessedData, InputData, get_node_data
 
 @register_op
@@ -12,8 +12,8 @@ class SimilarityScorer(DecisionOp):
     Calculates similarity scores between sets of reference and test signals.
     The output is a dictionary mapping each test node to its similarity scores against all reference nodes.
     """
-    op_name: str = "score_similarity"
-    description: str = "Computes similarity scores between multiple reference and test signals."
+    op_name: ClassVar[str] = "score_similarity"
+    description: ClassVar[str] = "Computes similarity scores between multiple reference and test signals."
     
     reference_node_ids: List[str] = Field(..., description="A list of reference node IDs from the DAG.")
     test_node_ids: List[str] = Field(..., description="A list of test node IDs from the DAG.")
@@ -46,8 +46,8 @@ class TopKClassifier(DecisionOp):
     Makes a diagnosis for each test signal by checking if its most similar reference signal is in the top K matches.
     This avoids hard-coded thresholds.
     """
-    op_name: str = "classify_by_top_k"
-    description: str = "Classifies test signals based on top-K similarity scores against references."
+    op_name: ClassVar[str] = "classify_by_top_k"
+    description: ClassVar[str] = "Classifies test signals based on top-K similarity scores against references."
 
     scores_node_id: str = Field(..., description="The node ID containing the nested dictionary of similarity scores.")
     k: int = Field(1, description="The number of top matches to consider for a positive classification.")
