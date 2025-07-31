@@ -51,13 +51,19 @@ def plan_agent(state: PHMState) -> PHMState:
         structured_llm = llm.with_structured_output(AnalysisPlan)
     except NotImplementedError:
         structured_llm = None
-
+    context = {
+        "instruction": state.user_instruction,
+        "reference_nodes": ref_nodes,
+        "test_nodes": test_nodes,
+        "other_nodes": other_nodes,
+        "tools": tools_schemas,
+    }
     if structured_llm:
         chain = prompt | structured_llm
-        plan = chain.invoke({"instruction": state.user_instruction})
+        plan = chain.invoke(context)
     else:
         chain = prompt | llm
-        resp = chain.invoke({"instruction": state.user_instruction})
+        resp = chain.invoke(context)
         plan = _parse_plan(resp.content)
     state.analysis_plan = plan
     state.high_level_plan = plan.steps
