@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 from langchain_core.prompts import ChatPromptTemplate
 from ..model import get_llm
 
@@ -21,19 +22,14 @@ def report_agent(state: PHMState) -> PHMState:
     """
     tracker = state.tracker()
     try:
-        tracker.write_png("final_dag")
+        tracker.write_png("final_dag.png")
     except Exception:
-        # Graphviz may be missing in minimal environments; skip image
         pass
-    llm = get_llm()
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", "Write a concise PHM report."),
-            ("human", "Plan: {plan}"),
-        ]
-    )
-    chain = prompt | llm
-    resp = chain.invoke({"plan": "\n".join(state.high_level_plan)})
-    state.final_report = resp.content + "\n\n![](final_dag.png)"
+    table = "| Insight | Severity | Nodes |\n|---|---|---|\n"
+    for ins in state.insights:
+        table += (
+            f"| {ins.content} | {ins.severity_score:.2f} | `{ins.compared_nodes[0]}` ↔ `{ins.compared_nodes[1]}` |\n"
+        )
+    state.final_report = f"# PHM Report\n\n## Insights\n{table}\n\n## DAG\n![](final_dag.png)"
     return state
 

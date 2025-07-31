@@ -1,6 +1,6 @@
 from typing import Any, Dict, List
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
-
+from src.states.phm_states import PHMState
 
 def get_research_topic(messages: List[AnyMessage]) -> str:
     """
@@ -166,7 +166,7 @@ def get_citations(response, resolved_urls_map):
     return citations
 
 
-def dag_to_llm_payload(state: "PHMState", max_nodes: int = 40) -> str:
+def dag_to_llm_payload(state: PHMState, max_nodes: int = 40) -> str:
     """Return a JSON string representing the latest portion of the DAG.
 
     Parameters

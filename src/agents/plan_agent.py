@@ -6,32 +6,66 @@ from typing import List
 from langchain_core.prompts import ChatPromptTemplate
 from ..model import get_llm
 
-from ..states.phm_states import PHMState
+from ..states.phm_states import PHMState, InputData
+from ..schemas.plan_schema import AnalysisPlan
+from ..prompts.plan_prompt import PLANNER_PROMPT 
+from ..tools.signal_processing_schemas import OP_REGISTRY
+import json
 
+
+def _parse_plan(text: str) -> AnalysisPlan:
+    """Convert raw numbered list text to an ``AnalysisPlan`` instance."""
+    lines = [line.strip(" -") for line in text.splitlines() if line.strip()]
+    return AnalysisPlan(steps=lines)
+
+
+def get_available_nodes(state: PHMState) -> tuple:
+    # Helper to categorize nodes for the prompt
+    refs = [nid for nid, node in state.dag_state.nodes.items() if isinstance(node, InputData) and 'ref' in nid]
+    tests = [nid for nid, node in state.dag_state.nodes.items() if isinstance(node, InputData) and 'test' in nid]
+    others = [nid for nid, node in state.dag_state.nodes.items() if not isinstance(node, InputData)]
+    return refs, tests, others
 
 def plan_agent(state: PHMState) -> PHMState:
-    """Generate a list of coarse analysis steps from the user instruction.
+    """Generate a high-level analysis plan from the user instruction.
 
     Parameters
     ----------
     state : PHMState
-        State object containing the original user instruction.
+        State containing the user's initial request.
 
     Returns
     -------
     PHMState
-        The state with ``high_level_plan`` populated.
+        Updated state with ``analysis_plan`` and ``high_level_plan`` filled.
     """
     llm = get_llm()
-    prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", "You are a goal decomposition assistant."),
-            ("human", "User instruction: {instruction}\nReturn each step as a list"),
-        ]
-    )
-    chain = prompt | llm
-    result = chain.invoke({"instruction": state.user_instruction})
-    lines = [line.strip(" -") for line in result.content.splitlines() if line.strip()]
-    state.high_level_plan = lines
+
+    # Prepare context for the prompt
+    tools_schemas = json.dumps([cls.model_json_schema() for cls in OP_REGISTRY.values()], indent=2)
+    ref_nodes, test_nodes, other_nodes = get_available_nodes(state)
+    
+    prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT)
+    
+    try:
+        structured_llm = llm.with_structured_output(AnalysisPlan)
+    except NotImplementedError:
+        structured_llm = None
+    context = {
+        "instruction": state.user_instruction,
+        "reference_nodes": ref_nodes,
+        "test_nodes": test_nodes,
+        "other_nodes": other_nodes,
+        "tools": tools_schemas,
+    }
+    if structured_llm:
+        chain = prompt | structured_llm
+        plan = chain.invoke(context)
+    else:
+        chain = prompt | llm
+        resp = chain.invoke(context)
+        plan = _parse_plan(resp.content)
+    state.analysis_plan = plan
+    state.high_level_plan = plan.steps
     return state
 

@@ -144,6 +144,9 @@ def main():
             final_state = state_update
 
     # 5. 获取最终结果（直接使用最后一次状态）
+    generate_final_report(final_state)
+
+def generate_final_report(final_state, save_dir="./save"):
     print("--- Workflow Finished ---")
     if isinstance(final_state, dict) and final_state.get("final_report"):
         report = final_state["final_report"]

@@ -8,7 +8,7 @@ from ..model import get_llm
 from ..states.phm_states import PHMState
 from ..tools.signal_processing_schemas import OP_REGISTRY, get_operator
 from ..utils import dag_to_llm_payload
-
+from ..prompts.execute_prompt import EXECUTE_PROMPT
 
 MAX_STEPS = 10
 
@@ -29,30 +29,35 @@ def execute_agent(state: PHMState) -> PHMState:
     llm = get_llm()
 
     signal = np.asarray(state.test_signal.data.get("signal", []))
+
     tracker = state.tracker()
 
+    tools_desc = "\n".join(
+        f"- {name}: {cls.description}" for name, cls in OP_REGISTRY.items()
+    )
+
+    # 智能决策 Prompt
+    prompt_template = ChatPromptTemplate.from_template(
+        EXECUTE_PROMPT
+    )
+    chain = prompt_template | llm
     for _ in range(MAX_STEPS):
         dag_json = dag_to_llm_payload(state)
-        tools_desc = "\n".join(
-            f"- {name}: {cls.description}" for name, cls in OP_REGISTRY.items()
-        )
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    "Select the next best operation in JSON format given the plan, current DAG and tools.",
-                ),
-                ("human", "Plan: {plan}\nDAG: {dag}\nTools:\n{tools}\n"),
-            ]
-        )
-        chain = prompt | llm
-        resp = chain.invoke({"plan": "\n".join(state.high_level_plan), "dag": dag_json, "tools": tools_desc})
+
+
+        resp = chain.invoke({"plan": "\n".join(state.high_level_plan),
+                              "dag": dag_json,
+                              "leaves": state.dag_state.leaves,
+                              "tools": tools_desc})
         try:
             spec = json.loads(resp.content)
         except Exception:
-            break
+            print(f"Warning: LLM returned invalid JSON: {resp.content}")
+            continue # or break
         if spec.get("op_name") == "stop":
             break
+
+        
         op_cls = get_operator(spec["op_name"])
         op = op_cls(**spec.get("params", {}), parent=state.dag_state.leaves)
         signal = op.execute(signal)
