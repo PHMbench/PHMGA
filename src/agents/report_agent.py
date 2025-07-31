@@ -33,3 +33,20 @@ def report_agent(state: PHMState) -> PHMState:
     state.final_report = f"# PHM Report\n\n## Insights\n{table}\n\n## DAG\n![](final_dag.png)"
     return state
 
+
+if __name__ == "__main__":
+    import numpy as np
+    from ..states.phm_states import DAGState, InputData
+
+    ref = InputData(node_id="ref", data={"signal": np.ones(4)}, parents=[], shape=(4,))
+    test = InputData(node_id="test", data={"signal": np.ones(4)}, parents=[], shape=(4,))
+    dag = DAGState(user_instruction="demo", reference_root="ref", test_root="test")
+    state = PHMState(
+        user_instruction="demo",
+        reference_signal=ref,
+        test_signal=test,
+        dag_state=dag,
+    )
+    result = report_agent(state)
+    print(result.final_report)
+
