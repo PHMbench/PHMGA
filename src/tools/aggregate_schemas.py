@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import numpy as np
 import numpy.typing as npt
-import scipy.stats
 from pydantic import Field
+from scipy.stats import skew, kurtosis
+from typing import ClassVar
 
 # 假设基类和注册器位于此
 from .signal_processing_schemas import register_op, AggregateOp
@@ -15,8 +16,8 @@ from .signal_processing_schemas import register_op, AggregateOp
 
 @register_op
 class MeanOp(AggregateOp):
-    op_name: str = "mean"
-    description: str = "Computes the mean (average) value along the time axis."
+    op_name: ClassVar[str] = "mean"
+    description: ClassVar[str] = "Computes the mean (average) value along the time axis."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -24,8 +25,8 @@ class MeanOp(AggregateOp):
 
 @register_op
 class StdOp(AggregateOp):
-    op_name: str = "std"
-    description: str = "Computes the standard deviation along the time axis."
+    op_name: ClassVar[str] = "std"
+    description: ClassVar[str] = "Computes the standard deviation along the time axis."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -33,8 +34,8 @@ class StdOp(AggregateOp):
 
 @register_op
 class VarOp(AggregateOp):
-    op_name: str = "var"
-    description: str = "Computes the variance along the time axis."
+    op_name: ClassVar[str] = "var"
+    description: ClassVar[str] = "Computes the variance along the time axis."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -42,26 +43,27 @@ class VarOp(AggregateOp):
 
 @register_op
 class SkewnessOp(AggregateOp):
-    op_name: str = "skew"
-    description: str = "Computes the skewness (asymmetry) of the data distribution."
+    op_name: ClassVar[str] = "skew"
+    description: ClassVar[str] = "Computes the skewness (asymmetry) of the data distribution."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
-        return scipy.stats.skew(x, axis=self.axis)
+        return skew(x, axis=self.axis)
 
 @register_op
 class KurtosisOp(AggregateOp):
-    op_name: str = "kurtosis"
-    description: str = "Computes the kurtosis (tailedness) of the data distribution."
+    op_name: ClassVar[str] = "kurtosis"
+    description: ClassVar[str] = "Computes the kurtosis (tailedness) of the data distribution."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
-        return scipy.stats.kurtosis(x, axis=self.axis)
+        return kurtosis(x, axis=self.axis)
+
 
 @register_op
 class RMSOp(AggregateOp):
-    op_name: str = "rms"
-    description: str = "Computes the Root Mean Square (RMS) of the signal."
+    op_name: ClassVar[str] = "rms"
+    description: ClassVar[str] = "Computes the Root Mean Square (RMS) of the signal."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -69,8 +71,8 @@ class RMSOp(AggregateOp):
 
 @register_op
 class AbsMeanOp(AggregateOp):
-    op_name: str = "abs_mean"
-    description: str = "Computes the mean of the absolute values of the signal."
+    op_name: ClassVar[str] = "abs_mean"
+    description: ClassVar[str] = "Computes the mean of the absolute values of the signal."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -78,8 +80,8 @@ class AbsMeanOp(AggregateOp):
 
 @register_op
 class ShapeFactorOp(AggregateOp):
-    op_name: str = "shape_factor"
-    description: str = "Computes the Shape Factor (RMS / Absolute Mean)."
+    op_name: ClassVar[str] = "shape_factor"
+    description: ClassVar[str] = "Computes the Shape Factor (RMS / Mean of Absolute Values)."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -89,8 +91,8 @@ class ShapeFactorOp(AggregateOp):
 
 @register_op
 class CrestFactorOp(AggregateOp):
-    op_name: str = "crest_factor"
-    description: str = "Computes the Crest Factor (Peak / RMS)."
+    op_name: ClassVar[str] = "crest_factor"
+    description: ClassVar[str] = "Computes the Crest Factor (Peak / RMS)."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -100,8 +102,8 @@ class CrestFactorOp(AggregateOp):
 
 @register_op
 class ClearanceFactorOp(AggregateOp):
-    op_name: str = "clearance_factor"
-    description: str = "Computes the Clearance Factor (Peak / (Mean of Sqrt Abs Values)^2)."
+    op_name: ClassVar[str] = "clearance_factor"
+    description: ClassVar[str] = "Computes the Clearance Factor (Peak / (Mean of Sqrt Abs Values)^2)."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -111,8 +113,8 @@ class ClearanceFactorOp(AggregateOp):
 
 @register_op
 class EntropyOp(AggregateOp):
-    op_name: str = "entropy"
-    description: str = "Computes the Shannon entropy of the signal."
+    op_name: ClassVar[str] = "entropy"
+    description: ClassVar[str] = "Computes the Shannon entropy of the signal."
     axis: int = Field(-2, description="Axis to perform aggregation on.")
     num_bins: int = Field(100, description="Number of bins for histogram to estimate probability.")
 
@@ -126,6 +128,8 @@ class EntropyOp(AggregateOp):
             probs = counts / np.sum(counts)
             # Filter out zero probabilities to avoid log(0)
             probs = probs[probs > 0]
+            # Calculate entropy
             return -np.sum(probs * np.log2(probs))
 
-        return np.apply_along_axis(_calculate_entropy_1d, axis=self.axis, arr=x)
+        # Apply the entropy calculation along the specified axis
+        return np.apply_along_axis(_calculate_entropy_1d, self.axis, x)

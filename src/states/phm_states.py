@@ -276,6 +276,7 @@ class PHMState(BaseModel):
         default_factory=lambda: DAGState(user_instruction="", reference_root="", test_root="")
     )
 
+    error_logs: List[str] = Field(default_factory=list)
     # _dag_tracker: DAGTracker | None = PrivateAttr(default=None) # 1. Exclude from serialization
 
     class Config: # 2. Allow arbitrary types

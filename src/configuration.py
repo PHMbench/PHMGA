@@ -47,7 +47,7 @@ class Configuration(BaseModel):
     )
 
     fake_llm: bool = Field(
-        default=True,
+        default=False,
         metadata={
             "description": "Use a fake LLM for testing purposes. If set to True, the model will not make real API calls."
         },
