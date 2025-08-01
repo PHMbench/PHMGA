@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Dict, Any, Annotated, Tuple
+import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr
 import uuid
 from langgraph.graph import add_messages
@@ -135,7 +136,7 @@ class DAGTracker:
         new_leaves = [leaf for leaf in current_leaves if leaf not in parents]
         new_leaves.append(node.node_id)
         self.state.leaves = new_leaves
-        
+
         return node.node_id
 
     # ---------- 导出给 LLM ---------- #
@@ -198,6 +199,16 @@ class DAGTracker:
         for p in n.parents:
             self.g.add_edge(p, n.node_id)
 
+
+def get_node_data(state: "PHMState", node_id: str):
+    """Utility to fetch raw array data from a node."""
+    node = state.dag_state.nodes.get(node_id)
+    if isinstance(node, InputData):
+        return np.asarray(node.data.get("signal", []))
+    if isinstance(node, ProcessedData):
+        return np.asarray(node.processed_data)
+    return None
+
 # TODO
     def transfer_to_langgraph(self) -> nx.DiGraph:
         """将 DAGState 转换为 LangGraph 可用的 networkx 图."""
@@ -231,6 +242,9 @@ class PHMState(BaseModel):
     analysis_plan: AnalysisPlan | None = None
     needs_revision: bool = False
 
+    detailed_plan: List[dict] = Field(default_factory=list)
+    error_logs: List[str] = Field(default_factory=list)
+
 
     reflection_history: List[str] = Field(default_factory=list)
     is_sufficient: bool = False
@@ -262,6 +276,7 @@ class PHMState(BaseModel):
         default_factory=lambda: DAGState(user_instruction="", reference_root="", test_root="")
     )
 
+    error_logs: List[str] = Field(default_factory=list)
     # _dag_tracker: DAGTracker | None = PrivateAttr(default=None) # 1. Exclude from serialization
 
     class Config: # 2. Allow arbitrary types

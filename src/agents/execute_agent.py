@@ -1,67 +1,64 @@
 from __future__ import annotations
 
-import json
 import numpy as np
-from langchain_core.prompts import ChatPromptTemplate
-from ..model import get_llm
-
-from ..states.phm_states import PHMState
-from ..tools.signal_processing_schemas import OP_REGISTRY, get_operator
-from ..utils import dag_to_llm_payload
-from ..prompts.execute_prompt import EXECUTE_PROMPT
-
-MAX_STEPS = 10
+from ..states.phm_states import PHMState, InputData, ProcessedData
+from ..tools.signal_processing_schemas import get_operator
 
 
-def execute_agent(state: PHMState) -> PHMState:
-    """Iteratively execute operators chosen by an LLM.
+def _get_data(state: PHMState, node_id: str) -> np.ndarray:
+    node = state.dag_state.nodes.get(node_id)
+    if isinstance(node, InputData):
+        return np.asarray(node.data.get("signal", []))
+    if isinstance(node, ProcessedData):
+        return np.asarray(node.processed_data)
+    raise ValueError(f"Node {node_id} not found")
 
-    Parameters
-    ----------
-    state : PHMState
-        Current pipeline state containing the DAG and high level plan.
 
-    Returns
-    -------
-    PHMState
-        The updated state with a richer inner DAG.
-    """
-    llm = get_llm()
-
-    signal = np.asarray(state.test_signal.data.get("signal", []))
+def execute_agent(state: PHMState) -> dict:
+    """Execute all steps in ``state.detailed_plan`` sequentially."""
 
     tracker = state.tracker()
-
-    tools_desc = "\n".join(
-        f"- {name}: {cls.description}" for name, cls in OP_REGISTRY.items()
-    )
-
-    # 智能决策 Prompt
-    prompt_template = ChatPromptTemplate.from_template(
-        EXECUTE_PROMPT
-    )
-    chain = prompt_template | llm
-    for _ in range(MAX_STEPS):
-        dag_json = dag_to_llm_payload(state)
-
-
-        resp = chain.invoke({"plan": "\n".join(state.high_level_plan),
-                              "dag": dag_json,
-                              "leaves": state.dag_state.leaves,
-                              "tools": tools_desc})
+    for step in state.detailed_plan:
         try:
-            spec = json.loads(resp.content)
-        except Exception:
-            print(f"Warning: LLM returned invalid JSON: {resp.content}")
-            continue # or break
-        if spec.get("op_name") == "stop":
+            op_name = step.get("op_name")
+            params = step.get("params", {})
+            op_cls = get_operator(op_name)
+            parent = params.get("parent") or params.get("parents")
+            parents = parent if isinstance(parent, list) else [parent]
+            data = _get_data(state, parents[0])
+            op = op_cls(**{k: v for k, v in params.items() if k not in {"parent", "parents"}}, parent=parent)
+            result = op.execute(data)
+            new_node = ProcessedData(
+                node_id=op.node_id,
+                parents=parents,
+                source_signal_id=parents[0],
+                method=op_name,
+                processed_data=result,
+                shape=getattr(result, "shape", (0,)),
+            )
+            tracker.add_node(new_node)
+        except Exception as e:
+            state.error_logs.append(str(e))
             break
 
-        
-        op_cls = get_operator(spec["op_name"])
-        op = op_cls(**spec.get("params", {}), parent=state.dag_state.leaves)
-        signal = op.execute(signal)
-        tracker.add_execution(op)
+    return {"dag_state": state.dag_state, "error_logs": state.error_logs}
 
-    return state
 
+if __name__ == "__main__":
+    import numpy as np
+    from ..states.phm_states import DAGState, InputData
+
+    ref = InputData(node_id="ref", data={"signal": np.ones(4)}, parents=[], shape=(4,))
+    test = InputData(node_id="test", data={"signal": np.ones(4)}, parents=[], shape=(4,))
+    dag = DAGState(user_instruction="demo", reference_root="ref", test_root="test")
+    state = PHMState(
+        user_instruction="demo",
+        reference_signal=ref,
+        test_signal=test,
+        dag_state=dag,
+        detailed_plan=[{"op_name": "mean", "params": {"parent": "test"}}],
+    )
+    print("Initial nodes:", list(state.dag_state.nodes.keys()))
+    result = execute_agent(state)
+    print("Nodes after execution:", list(state.dag_state.nodes.keys()))
+    print("Errors:", result.get("error_logs"))

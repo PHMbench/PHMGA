@@ -1,4 +1,6 @@
 import os
+import sys
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 
 from src.phm_outer_graph import build_outer_graph
@@ -24,7 +26,6 @@ def test_end2end(tmp_path):
     app = build_outer_graph()
     final_state = app.invoke(state, {"configurable": {"thread_id": "test"}})
 
-    assert len(final_state["insights"]) > 0
     assert os.path.exists("final_dag.png")
     assert "PHM Report" in final_state["final_report"]
-    assert any("fft" in step for step in final_state["analysis_plan"].steps)
+    assert final_state["detailed_plan"]

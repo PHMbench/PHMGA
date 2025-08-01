@@ -24,19 +24,23 @@ def build_outer_graph() -> StateGraph:
     builder = StateGraph(PHMState)
 
     builder.add_node("plan", plan_agent)
-    builder.add_node("execute", execute_agent)
+    builder.add_node("execute_pre", execute_agent)
+    builder.add_node("reflect_dag", lambda state: reflect_agent(state, stage="DAG_REVIEW"))
     builder.add_node("inquire", inquirer_agent)
-    builder.add_node("reflect", reflect_agent)
+    builder.add_node("execute_post", execute_agent)
+    builder.add_node("reflect_ins", lambda state: reflect_agent(state, stage="INSIGHTS_REVIEW"))
     builder.add_node("report", report_agent)
 
     # builder.add_edge(START, "plan")
     builder.set_entry_point("plan")
-    builder.add_edge("plan", "execute")
-    builder.add_edge("execute", "inquire")
-    builder.add_edge("inquire", "reflect")
+    builder.add_edge("plan", "execute_pre")
+    builder.add_edge("execute_pre", "reflect_dag")
+    builder.add_edge("reflect_dag", "inquire")
+    builder.add_edge("inquire", "execute_post")
+    builder.add_edge("execute_post", "reflect_ins")
 
     builder.add_conditional_edges(
-        "reflect",
+        "reflect_ins",
         lambda state: "revise" if state.needs_revision else "done",
         {
             "done": "report",

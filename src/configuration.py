@@ -23,14 +23,14 @@ class Configuration(BaseModel):
     )
 
     reflection_model: str = Field(
-        default="gemini-2.5-flash",
+        default="gemini-2.0-flash",
         metadata={
             "description": "The name of the language model to use for the agent's reflection."
         },
     )
 
     answer_model: str = Field(
-        default="gemini-2.5-pro",
+        default="gemini-2.0-flash",
         metadata={
             "description": "The name of the language model to use for the agent's answer."
         },
@@ -47,7 +47,7 @@ class Configuration(BaseModel):
     )
 
     fake_llm: bool = Field(
-        default=True,
+        default=False,
         metadata={
             "description": "Use a fake LLM for testing purposes. If set to True, the model will not make real API calls."
         },

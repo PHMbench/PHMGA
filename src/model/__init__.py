@@ -41,25 +41,25 @@ def get_llm(
         configurable = Configuration.from_runnable_config(None)
     fake_llm = configurable.fake_llm
     if fake_llm:
-        # Use a mock model for testing
-
-        responses = [
-            "1. compute fft\n2. compare features\n3. stop",
-            '{"op_name": "stop"}',
-            "yes, sufficient",
-            "Dummy report",
-        ]
-        _FAKE_LLM = FakeListChatModel(responses=responses)
+        global _FAKE_LLM
+        # Use a shared mock model for testing
+        if _FAKE_LLM is None:
+            responses = [
+                '{"plan":[{"op_name":"normalize","params":{"parent":"ref_root","node_id":"norm_ref"}},'
+                '{"op_name":"normalize","params":{"parent":"test_root","node_id":"norm_test"}}]}',
+                '{"is_sufficient": false, "reason": "need comparison"}',
+                '{"plan":[{"op_name":"score_similarity","params":{"reference_node_ids":["norm_ref"],"test_node_ids":["norm_test"],"node_id":"sim1"}},'
+                '{"op_name":"classify_by_top_k","params":{"scores_node_id":"sim1","k":1,"node_id":"cls1"}}]}',
+                '{"is_sufficient": true, "reason": "analysis complete"}',
+            ]
+            _FAKE_LLM = FakeListChatModel(responses=responses)
         return _FAKE_LLM
     # Use real model with API key
     else:
         api_key = os.getenv("GEMINI_API_KEY")
         return ChatGoogleGenerativeAI(
-                model=configurable.query_generator_model,
-                temperature=temperature,
-                max_retries=max_retries,
-                api_key=api_key,
-            )
-
-    # Fallback mock model for offline testing
-   
+            model=configurable.query_generator_model,
+            temperature=temperature,
+            max_retries=max_retries,
+            api_key=api_key,
+        )
