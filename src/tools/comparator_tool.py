@@ -53,3 +53,41 @@ def compare_processed_nodes(
         compared_nodes=(reference_node_id, test_node_id),
     )
     return insight
+
+
+if __name__ == "__main__":
+    print("--- Testing comparator_tool.py ---")
+
+    # Create simple reference and test signals
+    ref_signal = np.array([1.0, 2.0, 3.0])
+    test_signal = np.array([1.5, 2.5, 3.5])
+
+    # Wrap signals in InputData nodes
+    ref_node = InputData(node_id="ref", parents=[], shape=ref_signal.shape, data={"signal": ref_signal})
+    test_node = InputData(node_id="test", parents=[], shape=test_signal.shape, data={"signal": test_signal})
+
+    # Build a minimal PHMState with these nodes
+    from ..states.phm_states import DAGState
+
+    dag_state = DAGState(
+        user_instruction="",
+        reference_root="ref",
+        test_root="test",
+        nodes={"ref": ref_node, "test": test_node},
+        leaves=["ref", "test"],
+    )
+
+    state = PHMState(
+        user_instruction="",
+        reference_signal=ref_node,
+        test_signal=test_node,
+        dag_state=dag_state,
+    )
+
+    # Execute comparison
+    insight = compare_processed_nodes(state, "ref", "test")
+    print(insight)
+    assert insight.compared_nodes == ("ref", "test")
+    assert insight.severity_score >= 0
+
+    print("\n--- comparator_tool.py tests passed! ---")

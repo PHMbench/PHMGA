@@ -33,3 +33,19 @@ def assert_shape(array: np.ndarray, expected: Sequence[Optional[int]]) -> None:
     for idx, (act, exp) in enumerate(zip(actual, expected)):
         if exp is not None and act != exp:
             raise AssertionError(f"Expected shape {tuple(expected)}, got {actual}")
+
+
+if __name__ == "__main__":
+    print("--- Testing utils.py ---")
+
+    arr = np.zeros((2, 3))
+    assert_shape(arr, (2, 3))
+
+    try:
+        assert_shape(arr, (3, 2))
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("assert_shape should have raised an AssertionError")
+
+    print("\n--- utils.py tests passed! ---")
