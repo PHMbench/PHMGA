@@ -181,28 +181,45 @@ class EntropyOp(AggregateOp):
 
 @register_op
 class BandPowerOp(AggregateOp):
-    """Computes the average power in a specific frequency band."""
+    """Computes the average power in one or more frequency bands.
+
+    The operator expects a time-domain signal of shape ``(B, L, C)``. It
+    computes the power spectral density (PSD) via FFT and returns the
+    mean power within each provided band.
+    """
+
     op_name: ClassVar[str] = "band_power"
-    description: ClassVar[str] = "Computes the average power of the signal in a specified frequency band."
-    input_spec: ClassVar[str] = "(B, F, C)"
-    output_spec: ClassVar[str] = "(B, C)"
-    
+    description: ClassVar[str] = (
+        "Computes the average power of the signal in one or more frequency bands."
+    )
+    input_spec: ClassVar[str] = "(B, L, C)"
+    output_spec: ClassVar[str] = "(B, N, C)"  # N = number of bands
+
     fs: float = Field(..., description="Sampling frequency of the signal.")
-    band: tuple[float, float] = Field(..., description="The frequency band of interest (min_freq, max_freq).")
-    
+    bands: list[tuple[float, float]] = Field(
+        ..., description="List of frequency bands as (min_freq, max_freq)."
+    )
+
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
-        """Assumes x is in the frequency domain (e.g., output of FFT)."""
-        freqs = np.fft.rfftfreq(x.shape[-2] * 2 - 2, d=1./self.fs) if x.ndim > 1 else np.fft.rfftfreq(x.shape[-1] * 2 - 2, d=1./self.fs)
-        
-        # Find indices corresponding to the frequency band
-        idx_band = np.where((freqs >= self.band[0]) & (freqs <= self.band[1]))[0]
-        
-        # Calculate power spectral density (PSD) - assuming x is amplitude spectrum
-        psd = np.abs(x)**2
-        
-        # Calculate the average power in the band
-        avg_power = np.mean(psd[..., idx_band, :], axis=-2)
-        return avg_power
+        """Compute the average power for each band."""
+        if x.ndim != 3:
+            raise ValueError(
+                f"BandPowerOp expects input of shape (B, L, C), got {x.shape}"
+            )
+
+        fft_vals = np.fft.rfft(x, axis=-2)
+        freqs = np.fft.rfftfreq(x.shape[-2], d=1.0 / self.fs)
+        psd = (np.abs(fft_vals) ** 2) / x.shape[-2]
+
+        band_powers = []
+        for band in self.bands:
+            idx = np.where((freqs >= band[0]) & (freqs <= band[1]))[0]
+            if idx.size == 0:
+                band_powers.append(np.zeros((x.shape[0], x.shape[2])))
+            else:
+                band_powers.append(np.mean(psd[:, idx, :], axis=1))
+
+        return np.stack(band_powers, axis=1)
 
 @register_op
 class PeakToPeakOp(AggregateOp):
@@ -448,7 +465,7 @@ if __name__ == "__main__":
 
     # 7. Test BandPowerOp
     print("\n7. Testing BandPowerOp...")
-    bp_op = BandPowerOp(bands=[(0, 4), (4, 8), (8, 16)])
+    bp_op = BandPowerOp(fs=100, bands=[(0, 4), (4, 8), (8, 16)])
     bp_result = bp_op.execute(dummy_signal)
     print(f"BandPowerOp output shape: {bp_result.shape}")
     assert bp_result.shape == (1, 3, 1)
