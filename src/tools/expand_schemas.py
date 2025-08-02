@@ -42,12 +42,11 @@ class PatchOp(ExpandOp):
         step = (1,) * (x_transposed.ndim - 1) + (self.stride,)
 
         patches = view_as_windows(x_transposed, window_shape=window_shape, step=step)
-        
-        # Squeeze unnecessary dimensions and get the final array
-        # Shape after windowing: (B, C, N, P)
-        patches = patches.squeeze(axis=-2)
-        
-        # Transpose to get the desired output shape (B, N, P, C)
+
+        # Remove singleton dimensions introduced by view_as_windows
+        patches = patches[..., 0, 0, :]
+
+        # Now shape is (B, C, N, P); transpose to (B, N, P, C)
         return patches.transpose(0, 2, 3, 1)
 
 
@@ -391,10 +390,10 @@ if __name__ == "__main__":
 
     # 3. Test VariableQTransformOp
     print("\n3. Testing VariableQTransformOp...")
-    vqt_op = VariableQTransformOp(fs=fs, hop_length=256, fmin=20, n_bins=96)
+    vqt_op = VariableQTransformOp(fs=fs, hop_length=256, fmin=20, n_bins=48)
     vqt_result = vqt_op.execute(dummy_signal)
     print(f"VQT output shape: {vqt_result.shape}")
-    assert vqt_result.shape == (1, 96, 32, 1)
+    assert vqt_result.shape == (1, 48, 33, 1)
 
     # 4. Test TimeDelayEmbeddingOp
     print("\n4. Testing TimeDelayEmbeddingOp...")

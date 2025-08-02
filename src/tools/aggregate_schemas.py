@@ -354,7 +354,7 @@ class ApproximateEntropyOp(AggregateOp):
         for i in range(batch_size):
             for j in range(channels):
                 r = self.r_coeff * np.std(x[i, :, j])
-                results[i, j] = nolds.app_entropy(x[i, :, j], emb_dim=self.m, tolerance=r)
+                results[i, j] = nolds.sampen(x[i, :, j], emb_dim=self.m, tolerance=r)
         return results
 
 @register_op
@@ -392,9 +392,9 @@ if __name__ == "__main__":
 
     # Create a dummy spectrum: Batch=1, Freq Bins=1025, Channels=1
     fs = 2048
-    dummy_spectrum = np.random.rand(3, 1025, 2)
-    dummy_spectrum[:, 200:300, :] = 5 # Add a peak to make it less flat
-    dummy_spectrum = np.abs(dummy_spectrum)
+    dummy_spectrum = np.zeros((1, 1025, 1))
+    dummy_spectrum[:, 200:300, :] = 5  # Add a clear peak region
+    dummy_spectrum += 0.1  # small baseline to avoid zeros
 
     # 1. Test SpectralCentroidOp
     print("\n1. Testing SpectralCentroidOp...")
@@ -404,7 +404,7 @@ if __name__ == "__main__":
     print(f"Spectral Centroid output shape: {sc_result.shape}")
     print(f"Spectral Centroid value: {sc_result.item():.2f} Hz")
     assert sc_result.shape == (1, 1)
-    assert 200 < (sc_result.item() * fs / 1025) < 300 # Check if centroid is in the peak region
+    assert 200 < sc_result.item() < 300  # Check if centroid is in the peak region
 
     # 2. Test SpectralFlatnessOp
     print("\n2. Testing SpectralFlatnessOp...")

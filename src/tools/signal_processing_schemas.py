@@ -25,8 +25,11 @@ def register_op(cls: Type["PHMOperator"]) -> Type["PHMOperator"]:
     
     op_name = cls.op_name
     if op_name in OP_REGISTRY:
-        raise ValueError(f"Duplicate operator name '{op_name}' found. Cannot register {cls.__name__}.")
-        
+        # If the operator already exists, simply return the existing class. This
+        # allows modules to be executed multiple times (e.g., via "python -m")
+        # without raising spurious duplicate registration errors.
+        return OP_REGISTRY[op_name]
+
     OP_REGISTRY[op_name] = cls
     logger.debug(f"Registered operator: '{op_name}' -> {cls.__name__}")
     return cls
@@ -129,8 +132,30 @@ class DecisionOp(PHMOperator):
 
     # 覆盖父类钩子以处理字典输出
     def _after_call(self, y: dict) -> None:
-        object.__setattr__(self, 'out_shape', None) # 决策节点无输出形状
+        object.__setattr__(self, 'out_shape', None)  # 决策节点无输出形状
         logger.info(
             "Executed %s(op_name='%s'): input_shape=%s -> output=%s",
-            self.__class__.__name__, self.op_name, self.in_shape, y
+            self.__class__.__name__, self.op_name, self.in_shape, y,
         )
+
+
+if __name__ == "__main__":
+    print("--- Testing signal_processing_schemas.py ---")
+
+    @register_op
+    class IdentityOp(TransformOp):
+        op_name: ClassVar[str] = "identity"
+        description: ClassVar[str] = "Identity transform"
+        input_spec: ClassVar[str] = "(B, L, C)"
+        output_spec: ClassVar[str] = "(B, L, C)"
+
+        def execute(self, x: np.ndarray, **_) -> np.ndarray:
+            return x
+
+    data = np.zeros((1, 10, 1))
+    op = IdentityOp()
+    out = op(data)
+    assert np.all(out == data)
+    assert get_operator("identity") is IdentityOp
+
+    print("\n--- signal_processing_schemas.py tests passed! ---")
