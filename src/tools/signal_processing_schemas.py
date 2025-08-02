@@ -53,6 +53,8 @@ class PHMOperator(BaseModel, abc.ABC):
     op_name: ClassVar[str]
     rank_class: ClassVar[RankClass]
     description: ClassVar[str]
+    input_spec: ClassVar[str]
+    output_spec: ClassVar[str]
     parent: str | list[str] = Field(default=None, description="上游节点 ID 或 ID 列表，表示依赖的输入节点。")
     kind: Literal["op"] = "op"
 
