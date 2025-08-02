@@ -40,3 +40,17 @@ __all__ = [
     "DecisionOp",
     "MultiVariableOp",
 ]
+
+
+if __name__ == "__main__":
+    print("--- Testing tools package ---")
+    # Ensure that operators from submodules are registered
+    assert "mean" in OP_REGISTRY, "MeanOp should be registered"
+    MeanOp = get_operator("mean")
+    import numpy as np
+
+    dummy = np.ones((1, 4, 1))
+    mean_result = MeanOp().execute(dummy)
+    assert mean_result.shape == (1, 1)
+
+    print("\n--- tools package tests passed! ---")
