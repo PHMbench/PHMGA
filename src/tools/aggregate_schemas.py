@@ -446,4 +446,138 @@ if __name__ == "__main__":
     print(f"PermutationEntropyOp output shape: {pent_result.shape}")
     assert pent_result.shape == (1, 1)
 
+    # 7. Test BandPowerOp
+    print("\n7. Testing BandPowerOp...")
+    bp_op = BandPowerOp(bands=[(0, 4), (4, 8), (8, 16)])
+    bp_result = bp_op.execute(dummy_signal)
+    print(f"BandPowerOp output shape: {bp_result.shape}")
+    assert bp_result.shape == (1, 3, 1)
+    print(f"BandPowerOp values: {bp_result}")
+    # 8. Test ZeroCrossingRateOp
+    print("\n8. Testing ZeroCrossingRateOp...")
+    zcr_op = ZeroCrossingRateOp()
+    zcr_result = zcr_op.execute(dummy_signal)
+    print(f"ZeroCrossingRateOp output shape: {zcr_result.shape}")
+    assert zcr_result.shape == (1, 1)
+
+    # 9. Test SpectralSkewnessOp
+    print("\n9. Testing SpectralSkewnessOp...")
+    ss_op = SpectralSkewnessOp()
+    ss_result = ss_op.execute(dummy_spectrum)
+    print(f"SpectralSkewnessOp output shape: {ss_result.shape}")
+    assert ss_result.shape == (1, 1)
+    # 10. Test SpectralKurtosisOp
+    print("\n10. Testing SpectralKurtosisOp...")
+    sk_op = SpectralKurtosisOp()
+    sk_result = sk_op.execute(dummy_spectrum)
+    print(f"SpectralKurtosisOp output shape: {sk_result.shape}")
+    assert sk_result.shape == (1, 1)
+
+    # 11. Test SpectralFlatnessOp
+    print("\n11. Testing SpectralFlatnessOp...")
+    sf_op = SpectralFlatnessOp()
+    sf_result = sf_op.execute(dummy_spectrum)
+    print(f"SpectralFlatnessOp output shape: {sf_result.shape}")
+    assert sf_result.shape == (1, 1)
+    print(f"Spectral Flatness value: {sf_result.item():.4f}")
+
+    # 12. Test MeanOp
+    print("\n12. Testing MeanOp...")
+    mean_op = MeanOp()
+    mean_result = mean_op.execute(dummy_signal)
+    print(f"MeanOp output shape: {mean_result.shape}")
+    assert mean_result.shape == (1, 1)
+    print(f"Mean value: {mean_result.item():.4f}")
+    # 13. Test StdOp
+    print("\n13. Testing StdOp...")
+    std_op = StdOp()
+    std_result = std_op.execute(dummy_signal)
+    print(f"StdOp output shape: {std_result.shape}")
+    assert std_result.shape == (1, 1)
+    print(f"Std value: {std_result.item():.4f}")
+    # 14. Test VarOp
+    print("\n14. Testing VarOp...")
+    var_op = VarOp()
+    var_result = var_op.execute(dummy_signal)
+    print(f"VarOp output shape: {var_result.shape}")
+    assert var_result.shape == (1, 1)
+    print(f"Var value: {var_result.item():.4f}")
+
+    # 15. Test SkewnessOp
+    print("\n15. Testing SkewnessOp...")
+    skewness_op = SkewnessOp()
+    skewness_result = skewness_op.execute(dummy_signal)
+    print(f"SkewnessOp output shape: {skewness_result.shape}")
+    assert skewness_result.shape == (1, 1)
+    print(f"Skewness value: {skewness_result.item():.4f}")
+
+    # 16. Test KurtosisOp
+    print("\n16. Testing KurtosisOp...")
+    kurtosis_op = KurtosisOp()
+    kurtosis_result = kurtosis_op.execute(dummy_signal)
+    print(f"KurtosisOp output shape: {kurtosis_result.shape}")
+    assert kurtosis_result.shape == (1, 1)
+    print(f"Kurtosis value: {kurtosis_result.item():.4f}")
+    # 17. Test MaxOp
+    print("\n17. Testing MaxOp...")
+    max_op = MaxOp()
+    max_result = max_op.execute(dummy_signal)
+    print(f"MaxOp output shape: {max_result.shape}")
+    assert max_result.shape == (1, 1)
+    print(f"Max value: {max_result.item():.4f}")
+    # 18. Test MinOp
+    print("\n18. Testing MinOp...")
+    min_op = MinOp()
+    min_result = min_op.execute(dummy_signal)
+    print(f"MinOp output shape: {min_result.shape}")
+    assert min_result.shape == (1, 1)
+    print(f"Min value: {min_result.item():.4f}") 
+
+    # 19. Test RMSOp
+    print("\n19. Testing RMSOp...")
+    rms_op = RMSOp()
+    rms_result = rms_op.execute(dummy_signal)
+    print(f"RMSOp output shape: {rms_result.shape}")
+    assert rms_result.shape == (1, 1)
+    print(f"RMS value: {rms_result.item():.4f}")
+    # 20. Test AbsMeanOp
+
+    print("\n20. Testing AbsMeanOp...")
+    abs_mean_op = AbsMeanOp()
+    abs_mean_result = abs_mean_op.execute(dummy_signal)
+    print(f"AbsMeanOp output shape: {abs_mean_result.shape}")
+    assert abs_mean_result.shape == (1, 1)
+    print(f"Abs Mean value: {abs_mean_result.item():.4f}")  
+
+    # 21. Test ShapeFactorOp
+    print("\n21. Testing ShapeFactorOp...")
+    shape_factor_op = ShapeFactorOp()
+    shape_factor_result = shape_factor_op.execute(dummy_signal)
+    print(f"ShapeFactorOp output shape: {shape_factor_result.shape}")
+    assert shape_factor_result.shape == (1, 1)
+    print(f"Shape Factor value: {shape_factor_result.item():.4f}")
+    # 22. Test CrestFactorOp
+
+    print("\n22. Testing CrestFactorOp...")
+    crest_factor_op = CrestFactorOp()
+    crest_factor_result = crest_factor_op.execute(dummy_signal)
+    print(f"CrestFactorOp output shape: {crest_factor_result.shape}")
+    assert crest_factor_result.shape == (1, 1)
+    print(f"Crest Factor value: {crest_factor_result.item():.4f}")
+    # 23. Test ClearanceFactorOp
+    print("\n23. Testing ClearanceFactorOp...")
+    clearance_factor_op = ClearanceFactorOp()
+    clearance_factor_result = clearance_factor_op.execute(dummy_signal)
+    print(f"ClearanceFactorOp output shape: {clearance_factor_result.shape}")
+    assert clearance_factor_result.shape == (1, 1)
+    print(f"Clearance Factor value: {clearance_factor_result.item():.4f}")
+
+    # 24. Test EntropyOp
+    print("\n24. Testing EntropyOp...")
+    entropy_op = EntropyOp()
+    entropy_result = entropy_op.execute(dummy_signal)
+    print(f"EntropyOp output shape: {entropy_result.shape}")
+    assert entropy_result.shape == (1, 1)
+    print(f"Entropy value: {entropy_result.item():.4f}")
+
     print("\n--- aggregate_schemas.py tests passed! ---")
