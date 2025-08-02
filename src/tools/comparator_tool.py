@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any
 import numpy as np
 
-from ..states.phm_states import PHMState, ProcessedData, InputData
-from ..schemas.insight_schema import AnalysisInsight
+from src.states.phm_states import PHMState, ProcessedData, InputData
+from src.schemas.insight_schema import AnalysisInsight
 
 
 def compare_processed_nodes(

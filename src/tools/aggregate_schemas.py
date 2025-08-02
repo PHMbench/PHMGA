@@ -8,7 +8,7 @@ from typing import ClassVar
 import scipy.stats
 
 # 假设基类和注册器位于此
-from .signal_processing_schemas import register_op, AggregateOp
+from src.tools.signal_processing_schemas import register_op, AggregateOp
 
 
 # ---------- AGGREGATE (rank ↓) 类 ---------- #
