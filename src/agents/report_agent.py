@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -39,7 +40,8 @@ def report_agent(
 def report_agent_node(state: PHMState) -> Dict[str, str]:
     """Adapter using :class:`PHMState` for the outer graph."""
     try:  # generate final DAG image
-        state.tracker().write_png("final_dag.png")
+        save_path = os.path.join("/home/lq/LQcode/2_project/PHMBench/PHMGA/save", "final_dag.png")
+        state.tracker().write_png(save_path)
     except Exception:
         pass
     dag_overview = {

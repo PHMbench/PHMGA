@@ -75,6 +75,7 @@ if __name__ == "__main__":
         test_root="test",
         nodes={"ref": ref_node, "test": test_node},
         leaves=["ref", "test"],
+        channels=["channel1"],
     )
 
     state = PHMState(

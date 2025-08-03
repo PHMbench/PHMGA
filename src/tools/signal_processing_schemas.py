@@ -122,8 +122,8 @@ class AggregateOp(PHMOperator):
 class MultiVariableOp(PHMOperator):
     """拼接算子的基类，通常用于将多个输入沿特定轴拼接或拆分成若干个输出。"""
     rank_class: ClassVar[RankClass] = "MultiVariable"
-    input_dict: Dict[str, np.ndarray] = Field(default_factory=dict, description="输入字典，键为输入名称，值为对应的 NumPy 数组。")
-    output_dict: Dict[str, np.ndarray] = Field(default_factory=dict, description="输出字典，键为输出名称，值为对应的 NumPy 数组。")
+    input_dict: Dict[str, Any] = Field(default_factory=dict, description="输入字典，键为输入名称，值为对应的 NumPy 数组。")
+    output_dict: Dict[str, Any] = Field(default_factory=dict, description="输出字典，键为输出名称，值为对应的 NumPy 数组。")
 
 
 class DecisionOp(PHMOperator):

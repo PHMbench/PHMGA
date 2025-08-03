@@ -80,7 +80,7 @@ if __name__ == "__main__":
         method="fft",
         processed_data=sig1,
         results={"ref": sig1, "tst": sig1},
-        meta={"saved": {"ref_path": "/mnt/data/ref1.npy", "tst_path": "/mnt/data/tst1.npy"}},
+        meta={"saved": {"ref_path": "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/ref1.npy", "tst_path": "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/tst1.npy"}},
         shape=sig1.shape,
     )
     proc2 = ProcessedData(
@@ -90,14 +90,14 @@ if __name__ == "__main__":
         method="fft",
         processed_data=sig2,
         results={"ref": sig2, "tst": sig2},
-        meta={"saved": {"ref_path": "/mnt/data/ref2.npy", "tst_path": "/mnt/data/tst2.npy"}},
+        meta={"saved": {"ref_path": "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/ref2.npy", "tst_path": "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/tst2.npy"}},
         shape=sig2.shape,
     )
-    os.makedirs("/mnt/data", exist_ok=True)
-    np.save("/mnt/data/ref1.npy", sig1)
-    np.save("/mnt/data/tst1.npy", sig1 + 1)
-    np.save("/mnt/data/ref2.npy", sig2)
-    np.save("/mnt/data/tst2.npy", sig2 + 1)
+    os.makedirs("/home/lq/LQcode/2_project/PHMBench/PHMGA/save", exist_ok=True)
+    np.save("/home/lq/LQcode/2_project/PHMBench/PHMGA/save/ref1.npy", sig1)
+    np.save("/home/lq/LQcode/2_project/PHMBench/PHMGA/save/tst1.npy", sig1 + 1)
+    np.save("/home/lq/LQcode/2_project/PHMBench/PHMGA/save/ref2.npy", sig2)
+    np.save("/home/lq/LQcode/2_project/PHMBench/PHMGA/save/tst2.npy", sig2 + 1)
     dag = DAGState(
         user_instruction=instruction,
         channels=["ch1", "ch2"],

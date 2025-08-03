@@ -11,7 +11,7 @@ from src.model import get_llm
 from src.tools.signal_processing_schemas import get_operator
 
 
-DATA_DIR = os.environ.get("PHM_DATA_DIR", "/mnt/data")
+DATA_DIR = os.environ.get("PHM_DATA_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
 MAX_STEPS = 100
 
 
