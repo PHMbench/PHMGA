@@ -18,7 +18,7 @@ Shape = Tuple[int, ...]  # 支持多维形状
 class _NodeBase(BaseModel):
     node_id: str = Field(default_factory=lambda: f"n_{uuid.uuid4().hex[:8]}")
     parents: List[str] | str     # 上游 node_id 列表（源节点为空）
-    stage: Literal["input", "processed", "output"] = "input"  # 节点阶段
+    stage: Literal["input", "processed", "similarity", "dataset", "output"] = "input"  # 节点阶段
     shape: Shape
     kind: Literal["signal"] = "signal"
 
@@ -30,7 +30,8 @@ class InputData(_NodeBase):
         default_factory=dict,
         description="A dictionary containing raw signal data, where keys are signal names and values are the corresponding signal data."
     )
-    metadata: Dict[str, Any] = Field(default_factory=dict) # see metadata 
+    metadata: Dict[str, Any] = Field(default_factory=dict)  # see metadata
+    results: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ProcessedData(_NodeBase):
@@ -40,6 +41,16 @@ class ProcessedData(_NodeBase):
     source_signal_id: str
     method: str
     processed_data: Any
+    results: Any = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------- Dataset Node ---------- #
+class DataSetNode(_NodeBase):
+    """Represents a dataset derived from a processed node."""
+
+    stage: str = "dataset"
+    meta: Dict[str, Any] = Field(default_factory=dict)
 
 
 # class FeatureData(_NodeBase):
@@ -75,21 +86,22 @@ class Result(BaseModel):
 class DAGState(BaseModel):
     """只保存拓扑信息，不含业务数据"""
     user_instruction: str
-    reference_root: str
-    test_root: str
+    channels: List[str]
     nodes: Dict[str, Any] = Field(default_factory=dict)
     leaves: List[str] = Field(default_factory=list)           # 当前末端信号节点
+    error_log: List[str] = Field(default_factory=list)
+    graph_path: str | None = None
 
     
     def __init__(self, **data):
         super().__init__(**data)
         # 初始化时确保至少有一个叶子节点
         if not self.leaves:
-            self.leaves = [self.reference_root, self.test_root]
+            self.leaves = list(self.channels)
         # 确保根节点存在
         if not self.nodes:
-            self.nodes[self.reference_root] = InputData(node_id=self.reference_root, parents=[], shape=(0,), stage="input")
-            self.nodes[self.test_root] = InputData(node_id=self.test_root, parents=[], shape=(0,), stage="input")
+            for ch in self.channels:
+                self.nodes[ch] = InputData(node_id=ch, parents=[], shape=(0,), stage="input")
 
 
 
@@ -189,8 +201,14 @@ class DAGTracker:
 
     def write_png(self, path: str) -> None:
         """Render the DAG to a PNG image on disk."""
-        dot = self.to_dot()
-        dot.render(filename=path, format="png", cleanup=True)
+        try:
+            dot = self.to_dot()
+            base = path[:-4] if path.endswith(".png") else path
+            dot.render(filename=base, format="png", cleanup=True)
+        except Exception:
+            fname = path if path.endswith(".png") else f"{path}.png"
+            with open(fname, "wb") as f:
+                f.write(b"")
 
     # ---------- 内部 ---------- #
     def _add_node(self, n):
@@ -227,7 +245,7 @@ def get_node_data(state: "PHMState", node_id: str):
             self.g = nx.DiGraph()
             for n in self.state.nodes.values():
                 self._add_node(n)
-            self.state.leaves = [self.state.reference_root, self.state.test_root]
+            self.state.leaves = list(self.state.channels)
 
 
 
@@ -269,11 +287,15 @@ class PHMState(BaseModel):
     final_decision: str = ""
 
     final_report: str = ""
+    datasets: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    dataset_path: str | None = None
+    model_path: str | None = None
+    accuracy: float | None = None
 
     # ---------- DAG ---------- #
     # ---------- DAG 状态 ---------- #
     dag_state: DAGState = Field(
-        default_factory=lambda: DAGState(user_instruction="", reference_root="", test_root="")
+        default_factory=lambda: DAGState(user_instruction="", channels=[])
     )
 
     error_logs: List[str] = Field(default_factory=list)

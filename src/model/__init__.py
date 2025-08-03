@@ -45,12 +45,9 @@ def get_llm(
         # Use a shared mock model for testing
         if _FAKE_LLM is None:
             responses = [
-                '{"plan":[{"op_name":"normalize","params":{"parent":"ref_root","node_id":"norm_ref"}},'
-                '{"op_name":"normalize","params":{"parent":"test_root","node_id":"norm_test"}}]}',
-                '{"is_sufficient": false, "reason": "need comparison"}',
-                '{"plan":[{"op_name":"score_similarity","params":{"reference_node_ids":["norm_ref"],"test_node_ids":["norm_test"],"node_id":"sim1"}},'
-                '{"op_name":"classify_by_top_k","params":{"scores_node_id":"sim1","k":1,"node_id":"cls1"}}]}',
-                '{"is_sufficient": true, "reason": "analysis complete"}',
+                '[{"op_name": "mean", "params": {"parent": "ch1"}}]',
+                '{"decision": "proceed", "reason": "analysis complete"}',
+                '{"plan": []}',
             ]
             _FAKE_LLM = FakeListChatModel(responses=responses)
         return _FAKE_LLM

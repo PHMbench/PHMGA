@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, RootModel  # 导入 RootModel
 from src.configuration import Configuration
 from src.model import get_llm
 from src.prompts.plan_prompt import PLANNER_PROMPT
-from src.states.phm_states import PHMState
+from phm_core import PHMState
 from src.tools.signal_processing_schemas import OP_REGISTRY
 
 
@@ -37,14 +37,33 @@ class Plan(BaseModel):
 def plan_agent(state: PHMState) -> dict:
     """Call LLM to generate a detailed processing plan using structured output."""
 
-    llm = get_llm(Configuration())
-    # 现在，structured_llm 期望 LLM 返回一个步骤的 JSON 数组
-    structured_llm = llm.with_structured_output(Plan)
-
+    llm = get_llm(Configuration.from_runnable_config(None))
     tools_schemas = json.dumps(
         [cls.model_json_schema() for cls in OP_REGISTRY.values()], ensure_ascii=False
     )
     prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT)
+
+    if hasattr(llm, "responses"):
+        chain = prompt | llm
+        try:
+            resp = chain.invoke(
+                {
+                    "instruction": state.user_instruction,
+                    "channels": state.dag_state.channels,
+                    "tools": tools_schemas,
+                }
+            )
+            plan_json = json.loads(resp.content)
+            if isinstance(plan_json, dict) and "plan" in plan_json:
+                detailed_plan = plan_json["plan"]
+            else:
+                detailed_plan = plan_json
+        except Exception as e:
+            state.error_logs.append(f"Planner structured output error: {e}")
+            detailed_plan = []
+        return {"detailed_plan": detailed_plan}
+
+    structured_llm = llm.with_structured_output(Plan)
 
     chain = prompt | structured_llm
 
@@ -52,8 +71,7 @@ def plan_agent(state: PHMState) -> dict:
         resp = chain.invoke(
             {
                 "instruction": state.user_instruction,
-                "reference_root": state.dag_state.reference_root,
-                "test_root": state.dag_state.test_root,
+                "channels": state.dag_state.channels,
                 "tools": tools_schemas,
             }
         )
@@ -69,37 +87,32 @@ def plan_agent(state: PHMState) -> dict:
 
 
 if __name__ == "__main__":
-    # 当直接运行此脚本进行测试时，
-    # 我们需要使用绝对导入，因为相对导入的上下文已经丢失。
-    # launch.json 中的 PYTHONPATH 设置使得从 'src' 开始的绝对导入成为可能。
+    import os
+    import sys
     import numpy as np
-    from src.states.phm_states import DAGState, InputData
-    
-    # --- 关键修复：导入工具包以填充 OP_REGISTRY ---
-    # 这会执行 src/tools/__init__.py 文件，从而注册所有工具。
+    from langchain_community.chat_models import FakeListChatModel
+    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+    from phm_core import PHMState, DAGState, InputData
     from src.tools import __init__ as init_tools
-    from src.tools import OP_REGISTRY
-    
-    # 打印已注册的工具以进行验证
-    print(f"--- Registered Tools ({len(OP_REGISTRY)} total) ---")
-    print(list(OP_REGISTRY.keys()))
-    print("-------------------------------------\n")
 
+    os.environ["FAKE_LLM"] = "true"
+    from src import model
 
-    ref = InputData(node_id="ref", data={"signal": np.ones(4)}, parents=[], shape=(4,))
-    test = InputData(
-        node_id="test", data={"signal": np.ones(4)}, parents=[], shape=(4,)
+    model._FAKE_LLM = FakeListChatModel(
+        responses=[
+            '{"plan": ['
+            '{"op_name": "mean", "params": {"parent": "ch1"}},'
+            '{"op_name": "mean", "params": {"parent": "ch2"}}'
+            ']}'
+        ]
     )
-    dag = DAGState(user_instruction="demo", reference_root="ref", test_root="test")
-    state = PHMState(
-        user_instruction="demo instruction",
-        reference_signal=ref,
-        test_signal=test,
-        dag_state=dag,
-    )
-    print("Initial state:", state.model_dump(exclude={'reference_signal', 'test_signal'})) # 简化输出
-    result = plan_agent(state)
-    print("\n--- Planner Output ---")
-    print(result)
-    print("----------------------")
+
+    instruction = "轴承故障诊断"
+    ch1 = InputData(node_id="ch1", data={"signal": np.ones((1, 4, 1))}, parents=[], shape=(1, 4, 1))
+    ch2 = InputData(node_id="ch2", data={"signal": np.ones((1, 4, 1))}, parents=[], shape=(1, 4, 1))
+    dag = DAGState(user_instruction=instruction, channels=["ch1", "ch2"], nodes={"ch1": ch1, "ch2": ch2}, leaves=["ch1", "ch2"])
+    state = PHMState(user_instruction=instruction, reference_signal=ch1, test_signal=ch2, dag_state=dag)
+    print({"before": state.model_dump(exclude={"reference_signal", "test_signal"})})
+    out = plan_agent(state)
+    print({"after": out})
 
