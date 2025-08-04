@@ -17,8 +17,8 @@ from .signal_processing_schemas import (
 class FFTOp(TransformOp):
     op_name: ClassVar[str] = "fft"
     description: ClassVar[str] = "Computes the Fast Fourier Transform of a real-valued signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, F, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., F, C)"
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
         # rfft 用于实数输入，效率更高。np.abs() 获取幅值谱。
@@ -32,8 +32,8 @@ class NormalizeOp(TransformOp):
 
     op_name: ClassVar[str] = "normalize"
     description: ClassVar[str] = "Normalize signal using z-score or min-max scaling."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
     method: Literal["z_score", "min_max"] = Field("z_score", description="The normalization method to use.")
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
@@ -57,8 +57,8 @@ class DetrendOp(TransformOp):
 
     op_name: ClassVar[str] = "detrend"
     description: ClassVar[str] = "Remove a linear or constant trend from the signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
     type: Literal["linear", "constant"] = Field("linear", description="The type of trend to remove.")
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
@@ -70,8 +70,8 @@ class CepstrumOp(TransformOp):
     """Compute real cepstrum of the signal."""
     op_name: ClassVar[str] = "cepstrum"
     description: ClassVar[str] = "Computes the real cepstrum, useful for detecting harmonic structures."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
         spectrum = np.fft.fft(x, axis=-2)
@@ -85,8 +85,8 @@ class FilterOp(TransformOp):
     """Apply a Butterworth filter to the signal."""
     op_name: ClassVar[str] = "filter"
     description: ClassVar[str] = "Apply a Butterworth filter (low-pass, high-pass, or band-pass)."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
     
     filter_type: Literal["low", "high", "band"] = Field(..., description="Type of filter.")
     fs: float = Field(..., description="Sampling frequency of the signal.")
@@ -110,8 +110,8 @@ class HilbertEnvelopeOp(TransformOp):
     """Compute the envelope of the signal using the Hilbert transform."""
     op_name: ClassVar[str] = "hilbert_envelope"
     description: ClassVar[str] = "Computes the envelope of the signal via the Hilbert transform, useful for amplitude modulation analysis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
         # 希尔伯特变换沿时间轴应用
@@ -124,8 +124,8 @@ class ResampleOp(TransformOp):
     """Resample the signal to a new length."""
     op_name: ClassVar[str] = "resample"
     description: ClassVar[str] = "Resample the signal to a new desired length using Fourier method."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L_new, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L_new, C)"
     
     num: int = Field(..., description="The new number of samples.")
 
@@ -139,8 +139,8 @@ class DenoiseWaveletOp(TransformOp):
     """Denoise the signal using wavelet thresholding."""
     op_name: ClassVar[str] = "denoise_wavelet"
     description: ClassVar[str] = "Denoises the signal using wavelet thresholding."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
     
     wavelet: str = Field("db1", description="Wavelet to use (e.g., 'db1', 'sym8').")
     mode: Literal["soft", "hard"] = Field("soft", description="Thresholding mode.")
@@ -172,8 +172,8 @@ class PowerSpectralDensityOp(TransformOp):
     """Computes the Power Spectral Density (PSD) of a signal."""
     op_name: ClassVar[str] = "psd"
     description: ClassVar[str] = "Computes the Power Spectral Density (PSD) using Welch's method."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, F, C)" # F is the number of frequency bins from Welch's method
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., F, C)" # F is the number of frequency bins from Welch's method
     
     fs: float = Field(..., description="Sampling frequency of the signal.")
     nperseg: int = Field(256, description="Length of each segment for Welch's method.")
@@ -202,8 +202,8 @@ class IntegrateOp(TransformOp):
     """
     op_name: ClassVar[str] = "integrate"
     description: ClassVar[str] = "Computes the cumulative integral of the signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
         return np.cumsum(x, axis=-2)
@@ -216,8 +216,8 @@ class DifferentiateOp(TransformOp):
     """
     op_name: ClassVar[str] = "differentiate"
     description: ClassVar[str] = "Computes the discrete derivative of the signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L-1, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L-1, C)"
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
         return np.diff(x, axis=-2)
@@ -229,7 +229,7 @@ class PowerToDecibelOp(TransformOp):
     """
     op_name: ClassVar[str] = "power_to_db"
     description: ClassVar[str] = "Converts a power spectrum/spectrogram to the decibel (dB) scale."
-    input_spec: ClassVar[str] = "(B, F, C) or (B, F, T, C)"
+    input_spec: ClassVar[str] = "(..., F, C) or (..., F, T, C)"
     output_spec: ClassVar[str] = "Same as input"
     
     ref: float = 1.0
@@ -251,8 +251,8 @@ class SavitzkyGolayFilterOp(TransformOp):
     """
     op_name: ClassVar[str] = "savgol_filter"
     description: ClassVar[str] = "Smooths a signal using a Savitzky-Golay filter."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
     
     window_length: int = Field(..., description="The length of the filter window (must be a positive odd integer).")
     polyorder: int = Field(..., description="The order of the polynomial used to fit the samples.")
@@ -281,38 +281,38 @@ class PrincipalComponentAnalysisOp(TransformOp):
         pca = PCA(n_components=self.n_components)
         return pca.fit_transform(x)
 
-@register_op
-class AdaptiveFilterOp(TransformOp):
-    """
-    Applies an adaptive filter (NLMS) to remove noise from a signal.
-    Requires a desired signal `d` and an input signal `x`.
-    """
-    op_name: ClassVar[str] = "adaptive_filter"
-    description: ClassVar[str] = "Applies an adaptive filter (NLMS) to remove noise."
-    input_spec: ClassVar[str] = "Dict['d', 'x'] where d and x are (L,)"
-    output_spec: ClassVar[str] = "Dict['y', 'e', 'w']" # Output signal, error, final weights
+# @register_op
+# class AdaptiveFilterOp(TransformOp):
+#     """
+#     Applies an adaptive filter (NLMS) to remove noise from a signal.
+#     Requires a desired signal `d` and an input signal `x`.
+#     """
+#     op_name: ClassVar[str] = "adaptive_filter"
+#     description: ClassVar[str] = "Applies an adaptive filter (NLMS) to remove noise."
+#     input_spec: ClassVar[str] = "Dict['d', 'x'] where d and x are (L,)"
+#     output_spec: ClassVar[str] = "Dict['y', 'e', 'w']" # Output signal, error, final weights
     
-    n: int = Field(4, description="Filter length.")
-    mu: float = Field(0.1, description="Adaptation step size.")
+#     n: int = Field(4, description="Filter length.")
+#     mu: float = Field(0.1, description="Adaptation step size.")
 
-    def execute(self, x: Dict[str, npt.NDArray], **kw) -> Dict[str, npt.NDArray]:
-        try:
-            import padasip as pa
-        except ImportError:
-            raise ImportError("padasip is not installed. Please install it with 'pip install padasip'.")
+#     def execute(self, x: Dict[str, npt.NDArray], **kw) -> Dict[str, npt.NDArray]:
+#         try:
+#             import padasip as pa
+#         except ImportError:
+#             raise ImportError("padasip is not installed. Please install it with 'pip install padasip'.")
 
-        if "d" not in x or "x" not in x:
-            raise ValueError("AdaptiveFilterOp requires 'd' (desired) and 'x' (input) signals.")
+#         if "d" not in x or "x" not in x:
+#             raise ValueError("AdaptiveFilterOp requires "d" (desired) and "x" (input) signals.")
 
-        d = x["d"].squeeze()
-        input_x = x["x"].squeeze()
-        if input_x.ndim == 1:
-            input_x = input_x[:, None]
+#         d = x["d"].squeeze()
+#         input_x = x["x"].squeeze()
+#         if input_x.ndim == 1:
+#             input_x = input_x[:, None]
 
-        f = pa.filters.FilterNLMS(n=self.n, mu=self.mu, w="random")
-        y, e, w = f.run(d, input_x)
+#         f = pa.filters.FilterNLMS(n=self.n, mu=self.mu, w="random")
+#         y, e, w = f.run(d, input_x)
         
-        return {"y": y, "e": e, "w": w}
+#         return {"y": y, "e": e, "w": w}
 
 
 if __name__ == "__main__":

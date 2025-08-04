@@ -43,7 +43,8 @@ def run_case(config_path: str):
             metadata_path=config['metadata_path'],
             h5_path=config['h5_path'],
             ref_ids=config['ref_ids'],
-            test_ids=config['test_ids']
+            test_ids=config['test_ids'],
+            case_name=config['name']
         )
 
         # --- Part 1: Run DAG Builder Workflow ---

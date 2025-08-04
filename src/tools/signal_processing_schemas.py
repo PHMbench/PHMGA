@@ -83,6 +83,15 @@ class PHMOperator(BaseModel, abc.ABC):
         self._after_call(y)
         return y
 
+    @classmethod
+    def model_json_schema(cls, **kwargs):
+        """
+        Override Pydantic's schema generation to set the title to `op_name`.
+        """
+        schema = super().model_json_schema(**kwargs)
+        schema['title'] = cls.op_name
+        return schema
+
     @abc.abstractmethod
     def execute(self, x: np.ndarray, **kwargs) -> np.ndarray | dict:
         """
@@ -122,8 +131,8 @@ class AggregateOp(PHMOperator):
 class MultiVariableOp(PHMOperator):
     """拼接算子的基类，通常用于将多个输入沿特定轴拼接或拆分成若干个输出。"""
     rank_class: ClassVar[RankClass] = "MultiVariable"
-    input_dict: Dict[str, Any] = Field(default_factory=dict, description="输入字典，键为输入名称，值为对应的 NumPy 数组。")
-    output_dict: Dict[str, Any] = Field(default_factory=dict, description="输出字典，键为输出名称，值为对应的 NumPy 数组。")
+    # input_dict: Dict[str, Any] = Field(default_factory=dict, description="输入字典，键为输入名称，值为对应的 NumPy 数组。")
+    # output_dict: Dict[str, Any] = Field(default_factory=dict, description="输出字典，键为输出名称，值为对应的 NumPy 数组。")
 
 
 class DecisionOp(PHMOperator):

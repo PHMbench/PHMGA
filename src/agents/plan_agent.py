@@ -44,54 +44,58 @@ def plan_agent(state: PHMState) -> dict:
 
     llm = get_llm(Configuration.from_runnable_config(None))
     
-    # MODIFIED: Provide the full JSON schema for each tool to the LLM
-    tools_with_schema = [op.model_json_schema() for op in OP_REGISTRY.values()]
-    tools_description = json.dumps(tools_with_schema, indent=2)
+    # --- MODIFIED: Generate a concise, human-readable tool description ---
+    tool_descriptions = []
+    for op in OP_REGISTRY.values():
+        schema = op.model_json_schema()
+        description = schema.get('description', 'No description available.')
+        
+        params_info = []
+        # Exclude common/internal fields from the parameter list
+        excluded_params = {'node_id', 'parent', 'kind', 'in_shape', 'out_shape', 'params'}
+        for name, prop in schema.get('properties', {}).items():
+            if name not in excluded_params:
+                param_desc = prop.get('description', 'No description.')
+                params_info.append(f"        - {name}: {param_desc}")
+        
+        params_str = "\n".join(params_info) if params_info else "        params: {}"
+        
+        tool_descriptions.append(
+            f"- op_name: {schema.get('title', op.op_name)}\n"
+            f"  description: {description}\n"
+            # f"  params:\n{params_str}" # TODO 
+        )
+    tools_description = "\n---\n".join(tool_descriptions)
 
     prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT)
-    # fake test
-    # if hasattr(llm, "responses"):
-    #     chain = prompt | llm
-    #     try:
-    #         resp = chain.invoke(
-    #             {
-    #                 "instruction": state.user_instruction,
-    #                 "dag_json": state.dag_state.model_dump_json(indent=2),
-    #                 "tools": tools_description,
-    #             }
-    #         )
-    #         plan_json = json.loads(resp.content)
-    #         plan_obj = Plan.model_validate(plan_json)
-    #         detailed_plan = [step.model_dump() for step in plan_obj.plan]
-    #     except Exception as e:
-    #         detailed_plan = []
-    #         state.error_logs.append(f"Planner structured output error: {e}")
-        
-    #     return {"detailed_plan": detailed_plan}
-
+    
     # 不再使用 .with_structured_output()，而是手动解析
     chain = prompt | llm
 
     try:
-        # 创建 dag_state 的轻量级副本以进行序列化
-        dag_state_light = state.dag_state.model_copy(deep=True)
-        for node in dag_state_light.nodes.values():
-            # 移除包含 numpy 数组的字段
-            if hasattr(node, 'data'):
-                node.data = {}
-            if hasattr(node, 'results'):
-                node.results = {}
-            # if hasattr(node, 'processed_data'):
-            #     node.processed_data = None
-            del node.data
-            del node.results
-            # del node.processed_data
+        # --- MODIFIED: Create a lightweight topology-only representation of the DAG ---
+        dag_topology = {
+            "nodes": [
+                {
+                    "node_id": node.node_id,
+                    "parents": node.parents,
+                    "stage": node.stage,
+                    "method": getattr(node, 'method', None)
+                }
+                for node in state.dag_state.nodes.values()
+            ],
+            "leaves": state.dag_state.leaves
+        }
+        dag_json = json.dumps(dag_topology, indent=2)
+        
+        reflection = state.reflection_history
 
         resp = chain.invoke(
             {
                 "instruction": state.user_instruction,
-                "dag_json": dag_state_light.model_dump_json(indent=2), # 传递轻量级的 DAG
+                "dag_json": dag_json, # Pass the lightweight topology
                 "tools": tools_description,
+                "reflection": json.dumps(reflection, indent=2)
             }
         )
         

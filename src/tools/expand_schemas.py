@@ -18,8 +18,8 @@ class PatchOp(ExpandOp):
     """
     op_name: ClassVar[str] = "patch"
     description: ClassVar[str] = "Splits a signal into smaller, potentially overlapping patches."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, N, P, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., N, P, C)"
     
     patch_size: int = Field(..., description="The number of samples in each patch (window size).")
     stride: int = Field(..., description="The number of samples to slide the window forward.")
@@ -58,8 +58,8 @@ class STFTOp(ExpandOp):
     """
     op_name: ClassVar[str] = "stft"
     description: ClassVar[str] = "Computes the Short-Time Fourier Transform (STFT)."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, F, T, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., F, T, C)"
     
     fs: float = Field(..., description="Sampling frequency of the signal.")
     nperseg: int = Field(256, description="Length of each segment.")
@@ -91,8 +91,8 @@ class MelSpectrogramOp(ExpandOp):
     """
     op_name: ClassVar[str] = "mel_spectrogram"
     description: ClassVar[str] = "Computes the Mel Spectrogram of a signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, M, T, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., M, T, C)"
     
     fs: float = Field(..., description="Sampling frequency of the signal.")
     n_fft: int = Field(2048, description="Length of the FFT window.")
@@ -134,8 +134,8 @@ class ScalogramOp(ExpandOp):
 
     op_name: ClassVar[str] = "scalogram"
     description: ClassVar[str] = "Continuous wavelet scalogram using PyWavelets."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, S, L, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., S, L, C)"
 
     wavelet: str = Field("morl", description="Name of the wavelet to use (e.g., 'morl', 'mexh').")
     scales: list[int] = Field(..., description="List of scales to use for the CWT.")
@@ -161,8 +161,8 @@ class WignerVilleDistributionOp(ExpandOp):
     """
     op_name: ClassVar[str] = "wigner_ville_distribution"
     description: ClassVar[str] = "Computes the Wigner-Ville Distribution for time-frequency analysis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, F, C)" # Note: F is often L
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, F, C)" # Note: F is often L
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         """
@@ -196,8 +196,8 @@ class SpectrogramOp(ExpandOp):
     """
     op_name: ClassVar[str] = "spectrogram"
     description: ClassVar[str] = "Computes the spectrogram (power of STFT) of a signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, F, T, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., F, T, C)"
     
     fs: float = Field(..., description="Sampling frequency of the signal.")
     nperseg: int = Field(256, description="Length of each segment.")
@@ -226,8 +226,8 @@ class VariableQTransformOp(ExpandOp):
     """
     op_name: ClassVar[str] = "vqt"
     description: ClassVar[str] = "Computes the Variable-Q Transform (VQT) for logarithmic frequency analysis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, Q, T, C)" # Q is the number of VQT bins
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., Q, T, C)" # Q is the number of VQT bins
     
     fs: float = Field(..., description="Sampling frequency of the signal.")
     hop_length: int = Field(512, description="Number of samples between successive frames.")
@@ -261,8 +261,8 @@ class TimeDelayEmbeddingOp(ExpandOp):
     """
     op_name: ClassVar[str] = "time_delay_embedding"
     description: ClassVar[str] = "Reconstructs phase space using time-delay embedding."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L', D, C)" # L' is new length, D is embedding dimension
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L', D, C)" # L' is new length, D is embedding dimension
     
     dimension: int = Field(..., description="Embedding dimension (D).")
     delay: int = Field(..., description="Time delay (tau).")
@@ -298,8 +298,8 @@ class VariationalModeDecompositionOp(ExpandOp):
     """
     op_name: ClassVar[str] = "vmd"
     description: ClassVar[str] = "Decomposes a signal into modes using Variational Mode Decomposition (VMD)."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, K, C)" # K is the number of modes
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, K, C)" # K is the number of modes
 
     alpha: int = Field(2000, description="Balancing parameter of the data-fidelity constraint.")
     tau: float = Field(0., description="Time-step of the dual ascent.")
@@ -336,8 +336,8 @@ class EmpiricalModeDecompositionOp(ExpandOp):
     """
     op_name: ClassVar[str] = "emd"
     description: ClassVar[str] = "Decomposes a signal into Intrinsic Mode Functions (IMFs)."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, I, C)" # I is the number of IMFs
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, I, C)" # I is the number of IMFs
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         try:

@@ -13,7 +13,7 @@ The plan should be a sequence of operations that extract meaningful features fro
 **Input:**
 - `instruction`: The user's high-level goal.
 - `dag_json`: A JSON representation of the current Directed Acyclic Graph (DAG). You should analyze this graph to decide which nodes to process next.
-- `tools`: A list of available signal processing tools with their JSON schemas. You **must** adhere to the parameter names and types defined in these schemas.
+- `tools`: A concise list of available signal processing tools, their descriptions, and parameters. You **must** use the exact `op_name` and parameter names provided.
 
 **Output Format:**
 - You must output a JSON object that strictly adheres to the provided `Plan` schema.

@@ -1,6 +1,8 @@
 # Configuration for Case 1: Standard Bearing Fault Diagnosis
 
 # File paths
+name: "case1"
+save_dir: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save" # Add a general save directory
 metadata_path: "/mnt/crucial/LQ/PHM-Vibench/metadata_6_11.xlsx"
 h5_path: "/mnt/crucial/LQ/PHM-Vibench/cache.h5"
 state_save_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/case1/case1_built_state.pkl"

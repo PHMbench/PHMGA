@@ -250,7 +250,7 @@ def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -
 
 
 def initialize_state(
-    user_instruction: str, metadata_path: str, h5_path: str, ref_ids: list[int], test_ids: list[int]
+    user_instruction: str, metadata_path: str, h5_path: str, ref_ids: list[int], test_ids: list[int], case_name: str
 ) -> PHMState:
     """
     根据初始输入，创建并初始化整个系统的状态（PHMState）。
@@ -305,16 +305,16 @@ def initialize_state(
         channels=channel_names # Use physical channel names
     )
 
-    initial_state = PHMState(
+    return PHMState(
+        case_name=case_name,
         user_instruction=user_instruction,
         reference_signal=next(iter(nodes.values())),
         test_signal=next(iter(nodes.values())),
         dag_state=dag_state,
     )
-    return initial_state
 
 
-def generate_final_report(final_state, save_dir="/home/lq/LQcode/2_project/PHMBench/PHMGA/save/"):
+def generate_final_report(final_state, report_path: str):
     """
     保存最终的报告。
     """
@@ -323,10 +323,10 @@ def generate_final_report(final_state, save_dir="/home/lq/LQcode/2_project/PHMBe
         report = final_state["final_report"]
         print("\nFinal Report:")
         print(report)
-        os.makedirs(save_dir, exist_ok=True)
-        with open(os.path.join(save_dir, "final_report_test2.md"), "w", encoding="utf-8") as f:
+        os.makedirs(os.path.dirname(report_path), exist_ok=True)
+        with open(report_path, "w", encoding="utf-8") as f:
             f.write(report)
-        print(f"Report saved to {os.path.join(save_dir, 'final_report_test2.md')}")
+        print(f"Report saved to {report_path}")
     else:
         print("No final report was generated or an error occurred.")
         if final_state and 'dag_state' in final_state and final_state['dag_state'].error_log:

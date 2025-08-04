@@ -12,7 +12,7 @@ from src.tools.signal_processing_schemas import get_operator
 
 
 DATA_DIR = os.environ.get("PHM_DATA_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
-MAX_STEPS = 100
+MAX_STEPS = 20
 
 
 def _resolve_params(llm, params: Dict[str, Any]) -> Dict[str, Any]:
@@ -43,6 +43,11 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     executed_steps = 0
     llm = get_llm(None)
     
+    # Get the base save directory from environment, fallback to a default
+    base_save_dir = os.environ.get("PHM_SAVE_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
+    # Construct a case-specific directory
+    case_save_dir = os.path.join(base_save_dir, state.case_name, "nodes")
+
     # 采用不可变模式：创建当前节点和叶子的副本
     new_nodes = state.dag_state.nodes.copy()
     new_leaves = state.dag_state.leaves.copy()
@@ -87,7 +92,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
             elif out_ref is None and out_tst is not None:
                 kind = "tst"
 
-            save_dir = os.path.join(DATA_DIR, new_id)
+            save_dir = os.path.join(case_save_dir, new_id)
             os.makedirs(save_dir, exist_ok=True)
             saved_meta = {}
             if out_ref is not None:
@@ -151,7 +156,11 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     # 使用新的 DAGState 创建临时的 tracker 来生成图像
     temp_tracker = state.tracker()
     temp_tracker.update(new_dag_state)
-    png_path = os.path.join(DATA_DIR, f"dag_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    
+    # Save the graph image to a case-specific directory
+    case_graph_dir = os.path.join(base_save_dir, state.case_name, "graphs")
+    os.makedirs(case_graph_dir, exist_ok=True)
+    png_path = os.path.join(case_graph_dir, f"dag_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
     temp_tracker.write_png(png_path)
     new_dag_state.graph_path = png_path + ".png"
 

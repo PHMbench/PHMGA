@@ -19,8 +19,8 @@ class SubtractOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "subtract"
     description: ClassVar[str] = "Subtracts the 'subtrahend' signal from the 'minuend' signal."
-    input_spec: ClassVar[str] = "minuend: (B, L, C), subtrahend: (B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "minuend: (..., L, C), subtrahend: (..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
         if "minuend" not in x or "subtrahend" not in x:
@@ -36,8 +36,8 @@ class CrossCorrelationOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "cross_correlation"
     description: ClassVar[str] = "Computes the cross-correlation between two signals."
-    input_spec: ClassVar[str] = "signal1: (B, L, C), signal2: (B, L, C)"
-    output_spec: ClassVar[str] = "(B, L_corr, C)"
+    input_spec: ClassVar[str] = "signal1: (..., L, C), signal2: (..., L, C)"
+    output_spec: ClassVar[str] = "(..., L_corr, C)"
     mode: Literal["full", "valid", "same"] = Field("full", description="The mode of the correlation.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
@@ -72,8 +72,8 @@ class DistanceOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "distance"
     description: ClassVar[str] = "Computes the distance between two feature vectors."
-    input_spec: ClassVar[str] = "vec1: (B, C'), vec2: (B, C')"
-    output_spec: ClassVar[str] = "(B,)"
+    input_spec: ClassVar[str] = "vec1: (..., C'), vec2: (..., C')"
+    output_spec: ClassVar[str] = "(...,)"
     metric: Literal["euclidean", "manhattan", "cosine"] = Field("euclidean", description="The distance metric to use.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
@@ -101,8 +101,8 @@ class ConcatenateOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "concatenate"
     description: ClassVar[str] = "Concatenates multiple feature vectors."
-    input_spec: ClassVar[str] = "vectors: List[(B, C')]"
-    output_spec: ClassVar[str] = "(B, C_new)"
+    input_spec: ClassVar[str] = "vectors: List[(..., C')]"
+    output_spec: ClassVar[str] = "(..., C_new)"
     axis: int = Field(-1, description="The axis along which the arrays will be joined.")
 
     def execute(self, x: Dict[str, list[npt.NDArray]], **_) -> npt.NDArray:
@@ -119,8 +119,8 @@ class ElementWiseProductOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "element_wise_product"
     description: ClassVar[str] = "Computes the element-wise product of two signals (Hadamard product)."
-    input_spec: ClassVar[str] = "signal1: (B, L, C), signal2: (B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "signal1: (..., L, C), signal2: (..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
         if "signal1" not in x or "signal2" not in x:
@@ -136,8 +136,8 @@ class CoherenceOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "coherence"
     description: ClassVar[str] = "Computes the magnitude squared coherence between two signals."
-    input_spec: ClassVar[str] = "signal1: (B, L, C), signal2: (B, L, C)"
-    output_spec: ClassVar[str] = "(B, F, C)" # F is the number of frequency bins
+    input_spec: ClassVar[str] = "signal1: (..., L, C), signal2: (..., L, C)"
+    output_spec: ClassVar[str] = "(..., F, C)" # F is the number of frequency bins
     
     fs: float = Field(..., description="Sampling frequency of the signals.")
     nperseg: int = Field(256, description="Length of each segment for Welch's method used in coherence calculation.")
@@ -169,8 +169,8 @@ class ArithmeticOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "arithmetic"
     description: ClassVar[str] = "Performs basic arithmetic (+, -, *, /) between two signals."
-    input_spec: ClassVar[str] = "signal1: (B, L, C), signal2: (B, L, C)"
-    output_spec: ClassVar[str] = "(B, L, C)"
+    input_spec: ClassVar[str] = "signal1: (..., L, C), signal2: (..., L, C)"
+    output_spec: ClassVar[str] = "(..., L, C)"
     
     operation: Literal["add", "subtract", "multiply", "divide"] = Field(..., description="The arithmetic operation to perform.")
 
@@ -200,8 +200,8 @@ class PhaseDifferenceOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "phase_difference"
     description: ClassVar[str] = "Computes the phase difference between two FFTs."
-    input_spec: ClassVar[str] = "fft1: (B, F, C), fft2: (B, F, C)"
-    output_spec: ClassVar[str] = "(B, F, C)"
+    input_spec: ClassVar[str] = "fft1: (..., F, C), fft2: (..., F, C)"
+    output_spec: ClassVar[str] = "(..., F, C)"
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
         if "fft1" not in x or "fft2" not in x:
@@ -222,8 +222,8 @@ class ConvolutionOp(MultiVariableOp):
     """
     op_name: ClassVar[str] = "convolution"
     description: ClassVar[str] = "Performs 1D convolution of a signal with a kernel."
-    input_spec: ClassVar[str] = "signal: (B, L, C), kernel: (K,)"
-    output_spec: ClassVar[str] = "(B, L', C)"
+    input_spec: ClassVar[str] = "signal: (..., L, C), kernel: (K,)"
+    output_spec: ClassVar[str] = "(..., L', C)"
     mode: Literal["full", "valid", "same"] = Field("same", description="The mode of the convolution.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:

@@ -19,8 +19,8 @@ from .signal_processing_schemas import register_op, AggregateOp
 class MeanOp(AggregateOp):
     op_name: ClassVar[str] = "mean"
     description: ClassVar[str] = "Computes the mean (average) value along the time axis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -30,8 +30,8 @@ class MeanOp(AggregateOp):
 class StdOp(AggregateOp):
     op_name: ClassVar[str] = "std"
     description: ClassVar[str] = "Computes the standard deviation along the time axis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -41,8 +41,8 @@ class StdOp(AggregateOp):
 class VarOp(AggregateOp):
     op_name: ClassVar[str] = "var"
     description: ClassVar[str] = "Computes the variance along the time axis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -52,8 +52,8 @@ class VarOp(AggregateOp):
 class SkewnessOp(AggregateOp):
     op_name: ClassVar[str] = "skew"
     description: ClassVar[str] = "Computes the skewness (asymmetry) of the data distribution."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -63,8 +63,8 @@ class SkewnessOp(AggregateOp):
 class KurtosisOp(AggregateOp):
     op_name: ClassVar[str] = "kurtosis"
     description: ClassVar[str] = "Computes the kurtosis (tailedness) of the data distribution."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -74,8 +74,8 @@ class KurtosisOp(AggregateOp):
 class MaxOp(AggregateOp):
     op_name: ClassVar[str] = "max"
     description: ClassVar[str] = "Computes the maximum value along the time axis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -85,8 +85,8 @@ class MaxOp(AggregateOp):
 class MinOp(AggregateOp):
     op_name: ClassVar[str] = "min"
     description: ClassVar[str] = "Computes the minimum value along the time axis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -97,8 +97,8 @@ class MinOp(AggregateOp):
 class RMSOp(AggregateOp):
     op_name: ClassVar[str] = "rms"
     description: ClassVar[str] = "Computes the Root Mean Square (RMS) of the signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -108,8 +108,8 @@ class RMSOp(AggregateOp):
 class AbsMeanOp(AggregateOp):
     op_name: ClassVar[str] = "abs_mean"
     description: ClassVar[str] = "Computes the mean of the absolute values of the signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -119,8 +119,8 @@ class AbsMeanOp(AggregateOp):
 class ShapeFactorOp(AggregateOp):
     op_name: ClassVar[str] = "shape_factor"
     description: ClassVar[str] = "Computes the Shape Factor (RMS / Mean of Absolute Values)."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -132,8 +132,8 @@ class ShapeFactorOp(AggregateOp):
 class CrestFactorOp(AggregateOp):
     op_name: ClassVar[str] = "crest_factor"
     description: ClassVar[str] = "Computes the Crest Factor (Peak / RMS)."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -145,8 +145,8 @@ class CrestFactorOp(AggregateOp):
 class ClearanceFactorOp(AggregateOp):
     op_name: ClassVar[str] = "clearance_factor"
     description: ClassVar[str] = "Computes the Clearance Factor (Peak / (Mean of Sqrt Abs Values)^2)."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -158,8 +158,8 @@ class ClearanceFactorOp(AggregateOp):
 class EntropyOp(AggregateOp):
     op_name: ClassVar[str] = "entropy"
     description: ClassVar[str] = "Computes the Shannon entropy of the signal."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
     num_bins: int = Field(100, description="Number of bins for histogram to estimate probability.")
 
@@ -192,8 +192,8 @@ class BandPowerOp(AggregateOp):
     description: ClassVar[str] = (
         "Computes the average power of the signal in one or more frequency bands."
     )
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, N, C)"  # N = number of bands
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., N, C)"  # N = number of bands
 
     fs: float = Field(..., description="Sampling frequency of the signal.")
     bands: list[tuple[float, float]] = Field(
@@ -226,8 +226,8 @@ class PeakToPeakOp(AggregateOp):
     """Computes the peak-to-peak (P2P) value of the signal."""
     op_name: ClassVar[str] = "peak_to_peak"
     description: ClassVar[str] = "Computes the difference between the maximum and minimum value along the time axis."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -238,8 +238,8 @@ class ZeroCrossingRateOp(AggregateOp):
     """Computes the zero-crossing rate of the signal."""
     op_name: ClassVar[str] = "zero_crossing_rate"
     description: ClassVar[str] = "Computes the rate at which the signal changes from positive to negative or back."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     axis: int = Field(-2, description="Axis to perform aggregation on.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
@@ -251,8 +251,8 @@ class SpectralCentroidOp(AggregateOp):
     """Computes the spectral centroid, the center of mass of the spectrum."""
     op_name: ClassVar[str] = "spectral_centroid"
     description: ClassVar[str] = "Computes the center of mass of the spectrum, indicating where the energy is concentrated."
-    input_spec: ClassVar[str] = "(B, F, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., F, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     
     fs: float = Field(..., description="Sampling frequency of the signal.")
 
@@ -281,8 +281,8 @@ class SpectralSkewnessOp(AggregateOp):
     """Computes the skewness of the spectrum."""
     op_name: ClassVar[str] = "spectral_skewness"
     description: ClassVar[str] = "Computes the skewness of the spectrum, indicating its asymmetry."
-    input_spec: ClassVar[str] = "(B, F, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., F, C)"
+    output_spec: ClassVar[str] = "(..., C)"
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         """Assumes x is a magnitude or power spectrum."""
@@ -293,8 +293,8 @@ class SpectralKurtosisOp(AggregateOp):
     """Computes the kurtosis of the spectrum."""
     op_name: ClassVar[str] = "spectral_kurtosis"
     description: ClassVar[str] = "Computes the kurtosis of the spectrum, indicating its 'tailedness'."
-    input_spec: ClassVar[str] = "(B, F, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., F, C)"
+    output_spec: ClassVar[str] = "(..., C)"
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         """Assumes x is a magnitude or power spectrum."""
@@ -307,12 +307,12 @@ class HjorthParametersOp(AggregateOp):
     """
     op_name: ClassVar[str] = "hjorth_parameters"
     description: ClassVar[str] = "Computes Hjorth parameters (Activity, Mobility, Complexity)."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, 3, C)" # 3 features per channel
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., 3, C)" # 3 features per channel
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
-        if x.ndim != 3:
-            raise ValueError(f"Input for HjorthParametersOp must be 3D (B, L, C), but got {x.ndim}D.")
+        if x.ndim < 2:
+            raise ValueError(f"Input for HjorthParametersOp must be at least 2D, but got {x.ndim}D.")
         
         dx = np.diff(x, axis=-2)
         ddx = np.diff(dx, axis=-2)
@@ -335,8 +335,8 @@ class SpectralFlatnessOp(AggregateOp):
     """Computes the spectral flatness, a measure of the 'tonalness' of a spectrum."""
     op_name: ClassVar[str] = "spectral_flatness"
     description: ClassVar[str] = "Computes the spectral flatness (geometric mean / arithmetic mean)."
-    input_spec: ClassVar[str] = "(B, F, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., F, C)"
+    output_spec: ClassVar[str] = "(..., C)"
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         """Assumes x is a magnitude spectrum."""
@@ -351,8 +351,8 @@ class ApproximateEntropyOp(AggregateOp):
     """
     op_name: ClassVar[str] = "approximate_entropy"
     description: ClassVar[str] = "Computes the Approximate Entropy (ApEn) to quantify signal regularity."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     
     m: int = Field(2, description="Embedding dimension.")
     r_coeff: float = Field(0.2, description="Filtering level coefficient to determine radius r.")
@@ -381,8 +381,8 @@ class PermutationEntropyOp(AggregateOp):
     """
     op_name: ClassVar[str] = "permutation_entropy"
     description: ClassVar[str] = "Computes the Permutation Entropy to quantify signal complexity."
-    input_spec: ClassVar[str] = "(B, L, C)"
-    output_spec: ClassVar[str] = "(B, C)"
+    input_spec: ClassVar[str] = "(..., L, C)"
+    output_spec: ClassVar[str] = "(..., C)"
     
     order: int = Field(3, description="Order of the permutation.")
     delay: int = Field(1, description="Time delay.")

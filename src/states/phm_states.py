@@ -257,6 +257,7 @@ def get_node_data(state: "PHMState", node_id: str):
 class PHMState(BaseModel):
     """Central state for the PHM LangGraph pipeline."""
 
+    case_name: str = "" # Add case_name to the state
     user_instruction: str = Field(default="", description="User's instruction for the PHM analysis.")
     reference_signal: InputData
     test_signal: InputData
