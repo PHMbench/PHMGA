@@ -38,8 +38,8 @@ def get_llm(
         Instantiated LLM ready for calls.
     """
     if configurable is None:
-        configurable = Configuration.from_runnable_config(None)
-    fake_llm = configurable.fake_llm
+        configurable = Configuration() # .from_runnable_config(None)
+    fake_llm =  False # configurable.fake_llm
     if fake_llm:
         global _FAKE_LLM
         # Use a shared mock model for testing

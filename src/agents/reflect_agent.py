@@ -104,16 +104,25 @@ def reflect_agent(
     )
     # 漂亮地打印出LLM的响应以供调试
     print("\n--- Reflect Agent LLM Response ---")
+
+    # 从LLM响应中提取JSON字符串，移除Markdown代码块
+    json_str = resp.content
+    if "```json" in json_str:
+        json_str = json_str.split("```json")[1].strip()
+    if "```" in json_str:
+        json_str = json_str.split("```")[0].strip()
+
     try:
         # 假设响应内容是JSON字符串
-        parsed_json = json.loads(resp.content)
+        parsed_json = json.loads(json_str)
         print(json.dumps(parsed_json, indent=2, ensure_ascii=False))
     except json.JSONDecodeError:
-        # 如果不是JSON，则按原样打印
+        # 如果不是JSON，则按原样打印原始响应
         print(resp.content)
     print("---------------------------------\n")
     try:
-        data = json.loads(resp.content)
+        # 使用清理后的字符串进行解析
+        data = json.loads(json_str)
         decision = data.get("decision", "halt")
         reason = data.get("reason", "")
         if decision not in VALID_DECISIONS:

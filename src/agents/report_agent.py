@@ -53,7 +53,14 @@ def report_agent_node(state: PHMState) -> Dict[str, str]:
         "leaves": state.dag_state.leaves,
         "graph_path": state.dag_state.graph_path or "",
     }
-    similarity_stats = {"new_nodes": [nid for nid in state.dag_state.nodes if nid.startswith("sim_")]}
+    
+    # MODIFIED: Extract similarity stats from the `sim` attribute of leaf nodes
+    similarity_stats = {}
+    for leaf_id in state.dag_state.leaves:
+        node = state.dag_state.nodes.get(leaf_id)
+        if node and hasattr(node, "sim") and node.sim:
+            similarity_stats[leaf_id] = node.sim
+
     ml_results = getattr(state, "ml_results", {}) or {}
     issues_summary = "\n".join(state.dag_state.error_log) or None
     out = report_agent(
@@ -83,16 +90,20 @@ if __name__ == "__main__":
     ch2 = InputData(node_id="ch2", data={}, parents=[], shape=(0,))
     dag = DAGState(user_instruction=instruction, channels=["ch1", "ch2"], nodes={"ch1": ch1, "ch2": ch2}, leaves=["ch1", "ch2"], graph_path="dag.png")
     state = PHMState(user_instruction=instruction, reference_signal=ch1, test_signal=ch2, dag_state=dag)
+    
+    # Add mock similarity data to a leaf node for testing
+    ch1.sim = {"euclidean": {"id1": {"id4": 0.5}}}
+
     ml_results = {
         "models": {},
         "ensemble_metrics": {"accuracy": 0.95, "f1": 0.94},
         "metrics_markdown": "| model | accuracy | f1 |\n|---|---|---|\n| m | 0.9 | 0.8 |",
     }
     print({"before": state.model_dump(exclude={"reference_signal", "test_signal"})})
-    out = report_agent(
-        instruction=instruction,
-        dag_overview={"n_nodes": len(state.dag_state.nodes), "leaves": state.dag_state.leaves, "graph_path": state.dag_state.graph_path or ""},
-        similarity_stats={"new_nodes": []},
-        ml_results=ml_results,
-    )
-    print({"after": len(out["report_markdown"])})
+    
+    # Use the node adapter for a more realistic test
+    out = report_agent_node(state)
+
+    print({"after": len(out["final_report"])})
+    assert "This is a demo report" in out["final_report"]
+    print("✅ Report Agent test passed!")

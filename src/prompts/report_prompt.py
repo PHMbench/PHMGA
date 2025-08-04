@@ -10,11 +10,12 @@ REPORT_PROMPT = """
 
 # 任务
 1. 先写一个标题。
-2. 依次撰写四个部分：
+2. 依次撰写五个部分：
    - 流程概览：结合 dag_overview 描述处理流程。
    - 特征/相似度洞察：依据 similarity_stats，按通道与方法找出最高和最低分，并推测原因。
    - 模型评估：嵌入 ml_results.metrics_markdown 表格，突出 ensemble_metrics。
    - 结论与建议：给出故障诊断结论、维护建议，并在有 issues_summary 时附限制说明。
+   - code 代码部分,提供一个代码片段,展示如何优化DAG之中的算子或相关操作。
 3. 使用 GitHub Markdown 语法，确保内容条理清晰。
 
 # 输出

@@ -44,11 +44,9 @@ def plan_agent(state: PHMState) -> dict:
 
     llm = get_llm(Configuration.from_runnable_config(None))
     
-    # 创建一个简化的工具描述列表，而不是完整的 JSON Schema
-    simplified_tools = [
-        f"- {op.op_name}: {op.description}" for op in OP_REGISTRY.values()
-    ]
-    tools_description = "\n".join(simplified_tools)
+    # MODIFIED: Provide the full JSON schema for each tool to the LLM
+    tools_with_schema = [op.model_json_schema() for op in OP_REGISTRY.values()]
+    tools_description = json.dumps(tools_with_schema, indent=2)
 
     prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT)
     # fake test

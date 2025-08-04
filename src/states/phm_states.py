@@ -21,6 +21,8 @@ class _NodeBase(BaseModel):
     stage: Literal["input", "processed", "similarity", "dataset", "output"] = "input"  # 节点阶段
     shape: Shape
     kind: Literal["signal"] = "signal"
+    sim: Dict[str, Any] = Field(default_factory=dict, description="Similarity metrics")
+
 
 class InputData(_NodeBase):
     """Represents a batch of raw input signals."""
@@ -41,10 +43,9 @@ class ProcessedData(_NodeBase):
     processed_id: str = Field(default_factory=lambda: f"proc_{uuid.uuid4().hex[:8]}")
     source_signal_id: str
     method: str
-    processed_data: Any
+    # processed_data: Any
     results: Any = None
     meta: Dict[str, Any] = Field(default_factory=dict)
-
 
 # ---------- Dataset Node ---------- #
 class DataSetNode(_NodeBase):
@@ -256,7 +257,7 @@ def get_node_data(state: "PHMState", node_id: str):
 class PHMState(BaseModel):
     """Central state for the PHM LangGraph pipeline."""
 
-    user_instruction: str
+    user_instruction: str = Field(default="", description="User's instruction for the PHM analysis.")
     reference_signal: InputData
     test_signal: InputData
     dag_state: DAGState

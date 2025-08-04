@@ -5,31 +5,37 @@ from typing import Dict, Any
 
 import numpy as np
 
-from phm_core import PHMState, ProcessedData, DataSetNode
+from src.states.phm_states import PHMState, ProcessedData, DataSetNode
+
+
+def _load_features_from_path(path: str) -> np.ndarray:
+    """Load features from a .npy or .npz file."""
+    if not path or not os.path.exists(path):
+        return np.array([])
+    
+    if path.endswith('.npz'):
+        with np.load(path) as data:
+            # Each item in the npz file is a sample. We stack them.
+            if not data.files:
+                return np.array([])
+            # Sort keys to maintain a consistent order, although not strictly necessary
+            features = [np.asarray(data[key]).ravel() for key in sorted(data.keys())]
+            return np.vstack(features)
+    else:
+        # For .npy, we assume the file contains a batch of samples.
+        return np.load(path)
 
 
 def dataset_preparer_agent(state: PHMState, *, config: Dict | None = None) -> Dict:
-    """Gather feature-stage nodes into in-memory datasets.
-
-    Parameters
-    ----------
-    state : PHMState
-        Current PHM workflow state.
-    config : Dict, optional
-        Configuration containing ``stage`` to filter nodes and ``flatten`` flag.
-
-    Returns
-    -------
-    Dict
-        Mapping with ``datasets`` and ``n_nodes`` information.
+    """
+    Gathers features from saved files into in-memory datasets for model training.
+    Handles both .npy (single array) and .npz (dictionary of features) files.
     """
     cfg = config or {}
     stage = cfg.get("stage", "processed")
-    flatten = cfg.get("flatten", False)
+    flatten = cfg.get("flatten", False) # Note: flatten is handled by ravel() in load function
 
-    # 创建从故障类型到整数标签的映射
     label_map = {channel: i for i, channel in enumerate(state.dag_state.channels)}
-
     datasets: Dict[str, Dict[str, Any]] = {}
     tracker = state.tracker()
 
@@ -37,23 +43,19 @@ def dataset_preparer_agent(state: PHMState, *, config: Dict | None = None) -> Di
         if getattr(node, "stage", None) != stage:
             continue
         
-        # 从节点元数据中获取故障类型
-        channel_name = node.meta.get("channel", None)
+        channel_name = node.meta.get("channel")
         if not channel_name:
             continue
         
-        label = label_map.get(channel_name, -1) # 如果找不到，默认为-1
+        label = label_map.get(channel_name, -1)
 
-        saved = getattr(node, "meta", {}).get("saved", {})
-        ref_path = saved.get("ref_path")
-        tst_path = saved.get("tst_path")
-        X_train = np.load(ref_path) if ref_path and os.path.exists(ref_path) else np.array([])
-        X_test = np.load(tst_path) if tst_path and os.path.exists(tst_path) else np.array([])
-        if flatten:
-            X_train = X_train.reshape(X_train.shape[0], -1) if X_train.ndim > 1 else X_train
-            X_test = X_test.reshape(X_test.shape[0], -1) if X_test.ndim > 1 else X_test
-        
-        # 使用正确的标签
+        saved = node.meta.get("saved", {})
+        X_train = _load_features_from_path(saved.get("ref_path"))
+        X_test = _load_features_from_path(saved.get("tst_path"))
+
+        if X_train.size == 0 and X_test.size == 0:
+            continue
+
         y_train = np.full(X_train.shape[0], label, dtype=int)
         y_test = np.full(X_test.shape[0], label, dtype=int)
         
@@ -67,8 +69,8 @@ def dataset_preparer_agent(state: PHMState, *, config: Dict | None = None) -> Di
         ds_node = DataSetNode(
             node_id=f"ds_{node_id}",
             parents=[node_id],
-            shape=X_train.shape if X_train.size else X_test.shape if X_test.size else (0,),
-            meta={"origin_node": node_id},
+            shape=X_train.shape if X_train.size else X_test.shape,
+            meta={"origin_node": node_id, "channel": channel_name, "label": label},
         )
         tracker.add_node(ds_node)
 
@@ -82,43 +84,88 @@ if __name__ == "__main__":
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     from phm_core import DAGState, InputData
 
-    instruction = "轴承故障诊断"
-    sig1 = np.arange(6).reshape(2, 3)
-    sig2 = np.arange(6, 12).reshape(2, 3)
-    ch1 = InputData(node_id="ch1", data={"signal": sig1}, results={"ref": sig1, "tst": sig1}, parents=[], shape=sig1.shape)
-    ch2 = InputData(node_id="ch2", data={"signal": sig2}, results={"ref": sig2, "tst": sig2}, parents=[], shape=sig2.shape)
+    # --- 1. Setup: Create a realistic test case ---
+    save_dir = "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/test_ds"
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Mock features that would be saved by execute_agent as .npz
+    features_ref1 = {'id1': 0.5, 'id2': 0.8, 'id3': 0.2}
+    features_tst1 = {'id4': 0.6, 'id5': 0.9}
+    features_ref2 = {'id1': 1.5, 'id2': 1.8}
+    features_tst2 = {'id4': 1.6, 'id5': 1.9, 'id6': 1.1}
+
+    # Save them as .npz files
+    ref1_path = os.path.join(save_dir, "ref1.npz")
+    tst1_path = os.path.join(save_dir, "tst1.npz")
+    ref2_path = os.path.join(save_dir, "ref2.npz")
+    tst2_path = os.path.join(save_dir, "tst2.npz")
+    np.savez(ref1_path, **features_ref1)
+    np.savez(tst1_path, **features_tst1)
+    np.savez(ref2_path, **features_ref2)
+    np.savez(tst2_path, **features_tst2)
+
+    # --- 2. Create mock nodes similar to what the graph would have ---
     proc1 = ProcessedData(
-        node_id="fft_01_ch1",
-        parents=["ch1"],
+        node_id="kurtosis_ch1",
+        parents=["fft_ch1"],
+        stage="processed",
         source_signal_id="ch1",
-        method="fft",
-        processed_data=sig1,
-        results={"ref": sig1, "tst": sig1},
-        meta={"saved": {"ref_path": "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/ref1.npy", "tst_path": "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/tst1.npy"}},
-        shape=sig1.shape,
+        method="kurtosis",
+        processed_data={},
+        results={},
+        meta={"channel": "ch1", "saved": {"ref_path": ref1_path, "tst_path": tst1_path}},
+        shape=(),
     )
     proc2 = ProcessedData(
-        node_id="fft_01_ch2",
-        parents=["ch2"],
+        node_id="kurtosis_ch2",
+        parents=["fft_ch2"],
+        stage="processed",
         source_signal_id="ch2",
-        method="fft",
-        processed_data=sig2,
-        results={"ref": sig2, "tst": sig2},
-        meta={"saved": {"ref_path": "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/ref2.npy", "tst_path": "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/tst2.npy"}},
-        shape=sig2.shape,
+        method="kurtosis",
+        processed_data={},
+        results={},
+        meta={"channel": "ch2", "saved": {"ref_path": ref2_path, "tst_path": tst2_path}},
+        shape=(),
     )
-    os.makedirs("/home/lq/LQcode/2_project/PHMBench/PHMGA/save", exist_ok=True)
-    np.save("/home/lq/LQcode/2_project/PHMBench/PHMGA/save/ref1.npy", sig1)
-    np.save("/home/lq/LQcode/2_project/PHMBench/PHMGA/save/tst1.npy", sig1 + 1)
-    np.save("/home/lq/LQcode/2_project/PHMBench/PHMGA/save/ref2.npy", sig2)
-    np.save("/home/lq/LQcode/2_project/PHMBench/PHMGA/save/tst2.npy", sig2 + 1)
+
+    # --- 3. Create the PHMState ---
     dag = DAGState(
-        user_instruction=instruction,
+        user_instruction="test_dataset_prep",
         channels=["ch1", "ch2"],
-        nodes={"fft_01_ch1": proc1, "fft_01_ch2": proc2},
-        leaves=[],
+        nodes={"kurtosis_ch1": proc1, "kurtosis_ch2": proc2},
+        leaves=["kurtosis_ch1", "kurtosis_ch2"],
     )
-    state = PHMState(user_instruction=instruction, reference_signal=ch1, test_signal=ch2, dag_state=dag)
+    state = PHMState(
+        user_instruction="test_dataset_prep", 
+        reference_signal=InputData(node_id="r", data={}, parents=[], shape=(0,)), 
+        test_signal=InputData(node_id="t", data={}, parents=[], shape=(0,)), 
+        dag_state=dag
+    )
+
+    # --- 4. Run the agent ---
     print({"before": list(state.dag_state.nodes.keys())})
-    out = dataset_preparer_agent(state, config={"stage": "processed", "flatten": True})
-    print({"after": out, "nodes": list(state.dag_state.nodes.keys())})
+    out = dataset_preparer_agent(state, config={"stage": "processed"})
+    
+    # --- 5. Verification ---
+    print("\n--- Agent Output ---")
+    print(f"Number of datasets created: {out['n_nodes']}")
+    print(f"Dataset keys: {list(out['datasets'].keys())}")
+    
+    dataset1 = out['datasets']['kurtosis_ch1']
+    print("\n--- Dataset for kurtosis_ch1 ---")
+    print(f"X_train shape: {dataset1['X_train'].shape}") # Should be (3, 1)
+    print(f"y_train: {dataset1['y_train']}") # Should be [0, 0, 0]
+    print(f"X_test shape: {dataset1['X_test'].shape}")   # Should be (2, 1)
+    print(f"y_test: {dataset1['y_test']}")     # Should be [0, 0]
+    
+    print("\n--- Final Nodes in DAG ---")
+    print(list(state.dag_state.nodes.keys()))
+
+    assert out['n_nodes'] == 2
+    assert dataset1['X_train'].shape == (3, 1)
+    assert all(dataset1['y_train'] == 0)
+    assert out['datasets']['kurtosis_ch2']['X_train'].shape == (2, 1)
+    assert all(out['datasets']['kurtosis_ch2']['y_train'] == 1)
+    assert "ds_kurtosis_ch1" in state.dag_state.nodes
+
+    print("\n✅ Dataset Preparer Agent test passed!")
