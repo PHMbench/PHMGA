@@ -27,7 +27,7 @@ def build_outer_graph() -> StateGraph:
 
     builder.add_node("plan", plan_agent)
     builder.add_node("execute", execute_agent)
-    builder.add_node("reflect", lambda state: reflect_agent_node(state, stage="POST_EXEC"))
+    builder.add_node("reflect", lambda state: reflect_agent_node(state, stage="POST_EXECUTE"))
     builder.add_node("inquire", lambda state: inquirer_agent(state, metrics=["cosine"]))
     builder.add_node("prepare", dataset_preparer_agent)
     builder.add_node("train", lambda state: shallow_ml_agent(state.datasets))
@@ -49,12 +49,13 @@ def build_outer_graph() -> StateGraph:
     builder.add_edge("prepare", "train")
     builder.add_edge("train", "report")
     builder.add_edge("report", END)
-    import os
-    os.makedirs("database", exist_ok=True)
-    conn = sqlite3.connect("database/phm_agent.db", check_same_thread=False)
+    # import os
+    # os.makedirs("database", exist_ok=True)
+    # conn = sqlite3.connect("database/phm_agent.db", check_same_thread=False)
     # Here is our checkpointer 
 
-    memory = SqliteSaver(conn)
-    return builder.compile(checkpointer=memory)
+    # memory = SqliteSaver(conn)
+    # return builder.compile(checkpointer=memory)
+    return builder.compile()  # No checkpointer for now, as we don't need to save state across runs
 
 

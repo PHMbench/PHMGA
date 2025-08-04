@@ -27,22 +27,36 @@ def dataset_preparer_agent(state: PHMState, *, config: Dict | None = None) -> Di
     stage = cfg.get("stage", "processed")
     flatten = cfg.get("flatten", False)
 
+    # 创建从故障类型到整数标签的映射
+    label_map = {channel: i for i, channel in enumerate(state.dag_state.channels)}
+
     datasets: Dict[str, Dict[str, Any]] = {}
     tracker = state.tracker()
 
     for node_id, node in list(state.dag_state.nodes.items()):
         if getattr(node, "stage", None) != stage:
             continue
+        
+        # 从节点元数据中获取故障类型
+        channel_name = node.meta.get("channel", None)
+        if not channel_name:
+            continue
+        
+        label = label_map.get(channel_name, -1) # 如果找不到，默认为-1
+
         saved = getattr(node, "meta", {}).get("saved", {})
         ref_path = saved.get("ref_path")
         tst_path = saved.get("tst_path")
         X_train = np.load(ref_path) if ref_path and os.path.exists(ref_path) else np.array([])
         X_test = np.load(tst_path) if tst_path and os.path.exists(tst_path) else np.array([])
         if flatten:
-            X_train = X_train.reshape(-1)
-            X_test = X_test.reshape(-1)
-        y_train = np.zeros(X_train.shape[0], dtype=float)
-        y_test = np.zeros(X_test.shape[0], dtype=float)
+            X_train = X_train.reshape(X_train.shape[0], -1) if X_train.ndim > 1 else X_train
+            X_test = X_test.reshape(X_test.shape[0], -1) if X_test.ndim > 1 else X_test
+        
+        # 使用正确的标签
+        y_train = np.full(X_train.shape[0], label, dtype=int)
+        y_test = np.full(X_test.shape[0], label, dtype=int)
+        
         datasets[node_id] = {
             "X_train": X_train,
             "X_test": X_test,

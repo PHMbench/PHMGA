@@ -33,3 +33,9 @@ graphviz
 PyWavelets
 scikit-learn
 dtw
+pandas
+h5py
+openpyxl
+numpy
+scipy
+matplotlib

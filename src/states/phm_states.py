@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import List, Dict, Any, Annotated, Tuple
+from typing import List, Dict, Any, Annotated, Tuple, Optional, TypedDict
 import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr
 import uuid
@@ -32,6 +32,7 @@ class InputData(_NodeBase):
     )
     metadata: Dict[str, Any] = Field(default_factory=dict)  # see metadata
     results: Dict[str, Any] = Field(default_factory=dict)
+    meta: Dict[str, Any] = Field(default_factory=dict) # 添加 meta 字段
 
 
 class ProcessedData(_NodeBase):
@@ -109,6 +110,9 @@ class DAGTracker:
     """运行期辅助：把新执行写入 DAGState 并维护 networkx 图."""
 
     def __init__(self, dag_state: DAGState):
+        self.update(dag_state)
+    def update(self, dag_state: DAGState):
+        """Update the tracker with a new DAGState."""
         self.state = dag_state
         self.g = nx.DiGraph()
         if dag_state.nodes:
@@ -255,6 +259,7 @@ class PHMState(BaseModel):
     user_instruction: str
     reference_signal: InputData
     test_signal: InputData
+    dag_state: DAGState
 
     high_level_plan: List[str] = Field(default_factory=list)
     analysis_plan: AnalysisPlan | None = None
@@ -290,28 +295,17 @@ class PHMState(BaseModel):
     datasets: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     dataset_path: str | None = None
     model_path: str | None = None
-    accuracy: float | None = None
+    accuracy: Optional[float] = None
+    ml_results: Dict[str, Any] = Field(default_factory=dict)
 
-    # ---------- DAG ---------- #
-    # ---------- DAG 状态 ---------- #
-    dag_state: DAGState = Field(
-        default_factory=lambda: DAGState(user_instruction="", channels=[])
-    )
+    _tracker_instance: Optional[Any] = PrivateAttr(default=None)
 
-    error_logs: List[str] = Field(default_factory=list)
-    # _dag_tracker: DAGTracker | None = PrivateAttr(default=None) # 1. Exclude from serialization
+    def tracker(self) -> "DAGTracker":
+        if self._tracker_instance is None:
+            self._tracker_instance = DAGTracker(self.dag_state)
+        return self._tracker_instance
 
-    class Config: # 2. Allow arbitrary types
+    class Config:
         arbitrary_types_allowed = True
 
-    # ---- 快捷方法供 Agents 使用 ---- #
-    def tracker(self) -> DAGTracker:
-        if not hasattr(self, "_dag_tracker") or self._dag_tracker is None:
-            self._dag_tracker = DAGTracker(self.dag_state)
-        return self._dag_tracker
-
-    def add_execution(self, *args, **kw) -> str:
-        """代理给 DAGTracker.add_execution 并返回新 signal node_id."""
-        return self.tracker().add_node(*args, **kw)
-    
 

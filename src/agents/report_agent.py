@@ -34,6 +34,10 @@ def report_agent(
             "issues_summary": issues_summary or "",
         }
     )
+    # 漂亮地打印出LLM的响应以供调试
+    print("\n--- Report Agent LLM Response ---")
+    print(resp.content)
+    print("--------------------------------\n")
     return {"report_markdown": resp.content}
 
 
