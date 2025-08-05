@@ -64,35 +64,4 @@ def build_executor_graph() -> StateGraph:
     return builder.compile()
 
 
-def build_outer_graph() -> StateGraph:
-    """Construct the static outer workflow graph combining planning and execution."""
-    builder = StateGraph(PHMState)
-
-    builder.add_node("plan", plan_agent)
-    builder.add_node("execute", execute_agent)
-    builder.add_node("reflect", lambda state: reflect_agent_node(state, stage="POST_EXECUTE"))
-    builder.add_node("inquire", lambda state: inquirer_agent(state, metrics=["cosine"]))
-    builder.add_node("prepare", dataset_preparer_agent)
-    builder.add_node("train", lambda state: shallow_ml_agent(state.datasets))
-    builder.add_node("report", report_agent_node)
-
-    builder.add_edge(START, "plan")
-    builder.set_entry_point("plan")
-    builder.add_edge("plan", "execute")
-    builder.add_edge("execute", "reflect")
-    builder.add_conditional_edges(
-        "reflect",
-        lambda state: "revise" if state.needs_revision else "done",
-        {
-            "done": "inquire",
-            "revise": "plan",
-        },
-    )
-    builder.add_edge("inquire", "prepare")
-    builder.add_edge("prepare", "train")
-    builder.add_edge("train", "report")
-    builder.add_edge("report", END)
-
-    return builder.compile()
-
 
