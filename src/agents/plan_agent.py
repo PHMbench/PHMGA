@@ -19,7 +19,7 @@ class Step(BaseModel):
 
     parent: str = Field(
         ...,
-        description="The ID of the parent node to which this operation should be applied."
+        description="The ID of the parent node. For ops requiring multiple inputs (e.g., `MultiVariableOp`), provide comma-separated IDs in the order expected by the operator, such as \"ch2,ch1\"."
     )
     op_name: str = Field(
         ...,

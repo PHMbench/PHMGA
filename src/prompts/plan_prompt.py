@@ -27,6 +27,7 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 **Output Format:**
 - You must output a valid JSON object with a single key "plan", which contains a list of "Step" objects, strictly following the required schema.
 - Each "Step" must have "parent", "op_name", and "params".
+- For operators requiring multiple inputs (MultiVariableOp), specify multiple parent node IDs separated by commas in the `parent` field. Example: `{\"parent\": \"ch2,ch1\", \"op_name\": \"cross_correlation\", \"params\": {}}`.
 
 **Example:**
 If the current leaf nodes are `["stft_01_ch1","patch_01_ch1","fft_01_ch1","spectrogram_01_ch2" "fft_01_ch2"]`, a strong plan would be to build a feature vector by calculating multiple statistics for each:
@@ -61,6 +62,19 @@ If the current leaf nodes are `["stft_01_ch1","patch_01_ch1","fft_01_ch1","spect
     {{
       "parent": "fft_01_ch2",
       "op_name": "kurtosis",
+      "params": {{}}
+    }}
+  ]
+}}
+```
+
+If an operation needs two inputs, specify both parents:
+```json
+{{
+  "plan": [
+    {{
+      "parent": "ch2,ch1",
+      "op_name": "cross_correlation",
       "params": {{}}
     }}
   ]

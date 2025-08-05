@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
+import numpy.typing as npt
 
 from src.states.phm_states import PHMState, InputData, ProcessedData
 from src.model import get_llm
-from src.tools.signal_processing_schemas import get_operator
+from src.tools.signal_processing_schemas import (
+    MultiVariableOp,
+    get_operator,
+)
 
 
 DATA_DIR = os.environ.get("PHM_DATA_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
@@ -39,6 +43,18 @@ def _get_results(node: InputData | ProcessedData) -> Dict[str, Any]:
     return {}
 
 
+def _extract_array(data: Any) -> npt.NDArray | None:
+    """Return the first ndarray from a mapping, or the object itself."""
+    if data is None:
+        return None
+    if isinstance(data, dict):
+        if not data:
+            return None
+        first = next(iter(data.values()))
+        return first
+    return data
+
+
 def execute_agent(state: PHMState) -> Dict[str, Any]:
     executed_steps = 0
     llm = get_llm(None)
@@ -55,37 +71,55 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     for idx, step in enumerate(state.detailed_plan[:MAX_STEPS], start=1):
         op_name = step.get("op_name")
         params = step.get("params", {})
-        parent_id = step.get("parent") # 从 step 的顶级字段获取 parent
+        parent_field = step.get("parent")
+        if isinstance(parent_field, str):
+            parent_ids = [p.strip() for p in parent_field.split(",") if p.strip()]
+        elif isinstance(parent_field, list):
+            parent_ids = parent_field
+        else:
+            parent_ids = []
 
-        if not parent_id or parent_id not in new_nodes: # 检查 parent_id 是否有效
-            state.dag_state.error_log.append(f"Missing or invalid parent: {parent_id} in step {step}")
+        if not parent_ids or any(pid not in new_nodes for pid in parent_ids):
+            state.dag_state.error_log.append(f"Missing or invalid parent: {parent_field} in step {step}")
             continue
 
         try:
             params = _resolve_params(llm, params)
             op_cls = get_operator(op_name)
-            op = op_cls(**params, parent=parent_id) # 将 params 直接传递
+            op_parent = parent_ids if len(parent_ids) > 1 else parent_ids[0]
+            op = op_cls(**params, parent=op_parent)
 
-            parent_node = new_nodes[parent_id]
-            parent_results = _get_results(parent_node)
-            # TODO : array or dict
-            ref_in = parent_results.get("ref")
-            tst_in = parent_results.get("tst")
-
-            if isinstance(ref_in, dict):
-                out_ref = {key: op.execute(value) for key, value in ref_in.items()}
+            if isinstance(op, MultiVariableOp):
+                input_keys = [part.split(":")[0].strip() for part in op.input_spec.split(",")]
+                ref_dict: Dict[str, npt.NDArray] = {}
+                tst_dict: Dict[str, npt.NDArray] = {}
+                for key, pid in zip(input_keys, parent_ids):
+                    p_node = new_nodes[pid]
+                    p_results = _get_results(p_node)
+                    r = _extract_array(p_results.get("ref"))
+                    t = _extract_array(p_results.get("tst"))
+                    if r is not None:
+                        ref_dict[key] = r
+                    if t is not None:
+                        tst_dict[key] = t
+                ref_in = ref_dict if ref_dict else None
+                tst_in = tst_dict if tst_dict else None
+                channel = ",".join([new_nodes[pid].meta.get("channel", "unknown") for pid in parent_ids])
+                parent_id_for_id = "__".join(parent_ids)
             else:
-                out_ref = op.execute(ref_in) if ref_in is not None else None
+                pid = parent_ids[0]
+                parent_node = new_nodes[pid]
+                parent_results = _get_results(parent_node)
+                ref_in = _extract_array(parent_results.get("ref"))
+                tst_in = _extract_array(parent_results.get("tst"))
+                channel = parent_node.meta.get("channel", "unknown")
+                parent_id_for_id = pid
 
-            if isinstance(tst_in, dict):
-                out_tst = {key: op.execute(value) for key, value in tst_in.items()}
-            else:
-                out_tst = op.execute(tst_in) if tst_in is not None else None
+            out_ref = op.execute(ref_in) if ref_in is not None else None
+            out_tst = op.execute(tst_in) if tst_in is not None else None
 
-            channel = parent_node.meta.get("channel", "unknown")
-            
             op_abbr = op_name
-            new_id = f"{op_abbr}_{idx:02d}_{parent_id}"
+            new_id = f"{op_abbr}_{idx:02d}_{parent_id_for_id}"
             kind = "both"
             if out_ref is not None and out_tst is None:
                 kind = "ref"
@@ -123,15 +157,14 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 shape = (0,)
             node = ProcessedData(
                 node_id=new_id,
-                parents=[parent_id],
-                source_signal_id=parent_id,
+                parents=parent_ids,
+                source_signal_id=parent_ids[0],
                 method=op_name,
-                # processed_data=out_tst if out_tst is not None else out_ref,
                 results={"ref": out_ref, "tst": out_tst},
                 meta={
                     "tool": op_name,
                     "params": params,
-                    "parent": parent_id,
+                    "parent": parent_field,
                     "channel": channel,
                     "kind": kind,
                     "method": op_name,
@@ -139,15 +172,15 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 },
                 shape=shape,
             )
-            # 更新副本
             new_nodes[node.node_id] = node
-            if parent_id in new_leaves:
-                new_leaves.remove(parent_id)
+            for pid in parent_ids:
+                if pid in new_leaves:
+                    new_leaves.remove(pid)
             new_leaves.append(node.node_id)
 
             executed_steps += 1
         except Exception as exc:
-            state.dag_state.error_log.append(f"{parent_id}: {exc}")
+            state.dag_state.error_log.append(f"{parent_field}: {exc}")
             break
 
     # 基于更新后的副本创建新的 DAGState 对象
