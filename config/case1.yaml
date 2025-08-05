@@ -11,20 +11,20 @@ report_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/case1/case1_final_re
 # Data selection
 ref_ids:
   - 47050
-  - 47044
-  - 47047
-  - 47053
-  - 47056
+  # - 47044
+  # - 47047
+  # - 47053
+  # - 47056
 test_ids:
   - 47051
-  - 47045
-  - 47048
-  - 47054
-  - 47057
+  # - 47045
+  # - 47048
+  # - 47054
+  # - 47057
 
 builder:
-  min_depth: 2
-  max_depth: 5
+  min_depth: 4
+  max_depth: 8
 
 # User instruction for the LLM
 user_instruction: >

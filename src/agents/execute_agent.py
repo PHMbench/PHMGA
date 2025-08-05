@@ -126,7 +126,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 parents=[parent_id],
                 source_signal_id=parent_id,
                 method=op_name,
-                processed_data=out_tst if out_tst is not None else out_ref,
+                # processed_data=out_tst if out_tst is not None else out_ref,
                 results={"ref": out_ref, "tst": out_tst},
                 meta={
                     "tool": op_name,

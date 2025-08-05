@@ -31,9 +31,9 @@ def build_builder_graph() -> StateGraph:
     builder.add_conditional_edges(
         "reflect",
         # MODIFIED: Use direct attribute access instead of .get() for Pydantic models
-        lambda state: "revise" if state.needs_revision else END,
+        lambda state: "plan" if state.needs_revision else END,
         {
-            "revise": "plan",
+            "plan": "plan",
             END: END,
         },
     )

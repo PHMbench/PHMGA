@@ -12,7 +12,7 @@ from src import model
 model._FAKE_LLM = FakeListChatModel(
     responses=[
         '{"plan": [{"op_name": "mean", "params": {"parent": "ch1"}}]}',
-        '{"decision": "proceed", "reason": "ok"}',
+        '{"decision": "finish", "reason": "ok"}',
         '# PHM Report\n\n' + 'x' * 600,
     ]
 )

@@ -46,7 +46,7 @@ def get_llm(
         if _FAKE_LLM is None:
             responses = [
                 '[{"op_name": "mean", "params": {"parent": "ch1"}}]',
-                '{"decision": "proceed", "reason": "analysis complete"}',
+                '{"decision": "finish", "reason": "analysis complete"}',
                 '{"plan": []}',
             ]
             _FAKE_LLM = FakeListChatModel(responses=responses)

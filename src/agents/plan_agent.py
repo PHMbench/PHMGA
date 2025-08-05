@@ -11,7 +11,7 @@ from src.model import get_llm
 from src.prompts.plan_prompt import PLANNER_PROMPT
 from src.states.phm_states import PHMState
 from src.tools.signal_processing_schemas import OP_REGISTRY
-
+from src.utils import get_dag_depth
 
 # 1. 定义期望的输出结构
 class Step(BaseModel):
@@ -95,7 +95,12 @@ def plan_agent(state: PHMState) -> dict:
                 "instruction": state.user_instruction,
                 "dag_json": dag_json, # Pass the lightweight topology
                 "tools": tools_description,
-                "reflection": json.dumps(reflection, indent=2)
+                "reflection": json.dumps(reflection, indent=2),
+                "min_depth": state.min_depth,
+                "min_width": state.min_width,
+                "max_depth": state.max_depth,
+                "current_depth": get_dag_depth(state.dag_state)
+
             }
         )
         

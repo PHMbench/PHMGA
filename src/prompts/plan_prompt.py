@@ -29,17 +29,17 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 - Each "Step" must have "parent", "op_name", and "params".
 
 **Example:**
-If the current leaf nodes are `["fft_01_ch1", "fft_01_ch2"]`, a strong plan would be to build a feature vector by calculating multiple statistics for each:
+If the current leaf nodes are `["stft_01_ch1","patch_01_ch1","fft_01_ch1","spectrogram_01_ch2" "fft_01_ch2"]`, a strong plan would be to build a feature vector by calculating multiple statistics for each:
 ```json
 {{
   "plan": [
     {{
-      "parent": "fft_01_ch1",
+      "parent": "patch_01_ch1",
       "op_name": "mean",
       "params": {{}}
     }},
     {{
-      "parent": "fft_01_ch1",
+      "parent": "stft_01_ch1",
       "op_name": "std",
       "params": {{}}
     }},
@@ -54,7 +54,7 @@ If the current leaf nodes are `["fft_01_ch1", "fft_01_ch2"]`, a strong plan woul
       "params": {{}}
     }},
     {{
-      "parent": "fft_01_ch2",
+      "parent": "spectrogram_01_ch2",
       "op_name": "std",
       "params": {{}}
     }},
@@ -71,8 +71,9 @@ If the current leaf nodes are `["fft_01_ch1", "fft_01_ch2"]`, a strong plan woul
 Instruction: {instruction}
 Current DAG: {dag_json}
 Available Tools: {tools}
-DAG minimal depth: 5
-DAG minimal width: 3
+DAG current_depth: {current_depth}
+DAG minimal depth: {min_depth}
+DAG minimal width: {min_width}
 """
 
 

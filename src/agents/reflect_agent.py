@@ -10,51 +10,12 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.model import get_llm
 from src.configuration import Configuration
 from src.prompts.reflect_prompt import REFLECT_PROMPT
-from phm_core import PHMState
+from src.states.phm_states import PHMState
+from src.utils import get_dag_depth
+
+VALID_DECISIONS = {"finish", "need_patch", "need_replan", "halt"}
 
 
-VALID_DECISIONS = {"proceed", "need_patch", "need_replan", "halt"}
-
-def get_dag_depth(dag_state: "DAGState") -> int:
-    """
-    计算DAG的最大深度。
-    深度定义为最长路径上的节点数。
-    """
-    if not dag_state.nodes:
-        return 0
-    
-    # 1. 从 state 中的节点和父子关系构建一个 networkx 有向图
-    G = nx.DiGraph()
-    for node_id, node in dag_state.nodes.items():
-        G.add_node(node_id)
-        # 确保 parents 属性是一个列表
-        parents = node.parents if isinstance(node.parents, list) else [node.parents]
-        for parent_id in parents:
-            if parent_id:  # 根节点的 parent 可能为空列表
-                G.add_edge(parent_id, node_id)
-
-    # 2. 检查图是否是无环的（DAG的基本要求）
-    if not nx.is_directed_acyclic_graph(G):
-        print("Warning: Cycle detected in the DAG. Depth calculation is not possible.")
-        return -1  # 返回-1表示错误状态
-
-    # 如果图中没有节点，深度为0
-    if not G.nodes:
-        return 0
-        
-    # 如果有节点但没有边（所有节点都是根节点），深度为1
-    if not G.edges:
-        return 1
-
-    # 3. 使用 networkx 计算最长路径的长度（边数）
-    #    深度（节点数）= 边数 + 1
-    try:
-        # nx.dag_longest_path_length 在整个DAG（可能不连通）中找到最长路径
-        longest_path_edges = nx.dag_longest_path_length(G)
-        return longest_path_edges + 1
-    except nx.NetworkXError:
-        # 这是一个备用逻辑，以防万一（例如，在空图上调用，尽管已经检查过）
-        return 1 if G.nodes else 0
 
 
 def reflect_agent(
@@ -100,6 +61,10 @@ def reflect_agent(
             "stage": stage,
             "dag_blueprint": json.dumps(dag_blueprint, ensure_ascii=False),
             "issues_summary": contextual_issues, # 使用包含深度信息的上下文
+            "min_depth": state.min_depth,
+            "min_width": state.min_width,
+            "max_depth": state.max_depth,
+            "current_depth": get_dag_depth(state.dag_state)
         }
     )
     # 漂亮地打印出LLM的响应以供调试
@@ -148,7 +113,7 @@ def reflect_agent_node(state: PHMState, *, stage: str) -> None:
         issues_summary=issues or None,
         state=state, # 传递整个 state
     )
-    needs_revision = result["decision"] != "proceed"
+    needs_revision = result["decision"] != "finish"
     history = state.reflection_history + [result["reason"]]
     return {"needs_revision": needs_revision, "reflection_history": history}
 
@@ -163,7 +128,7 @@ if __name__ == "__main__":
     from src import model
     from phm_core import PHMState, DAGState, InputData
 
-    model._FAKE_LLM = FakeListChatModel(responses=['{"decision": "proceed", "reason": "ok"}'])
+    model._FAKE_LLM = FakeListChatModel(responses=['{"decision": "finish", "reason": "ok"}'])
 
     instruction = "轴承故障诊断"
     ch1 = InputData(node_id="ch1", data={}, parents=[], shape=(0,))

@@ -262,9 +262,12 @@ class PHMState(BaseModel):
     reference_signal: InputData
     test_signal: InputData
     dag_state: DAGState
+    min_depth: int = 4
+    min_width: int = 4
+    max_depth: int = 8
 
-    high_level_plan: List[str] = Field(default_factory=list)
-    analysis_plan: AnalysisPlan | None = None
+    # high_level_plan: List[str] = Field(default_factory=list)
+    # analysis_plan: AnalysisPlan | None = None
     needs_revision: bool = False
 
     detailed_plan: List[dict] = Field(default_factory=list)

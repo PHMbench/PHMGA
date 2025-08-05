@@ -8,6 +8,7 @@ import numpy as np
 import os
 import pickle
 import uuid
+import networkx as nx
 
 # 禁用 LangSmith
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
@@ -20,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # 导入解耦后的两个图构建器
-from src.phm_outer_graph import build_builder_graph, build_executor_graph
+# from src.phm_outer_graph import build_builder_graph, build_executor_graph
 
 def get_research_topic(messages: List[AnyMessage]) -> str:
     """
@@ -249,7 +250,7 @@ def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -
     return signals, labels
 
 
-def apply_windowing(signals: Dict[str, np.ndarray], labels: Dict[str, str], window_size: int = 256, overlap: int = 128) -> Tuple[Dict[str, np.ndarray], Dict[str, str]]:
+def apply_windowing(signals: Dict[str, np.ndarray], labels: Dict[str, str], window_size: int = 4096, overlap: int = 128) -> Tuple[Dict[str, np.ndarray], Dict[str, str]]:
     """
     Apply windowing to the signals with specified window size and overlap.
     Returns a new dictionary of windowed signals and corresponding labels.
@@ -261,8 +262,8 @@ def apply_windowing(signals: Dict[str, np.ndarray], labels: Dict[str, str], wind
         B, L, C = sig_array.shape
         step = window_size - overlap
         num_windows = max(1, (L - overlap) // step)
-        
-        for w in range(num_windows):
+
+        for w in range(1, num_windows):
             start = w * step
             end = start + window_size
             if end > L:
@@ -394,3 +395,44 @@ def load_state(filepath: str):
         print(f"Error loading state: {e}")
         return None
 
+
+def get_dag_depth(dag_state: "DAGState") -> int:
+    """
+    计算DAG的最大深度。
+    深度定义为最长路径上的节点数。
+    """
+    if not dag_state.nodes:
+        return 0
+    
+    # 1. 从 state 中的节点和父子关系构建一个 networkx 有向图
+    G = nx.DiGraph()
+    for node_id, node in dag_state.nodes.items():
+        G.add_node(node_id)
+        # 确保 parents 属性是一个列表
+        parents = node.parents if isinstance(node.parents, list) else [node.parents]
+        for parent_id in parents:
+            if parent_id:  # 根节点的 parent 可能为空列表
+                G.add_edge(parent_id, node_id)
+
+    # 2. 检查图是否是无环的（DAG的基本要求）
+    if not nx.is_directed_acyclic_graph(G):
+        print("Warning: Cycle detected in the DAG. Depth calculation is not possible.")
+        return -1  # 返回-1表示错误状态
+
+    # 如果图中没有节点，深度为0
+    if not G.nodes:
+        return 0
+        
+    # 如果有节点但没有边（所有节点都是根节点），深度为1
+    if not G.edges:
+        return 1
+
+    # 3. 使用 networkx 计算最长路径的长度（边数）
+    #    深度（节点数）= 边数 + 1
+    try:
+        # nx.dag_longest_path_length 在整个DAG（可能不连通）中找到最长路径
+        longest_path_edges = nx.dag_longest_path_length(G)
+        return longest_path_edges + 1
+    except nx.NetworkXError:
+        # 这是一个备用逻辑，以防万一（例如，在空图上调用，尽管已经检查过）
+        return 1 if G.nodes else 0
