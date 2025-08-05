@@ -250,7 +250,13 @@ def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -
 
 
 def initialize_state(
-    user_instruction: str, metadata_path: str, h5_path: str, ref_ids: list[int], test_ids: list[int], case_name: str
+    user_instruction: str,
+    metadata_path: str,
+    h5_path: str,
+    ref_ids: list[int],
+    test_ids: list[int],
+    case_name: str,
+    fs: float | None = None,
 ) -> PHMState:
     """
     根据初始输入，创建并初始化整个系统的状态（PHMState）。
@@ -280,16 +286,20 @@ def initialize_state(
         
         first_sig_shape = next(iter(channel_ref_signals.values())).shape
 
+        meta = {
+            "channel": channel_name,
+            "labels": all_labels,  # 所有标签信息都附加到每个通道节点
+        }
+        if fs is not None:
+            meta["fs"] = fs
+
         node = InputData(
             node_id=channel_name,
             data={},
             results={"ref": channel_ref_signals, "tst": channel_test_signals},
             parents=[],
             shape=first_sig_shape,
-            meta={
-                "channel": channel_name,
-                "labels": all_labels # 所有标签信息都附加到每个通道节点
-            }
+            meta=meta,
         )
         nodes[channel_name] = node
         leaves.append(channel_name)
@@ -311,6 +321,7 @@ def initialize_state(
         reference_signal=next(iter(nodes.values())),
         test_signal=next(iter(nodes.values())),
         dag_state=dag_state,
+        fs=fs,
     )
 
 

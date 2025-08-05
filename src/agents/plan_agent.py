@@ -10,7 +10,7 @@ from src.configuration import Configuration
 from src.model import get_llm
 from src.prompts.plan_prompt import PLANNER_PROMPT
 from src.states.phm_states import PHMState
-from src.tools.signal_processing_schemas import OP_REGISTRY
+from src.tools.signal_processing_schemas import OP_REGISTRY, get_operator
 from src.utils import get_dag_depth
 
 # 1. 定义期望的输出结构
@@ -122,6 +122,20 @@ def plan_agent(state: PHMState) -> dict:
         # 4. 使用 Plan.model_validate() 验证和转换
         plan_obj = Plan.model_validate(plan_dict)
         detailed_plan = [step.model_dump() for step in plan_obj.plan]
+
+        # --- Inject sampling frequency if required ---
+        fs = getattr(state, "fs", None)
+        if fs is None:
+            fs = getattr(state.reference_signal, "meta", {}).get("fs")
+
+        if fs is not None:
+            for step in detailed_plan:
+                try:
+                    op_cls = get_operator(step["op_name"])
+                except KeyError:
+                    continue
+                if "fs" in op_cls.model_fields and "fs" not in step["params"]:
+                    step["params"]["fs"] = fs
 
     except Exception as e:
         # 捕获 LLM 调用、解析或验证中可能出现的错误
