@@ -15,6 +15,8 @@ os.environ["LANGCHAIN_PROJECT"] = ""
 
 from src.phm_outer_graph import build_builder_graph, build_executor_graph
 from src.utils import initialize_state, save_state, load_state, generate_final_report
+from src.utils.visualization import visualize_dag_feature_evolution_umap
+from src.agents.reflect_agent import get_dag_depth
 
 def run_case(config_path: str):
     """
@@ -24,8 +26,11 @@ def run_case(config_path: str):
     print(f"--- Loading configuration from {config_path} ---")
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
-    
+
     state_save_path = config['state_save_path']
+    builder_cfg = config.get('builder', {})
+    min_depth = builder_cfg.get('min_depth', 0)
+    max_depth = builder_cfg.get('max_depth', float('inf'))
 
     # --- Check for existing state ---
     if os.path.exists(state_save_path):
@@ -50,15 +55,35 @@ def run_case(config_path: str):
         # --- Part 1: Run DAG Builder Workflow ---
         print("\n--- [Part 1] Starting DAG Builder Workflow ---")
         builder_app = build_builder_graph()
-        thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}}
 
         built_state = initial_phm_state.model_copy(deep=True)
-        for event in builder_app.stream(initial_phm_state, config=thread_config):
-            for node_name, state_update in event.items():
-                print(f"--- Builder Node Executed: {node_name} ---")
-                if state_update is not None:
-                    for key, value in state_update.items():
-                        setattr(built_state, key, value)
+        iteration = 0
+
+        while True:
+            iteration += 1
+            print(f"\n--- Builder Iteration {iteration} ---")
+            thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+            for event in builder_app.stream(built_state, config=thread_config):
+                for node_name, state_update in event.items():
+                    print(f"--- Builder Node Executed: {node_name} ---")
+                    if state_update is not None:
+                        for key, value in state_update.items():
+                            setattr(built_state, key, value)
+
+            depth = get_dag_depth(built_state.dag_state)
+            print(f"Current DAG depth: {depth}")
+
+            if depth >= max_depth:
+                print(f"Reached max depth {max_depth}. Stopping builder.")
+                break
+
+            if depth < min_depth:
+                print(f"Depth {depth} below min_depth {min_depth}. Continuing regardless of reflection.")
+                built_state.needs_revision = True
+
+            if not built_state.needs_revision:
+                print("Reflect agent indicated to stop.")
+                break
 
         print("\n--- [Part 1] DAG Builder Workflow Finished ---")
         if not built_state:
@@ -88,7 +113,12 @@ def run_case(config_path: str):
                 for key, value in state_update.items():
                     setattr(final_state, key, value)
 
-    # --- Part 3: Generate Final Report ---
+    # --- Part 3: Visualize Feature Evolution ---
+    root_node = next(iter(final_state.dag_state.nodes.values()))
+    labels = list(root_node.meta.get("labels", {}).values())
+    visualize_dag_feature_evolution_umap(final_state.dag_state, final_state, labels)
+
+    # --- Part 4: Generate Final Report ---
     generate_final_report(final_state, config['report_path'])
 
 if __name__ == "__main__":

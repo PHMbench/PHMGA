@@ -22,6 +22,10 @@ test_ids:
   - 47054
   - 47057
 
+builder:
+  min_depth: 2
+  max_depth: 5
+
 # User instruction for the LLM
 user_instruction: >
   Analyze the bearing signals for potential faults. The reference set contains signals
