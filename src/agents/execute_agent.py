@@ -62,8 +62,16 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
             continue
 
         try:
-            params = _resolve_params(llm, params)
             op_cls = get_operator(op_name)
+            if "fs" in op_cls.model_fields and "fs" not in params:
+                fs_val = getattr(state, "fs", None)
+                if fs_val is None:
+                    fs_val = new_nodes[parent_id].meta.get("fs")
+                if fs_val is None:
+                    fs_val = getattr(state.reference_signal, "meta", {}).get("fs")
+                if fs_val is not None:
+                    params["fs"] = fs_val
+            params = _resolve_params(llm, params)
             op = op_cls(**params, parent=parent_id) # 将 params 直接传递
 
             parent_node = new_nodes[parent_id]
@@ -164,7 +172,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     temp_tracker.write_png(png_path)
     new_dag_state.graph_path = png_path + ".png"
 
-    return {"dag_state": new_dag_state}
+    return {"dag_state": new_dag_state, "executed_steps": executed_steps}
 
 
 if __name__ == "__main__":

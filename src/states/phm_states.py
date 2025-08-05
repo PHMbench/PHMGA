@@ -265,6 +265,7 @@ class PHMState(BaseModel):
     min_depth: int = 4
     min_width: int = 4
     max_depth: int = 8
+    fs: float | None = Field(default=None, description="Sampling frequency of the signals in Hz.")
 
     # high_level_plan: List[str] = Field(default_factory=list)
     # analysis_plan: AnalysisPlan | None = None
