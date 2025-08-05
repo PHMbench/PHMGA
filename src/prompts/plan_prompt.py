@@ -10,14 +10,18 @@ Your primary objective is to devise a plan that adds a new layer of operations t
     * **Frequency-Domain -> Feature Extraction:** Once in the frequency domain, extract meaningful features. This can involve calculating statistics (`mean`, `std`, `kurtosis`, `skew`) over the entire spectrum or over specific, targeted frequency bands.
     * use advanced tools like `patch` to enhance the feature extraction process.
     * you are allowed to build multiple branches in the DAG to enrich the feature set.
-3.  **Build a Feature Vector:** It is often best to apply a *suite* of statistical operations to a transformed signal (like an FFT output). This creates a rich feature vector for the machine learning model, rather than just a single value.
-4.  **Think About the Goal:** The user's `instruction` provides the high-level context. Let it guide your choice of tools to build a truly useful pipeline.
-5.  **DAG depth and width:** Consider the depth and width of the DAG when planning new operations. Deeper DAGs can capture more complex patterns, while wider DAGs can extract more features. Balance these aspects based on the user's goals and the characteristics of the input signals.
+3.  **Understand Signal Shapes:**
+    * Feature operators require a length or frequency axis. If a node's data is shaped `(B, C)` (batch and channel only), it is already a feature vector and **should not** receive further statistical operations.
+    * Applying `patch` can produce data shaped `(B, P, L, C)`. Feature extraction along the length axis can then reduce this to `(B, P, C1)`, and additional feature operators may combine those into `(B, P, C1*C2)`.
+4.  **Build a Feature Vector:** It is often best to apply a *suite* of statistical operations to a transformed signal (like an FFT output). This creates a rich feature vector for the machine learning model, rather than just a single value.
+5.  **Think About the Goal:** The user's `instruction` provides the high-level context. Let it guide your choice of tools to build a truly useful pipeline.
+6.  **DAG depth and width:** Consider the depth and width of the DAG when planning new operations. Deeper DAGs can capture more complex patterns, while wider DAGs can extract more features. Balance these aspects based on the user's goals and the characteristics of the input signals.
 
 **Your Task & Rules:**
 - Your plan must add a **single new layer** of operations to the graph. Do not create multi-step chains in one plan.
-- For each step in your plan, you can select **any existing node** from the `dag_json` as the `parent`. You are not limited to the original input signals or the leaf nodes.
+- For each step in your plan, you can select **any existing node** from the `dag_json` as the `parent`. You are not limited to the original input nodes or the leaf nodes.
 - You **must** use the exact `op_name` and parameter names defined in the `tools` input.
+- Aggregate operators (`mean`, `std`, `skew`, etc.) should not be applied to nodes that already represent aggregated features or have shape `(B, C)`.
 
 **Input:**
 - `instruction`: The user's high-level goal.
@@ -29,7 +33,7 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 - Each "Step" must have "parent", "op_name", and "params".
 
 **Example:**
-If the current leaf nodes are `["stft_01_ch1","patch_01_ch1","fft_01_ch1","spectrogram_01_ch2" "fft_01_ch2"]`, a strong plan would be to build a feature vector by calculating multiple statistics for each:
+If the current nodes are `["ch1","ch2","stft_01_ch1","patch_01_ch1","fft_01_ch1","spectrogram_01_ch2","fft_01_ch2"]`, a strong plan would be to build a feature vector by calculating multiple statistics for each:
 ```json
 {{
   "plan": [
@@ -61,6 +65,16 @@ If the current leaf nodes are `["stft_01_ch1","patch_01_ch1","fft_01_ch1","spect
     {{
       "parent": "fft_01_ch2",
       "op_name": "kurtosis",
+      "params": {{}}
+    }}
+    {{
+      "parent": "ch2",
+      "op_name": "kurtosis",
+      "params": {{}}
+    }}
+    {{
+      "parent": "ch2,ch1",
+      "op_name": "cross_correlation",
       "params": {{}}
     }}
   ]

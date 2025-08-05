@@ -80,11 +80,12 @@ def plan_agent(state: PHMState) -> dict:
                     "node_id": node.node_id,
                     "parents": node.parents,
                     "stage": node.stage,
-                    "method": getattr(node, 'method', None)
+                    "method": getattr(node, 'method', None),
+                    "shape": node.shape
                 }
                 for node in state.dag_state.nodes.values()
             ],
-            "leaves": state.dag_state.leaves
+            # "leaves": state.dag_state.leaves, # Optional: include leaves if needed
         }
         dag_json = json.dumps(dag_topology, indent=2)
         

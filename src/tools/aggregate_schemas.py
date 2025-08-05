@@ -254,7 +254,7 @@ class SpectralCentroidOp(AggregateOp):
     input_spec: ClassVar[str] = "(..., F, C)"
     output_spec: ClassVar[str] = "(..., C)"
     
-    fs: float = Field(..., description="Sampling frequency of the signal.")
+    fs: float = Field(3125, description="Sampling frequency of the signal.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         """Assumes x is in the frequency domain (e.g., output of FFT)."""

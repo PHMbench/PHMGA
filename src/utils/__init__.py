@@ -247,7 +247,7 @@ def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -
             print(f"Warning: ID {sample_id} not found in HDF5 file.")
     
     h5_file.close()
-    return signals, labels
+    return signals, labels, metadata_df
 
 
 def apply_windowing(signals: Dict[str, np.ndarray], labels: Dict[str, str], window_size: int = 4096, overlap: int = 128) -> Tuple[Dict[str, np.ndarray], Dict[str, str]]:
@@ -283,8 +283,8 @@ def initialize_state(
     根据初始输入，创建并初始化整个系统的状态（PHMState）。
     为每个物理信号通道创建一个初始节点，并将所有信号按通道分配。
     """
-    ref_signals, ref_labels = load_signal_data(metadata_path, h5_path, ref_ids)
-    test_signals, test_labels = load_signal_data(metadata_path, h5_path, test_ids)
+    ref_signals, ref_labels, ref_metadata = load_signal_data(metadata_path, h5_path, ref_ids)
+    test_signals, test_labels, test_metadata = load_signal_data(metadata_path, h5_path, test_ids)
 
     if use_window:
         # Apply windowing to the signals
@@ -320,7 +320,8 @@ def initialize_state(
             shape=first_sig_shape,
             meta={
                 "channel": channel_name,
-                "labels": all_labels # 所有标签信息都附加到每个通道节点
+                "labels": all_labels,  # 所有标签信息都附加到每个通道节点
+                "fs": ref_metadata['Sample_rate'].iloc[0]  # 采样频率
             }
         )
         nodes[channel_name] = node
