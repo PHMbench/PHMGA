@@ -39,3 +39,6 @@ openpyxl
 numpy
 scipy
 matplotlib
+
+umap-learn
+seaborn
