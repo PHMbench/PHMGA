@@ -19,7 +19,10 @@ def _load_features_from_path(path: str) -> np.ndarray:
             if not data.files:
                 return np.array([])
             # Sort keys to maintain a consistent order, although not strictly necessary
-            features = [np.asarray(data[key]).ravel() for key in sorted(data.keys())]
+            features = []
+            for key in sorted(data.keys()):
+                shape = data[key].shape
+                features.append(np.asarray(data[key]).reshape(shape[0], -1))  # Flatten each sample
             return np.vstack(features)
     else:
         # For .npy, we assume the file contains a batch of samples.
@@ -89,10 +92,31 @@ if __name__ == "__main__":
     os.makedirs(save_dir, exist_ok=True)
 
     # Mock features that would be saved by execute_agent as .npz
-    features_ref1 = {'id1': 0.5, 'id2': 0.8, 'id3': 0.2}
-    features_tst1 = {'id4': 0.6, 'id5': 0.9}
-    features_ref2 = {'id1': 1.5, 'id2': 1.8}
-    features_tst2 = {'id4': 1.6, 'id5': 1.9, 'id6': 1.1}
+    # B,L,C format with L=20, C=3
+    features_ref1 = {
+        'id1': np.random.rand(20, 3),  # L=20, C=3
+        'id2': np.random.rand(20, 3),  # L=20, C=3
+        'id3': np.random.rand(20, 3)   # L=20, C=3
+    }
+    features_tst1 = {
+        'id4': np.random.rand(20, 3),  # L=20, C=3
+        'id5': np.random.rand(20, 3)   # L=20, C=3
+    }
+    features_ref2 = {
+        'id1': np.random.rand(20, 3),  # L=20, C=3
+        'id2': np.random.rand(20, 3)   # L=20, C=3
+    }
+    features_tst2 = {
+        'id4': np.random.rand(20, 3),  # L=20, C=3
+        'id5': np.random.rand(20, 3),  # L=20, C=3
+        'id6': np.random.rand(20, 3)   # L=20, C=3
+    }
+    
+    # Option for B,C format (commented out)
+    # features_ref1 = {'id1': np.random.rand(3), 'id2': np.random.rand(3), 'id3': np.random.rand(3)}
+    # features_tst1 = {'id4': np.random.rand(3), 'id5': np.random.rand(3)}
+    # features_ref2 = {'id1': np.random.rand(3), 'id2': np.random.rand(3)}
+    # features_tst2 = {'id4': np.random.rand(3), 'id5': np.random.rand(3), 'id6': np.random.rand(3)}
 
     # Save them as .npz files
     ref1_path = os.path.join(save_dir, "ref1.npz")

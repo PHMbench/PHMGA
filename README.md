@@ -11,11 +11,12 @@
 # cases
 ## case 1: DAG first
 
-## case 2: DAG with data feature relection
+## case 2: DAG with data feature reflection
 
+## case 3: decouple DAG and data
 
-## case 3: Coding augmentation
+## case 4: Coding augmentation
 
-## case 4: prompt evaluation
+## case 5: prompt evaluation
 
-## case 5: multi-agent 并发
+## case 6: multi-agent 并发

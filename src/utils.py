@@ -249,34 +249,8 @@ def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -
     return signals, labels
 
 
-def apply_windowing(signals: Dict[str, np.ndarray], labels: Dict[str, str], window_size: int = 256, overlap: int = 128) -> Tuple[Dict[str, np.ndarray], Dict[str, str]]:
-    """
-    Apply windowing to the signals with specified window size and overlap.
-    Returns a new dictionary of windowed signals and corresponding labels.
-    """
-    windowed_signals = {}
-    windowed_labels = {}
-    
-    for sig_id, sig_array in signals.items():
-        B, L, C = sig_array.shape
-        step = window_size - overlap
-        num_windows = max(1, (L - overlap) // step)
-        
-        for w in range(num_windows):
-            start = w * step
-            end = start + window_size
-            if end > L:
-                break  # Avoid going out of bounds
-            
-            windowed_sig = sig_array[:, start:end, :]
-            new_id = f"{sig_id}_w{w+1}"
-            windowed_signals[new_id] = windowed_sig
-            windowed_labels[new_id] = labels[sig_id]
-    
-    return windowed_signals, windowed_labels
-
 def initialize_state(
-    user_instruction: str, metadata_path: str, h5_path: str, ref_ids: list[int], test_ids: list[int], case_name: str, use_window: bool = True
+    user_instruction: str, metadata_path: str, h5_path: str, ref_ids: list[int], test_ids: list[int], case_name: str
 ) -> PHMState:
     """
     根据初始输入，创建并初始化整个系统的状态（PHMState）。
@@ -284,11 +258,6 @@ def initialize_state(
     """
     ref_signals, ref_labels = load_signal_data(metadata_path, h5_path, ref_ids)
     test_signals, test_labels = load_signal_data(metadata_path, h5_path, test_ids)
-
-    if use_window:
-        # Apply windowing to the signals
-        ref_signals, ref_labels = apply_windowing(ref_signals, ref_labels)
-        test_signals, test_labels = apply_windowing(test_signals, test_labels)
 
     if not ref_signals or not test_signals:
         raise ValueError("Failed to load reference or test signals.")

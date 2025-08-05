@@ -100,26 +100,26 @@ def run_case(config_path: str):
     # At this point, `built_state` is guaranteed to be a valid state object,
     # either loaded from file or newly created.
 
-    # --- Part 2: Run DAG Executor Workflow ---
-    print("\n--- [Part 2] Starting DAG Executor Workflow ---")
-    executor_app = build_executor_graph()
-    thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}} # Use a new thread for the executor
+    # # --- Part 2: Run DAG Executor Workflow ---
+    # print("\n--- [Part 2] Starting DAG Executor Workflow ---")
+    # executor_app = build_executor_graph()
+    # thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}} # Use a new thread for the executor
     
-    final_state = built_state.model_copy(deep=True)
-    for event in executor_app.stream(built_state, config=thread_config):
-        for node_name, state_update in event.items():
-            print(f"--- Executor Node Executed: {node_name} ---")
-            if state_update is not None:
-                for key, value in state_update.items():
-                    setattr(final_state, key, value)
+    # final_state = built_state.model_copy(deep=True)
+    # for event in executor_app.stream(built_state, config=thread_config):
+    #     for node_name, state_update in event.items():
+    #         print(f"--- Executor Node Executed: {node_name} ---")
+    #         if state_update is not None:
+    #             for key, value in state_update.items():
+    #                 setattr(final_state, key, value)
 
-    # --- Part 3: Visualize Feature Evolution ---
-    root_node = next(iter(final_state.dag_state.nodes.values()))
-    labels = list(root_node.meta.get("labels", {}).values())
-    visualize_dag_feature_evolution_umap(final_state.dag_state, final_state, labels)
+    # # --- Part 3: Visualize Feature Evolution ---
+    # root_node = next(iter(final_state.dag_state.nodes.values()))
+    # labels = list(root_node.meta.get("labels", {}).values())
+    # visualize_dag_feature_evolution_umap(final_state.dag_state, final_state, labels)
 
-    # --- Part 4: Generate Final Report ---
-    generate_final_report(final_state, config['report_path'])
+    # # --- Part 4: Generate Final Report ---
+    # generate_final_report(final_state, config['report_path'])
 
 if __name__ == "__main__":
     # This allows running the case directly for testing

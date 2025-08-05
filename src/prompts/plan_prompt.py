@@ -12,6 +12,7 @@ Your primary objective is to devise a plan that adds a new layer of operations t
     * you are allowed to build multiple branches in the DAG to enrich the feature set.
 3.  **Build a Feature Vector:** It is often best to apply a *suite* of statistical operations to a transformed signal (like an FFT output). This creates a rich feature vector for the machine learning model, rather than just a single value.
 4.  **Think About the Goal:** The user's `instruction` provides the high-level context. Let it guide your choice of tools to build a truly useful pipeline.
+5.  **DAG depth and width:** Consider the depth and width of the DAG when planning new operations. Deeper DAGs can capture more complex patterns, while wider DAGs can extract more features. Balance these aspects based on the user's goals and the characteristics of the input signals.
 
 **Your Task & Rules:**
 - Your plan must add a **single new layer** of operations to the graph. Do not create multi-step chains in one plan.
@@ -70,6 +71,8 @@ If the current leaf nodes are `["fft_01_ch1", "fft_01_ch2"]`, a strong plan woul
 Instruction: {instruction}
 Current DAG: {dag_json}
 Available Tools: {tools}
+DAG minimal depth: 5
+DAG minimal width: 3
 """
 
 
