@@ -511,7 +511,7 @@ def generate_final_report(final_state, report_path: str):
     保存最终的报告。
     """
     print("\n--- Workflow Finished ---")
-    if isinstance(final_state, dict) and final_state.get("final_report"):
+    if final_state.get("final_report"):
         report = final_state["final_report"]
         print("\nFinal Report:")
         print(report)

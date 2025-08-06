@@ -13,7 +13,8 @@ except Exception:  # pragma: no cover
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.svm import SVC
 from sklearn.metrics import accuracy_score, f1_score
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_score, cross_validate
+from sklearn.metrics import make_scorer
 from scipy.stats import mode
 
 
@@ -65,25 +66,26 @@ def shallow_ml_agent(
     y_truth = None
 
     for node_id, data in datasets.items():
-        X_train = np.asarray(data.get("X_train", []))
-        X_test = np.asarray(data.get("X_test", []))
-        y_train = np.asarray(data.get("y_train", []))
-        y_test = np.asarray(data.get("y_test", []))
-
-        if y_truth is None and y_test.size:
-            y_truth = y_test
+        X_train, y_train = data["X_train"], data["y_train"]
+        X_test, y_test = data["X_test"], data["y_test"]
 
         est = _build_estimator(algorithm)
 
-        cv = min(cv_folds, len(y_train)) if len(y_train) else 0
+        # --- Cross-validation ---
+        cv = min(cv_folds, len(np.unique(y_train)))
         if cv >= 2 and len(np.unique(y_train)) > 1:
-            acc_scores = cross_val_score(est, X_train, y_train, cv=cv, scoring="accuracy")
-            f1_scores = cross_val_score(est, X_train, y_train, cv=cv, scoring="f1")
-            cv_acc = float(acc_scores.mean())
-            cv_f1 = float(f1_scores.mean())
+            # FIX: Explicitly set scoring for f1 to handle multiclass targets
+            scoring = {
+                'accuracy': 'accuracy',
+                'f1_weighted': make_scorer(f1_score, average='weighted', zero_division=0)
+            }
+            cv_scores = cross_validate(est, X_train, y_train, cv=cv, scoring=scoring, n_jobs=-1)
+            cv_acc = np.mean(cv_scores['test_accuracy'])
+            cv_f1 = np.mean(cv_scores['test_f1_weighted'])
         else:
             cv_acc = cv_f1 = 0.0
 
+        # --- Final model training and evaluation on test set ---
         if len(np.unique(y_train)) > 1:
             est.fit(X_train, y_train)
         else:
@@ -93,7 +95,8 @@ def shallow_ml_agent(
         y_proba = est.predict_proba(X_test) if hasattr(est, "predict_proba") and X_test.size else None
 
         acc = accuracy_score(y_test, y_pred) if y_test.size else 0.0
-        f1 = f1_score(y_test, y_pred) if y_test.size else 0.0
+        # FIX: Use zero_division=0 to suppress UndefinedMetricWarning when a class has no true or predicted samples.
+        f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0) if y_test.size else 0.0
 
         predictions.append(y_pred)
         probas.append(y_proba)
@@ -116,7 +119,8 @@ def shallow_ml_agent(
         else:
             ensemble_pred = mode(preds_arr, axis=0, keepdims=False).mode
         ensemble_metrics["accuracy"] = float(accuracy_score(y_truth, ensemble_pred))
-        ensemble_metrics["f1"] = float(f1_score(y_truth, ensemble_pred))
+        # FIX: Also apply the fix to the ensemble F1 score calculation
+        ensemble_metrics["f1"] = float(f1_score(y_truth, ensemble_pred, average='weighted', zero_division=0))
 
     rows = []
     for node_id, info in models.items():

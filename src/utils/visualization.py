@@ -1,219 +1,156 @@
+from __future__ import annotations
+
 import os
-from typing import List, Any
+from typing import Dict, Any
 
-import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
-import networkx as nx
+import numpy as np
 import umap
+from sklearn.preprocessing import StandardScaler
+import matplotlib.patches as mpatches
 
-from src.states.phm_states import PHMState, DAGState, InputData
+# --- Keep the old function for now, or remove it if no longer needed ---
+# from src.states.phm_states import PHMState, DAGState, InputData
+# def visualize_dag_feature_evolution_umap(state: PHMState) -> None:
+#     ... (old implementation)
 
 
-def visualize_dag_feature_evolution_umap(state: PHMState) -> None:
+def visualize_datasets_umap(
+    datasets: Dict[str, Dict[str, Any]], 
+    save_dir: str = "save/dataset_umaps",
+    plot_train: bool = False,
+    show_title: bool = False
+) -> None:
     """
-    Generate UMAP projections of features at each node in the DAG using data from the state.
+    Generates and saves UMAP visualizations for datasets.
 
-    Parameters
-    ----------
-    state : PHMState
-        The full state object containing the DAG, datasets, and other necessary info.
+    By default, it plots only the test set. The training set can be included
+    optionally. The UMAP embedding is always learned on all available data
+    (train + test) to ensure a consistent projection space.
+
+    Args:
+        datasets: Dictionary of datasets from dataset_preparer_agent.
+        save_dir: Directory to save the output PNG files.
+        plot_train: If True, plots the training data points. Defaults to False.
+        show_title: If True, adds a title to the plot. Defaults to False.
     """
-    dag = state.dag_state
-    if not dag or not dag.nodes:
-        print("DAG state is empty. Skipping UMAP visualization.")
-        return
+    print(f"--- Generating UMAP visualizations for {len(datasets)} datasets ---")
+    os.makedirs(save_dir, exist_ok=True)
 
-    # --- Extract labels from the state's datasets ---
-    y_labels = []
-    if state.datasets:
-        # Get the first available dataset to extract labels
-        first_dataset_key = next(iter(state.datasets))
-        dataset = state.datasets[first_dataset_key]
-        y_train = dataset.get('y_train')
-        y_test = dataset.get('y_test')
-        
-        if y_train is not None:
-            y_labels.extend(list(y_train))
-        if y_test is not None:
-            y_labels.extend(list(y_test))
+    for node_id, data in datasets.items():
+        print(f"Processing: {node_id}")
 
-    if not y_labels:
-        print("Could not find labels in state.datasets. Plots will be uncolored.")
+        # --- 1. Get Train and Test data ---
+        X_train, y_train = data.get("X_train"), data.get("y_train")
+        X_test, y_test = data.get("X_test"), data.get("y_test")
 
-    # --- Get node order ---
-    try:
-        # This part is simplified as tracker might not be a standard part of the state
-        node_ids = list(dag.nodes.keys()) # Simple iteration if topological sort fails or isn't needed
-    except Exception:
-        node_ids = list(dag.nodes.keys())
-
-    output_dir = os.path.join("save", "feature_evolution_umap")
-    os.makedirs(output_dir, exist_ok=True)
-
-    for idx, node_id in enumerate(node_ids, start=1):
-        node = dag.nodes.get(node_id)
-        if node is None:
-            continue
-
-        # MODIFIED: Access results from the node, which should contain 'ref' and 'tst' keys
-        results_dict = node.results
-        if not isinstance(results_dict, dict) or not results_dict:
-            print(f"Node {node_id} has no dictionary results; skipping.")
+        # Basic validation
+        if not isinstance(X_test, np.ndarray) or not isinstance(y_test, np.ndarray) or X_test.shape[0] == 0:
+            print(f"  Skipping {node_id}: Test set is empty or invalid.")
             continue
         
-        # Concatenate 'ref' and 'tst' data if they exist
-        ref_data = results_dict.get("ref")
-        tst_data = results_dict.get("tst")
+        n_train = X_train.shape[0] if isinstance(X_train, np.ndarray) else 0
+        n_test = X_test.shape[0]
+
+        # Combine features for a unified UMAP transformation
+        X_combined = np.vstack((X_train, X_test)) if n_train > 0 else X_test
+
+        if X_combined.shape[0] < 2:
+            print(f"  Skipping {node_id}: Not enough samples ({X_combined.shape[0]}) for UMAP.")
+            continue
+
+        # --- 2. Preprocess and run UMAP on combined data ---
+        X_scaled = StandardScaler().fit_transform(X_combined)
         
-        all_data = []
-        if isinstance(ref_data, np.ndarray):
-            all_data.append(ref_data)
-        if isinstance(tst_data, np.ndarray):
-            all_data.append(tst_data)
+        n_neighbors = min(15, X_scaled.shape[0] - 1)
+        if n_neighbors < 2:
+             print(f"  Skipping {node_id}: Too few samples to determine valid n_neighbors > 1.")
+             continue
 
-        if not all_data:
-            print(f"Node {node_id} has no 'ref' or 'tst' numpy arrays in results; skipping.")
-            continue
+        reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=0.1, n_components=2, random_state=42, n_jobs=1)
+        embedding = reducer.fit_transform(X_scaled)
+
+        # Split the embedding back into train and test sets
+        embedding_train = embedding[:n_train] if n_train > 0 else np.array([])
+        embedding_test = embedding[n_train:]
+
+        # --- 3. Plot the results ---
+        plt.figure(figsize=(12, 8))
         
-        try:
-            data = np.concatenate(all_data, axis=0)
-        except ValueError as e:
-            print(f"Failed to concatenate results for node {node_id} due to shape mismatch: {e}; skipping.")
-            continue
+        y_combined = np.concatenate((y_train, y_test)) if n_train > 0 and plot_train else y_test
+        unique_labels = np.unique(y_combined)
+        norm = plt.Normalize(vmin=np.min(unique_labels), vmax=np.max(unique_labels))
+        cmap = plt.get_cmap('Spectral')
 
-        if data.size == 0:
-            print(f"Node {node_id} produced empty results; skipping.")
-            continue
+        # Plot training data (circles) if requested
+        if plot_train and n_train > 0:
+            plt.scatter(
+                embedding_train[:, 0], embedding_train[:, 1], 
+                c=y_train, cmap=cmap, norm=norm, s=50, marker='o'
+            )
+        
+        # Plot test data (crosses)
+        plt.scatter(
+            embedding_test[:, 0], embedding_test[:, 1], 
+            c=y_test, cmap=cmap, norm=norm, s=60, marker='X'
+        )
+        
+        if show_title:
+            plt.title(f"UMAP Projection of '{node_id}' Features", fontsize=16)
+        
+        plt.xlabel("D1")
+        plt.ylabel("D2")
+        
+        # --- Create a dynamic legend ---
+        marker_handles = []
+        if plot_train and n_train > 0:
+            marker_handles.append(plt.Line2D([0], [0], marker='o', color='w', label='Train', markerfacecolor='grey', markersize=10))
+        marker_handles.append(plt.Line2D([0], [0], marker='X', color='w', label='Test', markerfacecolor='grey', markersize=10))
+        
+        marker_legend = plt.legend(handles=marker_handles, title="Dataset")
+        plt.gca().add_artist(marker_legend)
 
-        if np.iscomplexobj(data):
-            data = np.abs(data)
+        color_handles = [mpatches.Patch(color=cmap(norm(label)), label=str(label)) for label in unique_labels]
+        plt.legend(handles=color_handles, title="Classes", loc='upper right')
 
-        # --- CRITICAL FIX: Reshape data for UMAP ---
-        # UMAP expects a 2D array of shape (n_samples, n_features).
-        # We reshape the data, treating each sample's features as a flattened vector.
-        if data.ndim > 2:
-            n_samples = data.shape[0]
-            # Flatten all dimensions except the first (samples)
-            data = data.reshape(n_samples, -1)
+        plt.grid(True)
 
-        if data.ndim == 1:
-            data = data.reshape(-1, 1)
-
-        n_samples = data.shape[0]
-        if n_samples < 2:
-            print(f"Node {node_id} has insufficient samples ({n_samples}) for UMAP; skipping.")
-            continue
-
-        # n_neighbors must be smaller than n_samples.
-        # We also need n_neighbors > 1 for the algorithm to work.
-        n_neighbors = min(15, n_samples - 1)
-        if n_neighbors <= 1:
-            print(f"Node {node_id} has too few samples ({n_samples}) to determine valid n_neighbors > 1; skipping.")
-            continue
-
-        try:
-            reducer = umap.UMAP(n_components=2, n_neighbors=n_neighbors, random_state=42)
-            embedding = reducer.fit_transform(data)
-        except Exception as exc:
-            print(f"UMAP failed for node {node_id}: {exc}")
-            continue
-
-        plt.figure()
-        try:
-            sns.scatterplot(x=embedding[:, 0], y=embedding[:, 1], hue=y_labels[:n_samples] if y_labels else None, palette="viridis", s=40)
-            plt.legend()
-        except Exception:
-            plt.scatter(embedding[:, 0], embedding[:, 1])
-        plt.title(f"UMAP Projection of Node: {node_id}")
-        plt.tight_layout()
-        file_name = f"{idx:02d}_{node_id}.png"
-        plt.savefig(os.path.join(output_dir, file_name))
+        # --- 4. Save the figure ---
+        safe_filename = node_id.replace("/", "_").replace("\\", "_")
+        save_path = os.path.join(save_dir, f"{safe_filename}_umap.png")
+        plt.savefig(save_path, dpi=150, bbox_inches='tight')
         plt.close()
+        print(f"  Saved visualization to {save_path}")
+
+    print(f"\n--- UMAP visualization process finished. ---")
 
 
 if __name__ == "__main__":
-    # --- Optimized Test Demo ---
-    print("--- Running Optimized Visualization Demo ---")
+    print("--- Running Visualization Demo ---")
 
-    # 1. Create a mock DAGState with a more realistic number of samples and evolved nodes
-    instruction = "Analyze the bearing signals from multiple channels for potential faults."
-    
-    initial_nodes = {}
-    initial_leaves = []
-    channels = ["ch1", "ch2"]
-    n_samples_ref = 50
-    n_samples_tst = 50
-    n_total_samples = n_samples_ref + n_samples_tst
-
-    for channel_name in channels:
-        node = InputData(
-            node_id=channel_name,
-            results={
-                "ref": np.random.randn(n_samples_ref, 1024, 1),
-                "tst": np.random.randn(n_samples_tst, 1024, 1) * 1.5
-            },
-            parents=[],
-            shape=(n_total_samples, 1024, 1),
-            meta={"channel": channel_name}
-        )
-        initial_nodes[channel_name] = node
-        initial_leaves.append(channel_name)
-
-    # --- Simulate an evolved node (e.g., after FFT) ---
-    fft_node = InputData( # Using InputData for simplicity in this mock
-        node_id="fft_01_ch1",
-        results={
-            "ref": np.random.rand(n_samples_ref, 513, 1), # Shape after rfft
-            "tst": np.random.rand(n_samples_tst, 513, 1)
-        },
-        parents=["ch1"],
-        shape=(n_total_samples, 513, 1),
-        meta={}
-    )
-    initial_nodes["fft_01_ch1"] = fft_node
-
-    # --- Simulate a final feature node (e.g., after mean) ---
-    feature_node = InputData(
-        node_id="mean_01_fft_01_ch1",
-        results={
-            "ref": np.random.rand(n_samples_ref, 1), # Shape after aggregation
-            "tst": np.random.rand(n_samples_tst, 1) * 1.2
-        },
-        parents=["fft_01_ch1"],
-        shape=(n_total_samples, 1),
-        meta={}
-    )
-    initial_nodes["mean_01_fft_01_ch1"] = feature_node
-
-
-    dag = DAGState(
-        user_instruction=instruction, 
-        channels=channels, 
-        nodes=initial_nodes, 
-        leaves=["fft_01_ch1", "ch2", "mean_01_fft_01_ch1"] # Update leaves
-    )
-    
-    # 2. Create mock datasets that would be generated by the dataset_preparer_agent
+    # 1. Create a mock 'datasets' dictionary, simulating output from dataset_preparer_agent
     mock_datasets = {
-        "feature_node_dataset": {
-            "y_train": np.array([0] * n_samples_ref), # Labels for reference data
-            "y_test": np.array([1] * n_samples_tst)  # Labels for test data
+        "fft_kurtosis_ch1": {
+            "X_train": np.random.rand(50, 10),  # 50 samples, 10 features
+            "y_train": np.zeros(50),             # All class 0
+            "X_test": np.random.rand(50, 10) + 0.5, # 50 samples, 10 features (shifted)
+            "y_test": np.ones(50),               # All class 1
+        },
+        "hilbert_rms_ch2": {
+            "X_train": np.random.rand(60, 5),   # 60 samples, 5 features
+            "y_train": np.array([0] * 30 + [1] * 30), # Mixed classes 0 and 1
+            "X_test": np.random.rand(40, 5),
+            "y_test": np.array([2] * 20 + [3] * 20), # Classes 2 and 3
+        },
+        "empty_node_ch3": { # A node with not enough data
+            "X_train": np.random.rand(1, 20),
+            "y_train": np.array([0]),
+            "X_test": np.array([]).reshape(0, 20), # Empty test set
+            "y_test": np.array([]),
         }
     }
 
-    # 3. Assemble the full PHMState object
-    state = PHMState(
-        user_instruction=instruction,
-        dag_state=dag,
-        datasets=mock_datasets,
-        # --- FIX: Provide all required fields for InputData validation ---
-        reference_signal=InputData(node_id="ref_placeholder", results={}, parents=[], shape=()),
-        test_signal=InputData(node_id="tst_placeholder", results={}, parents=[], shape=())
-    )
+    # 2. Call the new visualization function with the mock data
+    visualize_datasets_umap(mock_datasets)
 
-    # 4. Call the visualization function
-    visualize_dag_feature_evolution_umap(state)
-    
     print("\n--- Demo Finished ---")
-    print("UMAP visualizations saved to 'save/feature_evolution_umap'.")

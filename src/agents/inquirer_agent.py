@@ -22,11 +22,13 @@ def inquirer_agent(state: PHMState, metrics: List[str]) -> Dict[str, List[str]]:
     and stores it in the node's `sim` attribute.
     """
     leaf_ids = list(state.dag_state.leaves)
+    print(f"Calculating similarity for {len(leaf_ids)} leaf nodes with metrics: {metrics}")
 
     for leaf_id in leaf_ids:
         node = state.dag_state.nodes.get(leaf_id)
 
         if not isinstance(node, (ProcessedData, InputData)) or not node.results:
+            print(f"Node {leaf_id} is not a ProcessedData or InputData node or has no results.")
             continue
 
         ref_data_dict = node.results.get("ref")
@@ -34,6 +36,7 @@ def inquirer_agent(state: PHMState, metrics: List[str]) -> Dict[str, List[str]]:
 
         if not isinstance(ref_data_dict, dict) or not isinstance(tst_data_dict, dict):
             state.dag_state.error_log.append(f"ref/tst data in node {leaf_id} is not a dictionary.")
+            print(f"Node {leaf_id} has invalid ref/tst data.")
             continue
 
         # Initialize the similarity dictionary for the node
@@ -51,6 +54,7 @@ def inquirer_agent(state: PHMState, metrics: List[str]) -> Dict[str, List[str]]:
                     
                     if a.shape != b.shape:
                         state.dag_state.error_log.append(f"Shape mismatch between {ref_key} and {tst_key} in node {leaf_id}")
+                        print(f"Shape mismatch between {ref_key} and {tst_key} in node {leaf_id}")
                         continue
                     
                     try:
@@ -58,10 +62,12 @@ def inquirer_agent(state: PHMState, metrics: List[str]) -> Dict[str, List[str]]:
                         val = _calc_metric(a, b, metric)
                         sim_matrix[ref_key][tst_key] = val
                     except Exception as exc:
+                        print(f"Error calculating {metric} between {ref_key} and {tst_key} in node {leaf_id}: {exc}")
                         state.dag_state.error_log.append(f"{metric} fail between {ref_key} and {tst_key}: {exc}")
             
             # Store the complete similarity matrix for the metric in the node's `sim` attribute
             node.sim[metric] = sim_matrix
+            print(f"Calculated {metric} similarity for node {leaf_id}")
 
     # No new nodes are created. The agent modifies existing nodes.
     return {"new_nodes": []}

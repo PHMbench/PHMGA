@@ -63,6 +63,13 @@ def report_agent_node(state: PHMState) -> Dict[str, str]:
 
     ml_results = getattr(state, "ml_results", {}) or {}
     issues_summary = "\n".join(state.dag_state.error_log) or None
+    # calculate the payload for each section
+    print(f"Generating final report with {len(state.dag_state.nodes)} nodes, "
+          f"{len(state.dag_state.leaves)} leaves, "
+          f"{len(similarity_stats)} similarity stats, "
+          f"{len(ml_results.get('models', {}))} ML models, "
+          f"{len(ml_results.get('ensemble_metrics', {}))} ensemble metrics, "
+          f"issues: {len(state.dag_state.error_log)}")
     out = report_agent(
         instruction=state.user_instruction,
         dag_overview=dag_overview,
