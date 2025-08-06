@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from typing import Dict, Any
+import json
 
 import numpy as np
 
@@ -16,20 +17,57 @@ DATA_DIR = os.environ.get("PHM_DATA_DIR", "/home/lq/LQcode/2_project/PHMBench/PH
 MAX_STEPS = 20
 
 
-def _resolve_params(llm, params: Dict[str, Any]) -> Dict[str, Any]:
-    """Resolve templated parameters using an LLM if needed."""
-    resolved = {}
-    for k, v in params.items():
-        if isinstance(v, str) and v.startswith("{{") and v.endswith("}}"):
-            prompt = v.strip("{}")
+def _resolve_params(llm, op_cls, params: Dict[str, Any], state: PHMState) -> Dict[str, Any]:
+    """
+    Resolves operator parameters. If a required parameter is missing, it uses an LLM to generate a sensible default.
+    """
+    resolved_params = params.copy()
+    model_fields = op_cls.model_fields
+
+    # Try to get fs from state for context, if available
+    fs = getattr(state, "fs", "unknown")
+
+    for field_name, field in model_fields.items():
+        # Skip fields that are already provided or are internal/not required for execution
+        if field_name in resolved_params or field_name in ["op_name", "parent", "description", "input_spec", "output_spec"]:
+            continue
+
+        # If a field is required (i.e., has no default value) and is missing, generate it.
+        if field.is_required():
+            prompt = f"""
+You are an expert signal processing engineer. Your task is to provide a sensible default parameter for a signal processing operation.
+
+Operator Name: {getattr(op_cls, "op_name", "N/A")}
+Operator Description: {getattr(op_cls, "description", "N/A")}
+
+A required parameter is missing:
+- Parameter Name: '{field_name}'
+
+
+Context:
+- The signal sampling frequency (fs) is {fs} Hz.
+
+Based on this information, provide a valid JSON value for the '{field_name}' parameter.
+Your response MUST be a single JSON object containing only the generated value. For example, if generating a list of bands, respond with: [[0, 50], [50, 100]]
+
+Do not add any other text or explanations.
+"""
             try:
                 resp = llm.invoke(prompt)
-                resolved[k] = float(resp.content)
-            except Exception:
-                resolved[k] = v
-        else:
-            resolved[k] = v
-    return resolved
+                # The response should be a JSON string representing the value
+                generated_value = json.loads(resp.content)
+                resolved_params[field_name] = generated_value
+                print(f"AI generated missing parameter '{field_name}': {generated_value}")
+            except Exception as e:
+                print(f"Could not generate or parse parameter '{field_name}': {e}")
+                # If generation fails, we cannot proceed with this op if param is required
+                state.dag_state.error_log.append(f"Error setting parameter '{field_name}': {e}")
+                raise ValueError(f"Failed to generate required parameter '{field_name}' for operator '{op_cls.op_name}'.") from e
+
+    return resolved_params
+
+# - Parameter Description: {field.description}
+# - Required Type: {field.annotation}
 
 
 def _get_results(node: InputData | ProcessedData) -> Dict[str, Any]:
@@ -150,16 +188,18 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
         try:
             op_cls = get_operator(op_name)
             
-            # Auto-inject 'fs' if required by the operator and not provided
+            # Auto-inject 'fs' if required by the operator and not provided in the original plan
             if "fs" in op_cls.model_fields and "fs" not in params:
-                # Try to get fs from the first parent
+                # Try to get fs from the first parent's metadata
                 fs_val = new_nodes[parent_ids[0]].meta.get("fs")
                 if fs_val is None:
+                    # Fallback to the global state fs
                     fs_val = getattr(state, "fs", None)
                 if fs_val is not None:
                     params["fs"] = fs_val
             
-            # params = _resolve_params(llm, params)
+            # Resolve any missing required parameters using the LLM
+            params = _resolve_params(llm, op_cls, params, state)
             op = op_cls(**params, parent=parent_ids_str)
 
             # --- Decoupled Execution Logic ---

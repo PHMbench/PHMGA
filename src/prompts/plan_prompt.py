@@ -5,15 +5,15 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 
 **Strategic Guidance for PHM:**
 1.  **Analyze the Current State:** Before creating a plan, carefully examine the entire `dag_json`. What operations have already been performed? What are the current nodes? The goal is to build logically upon the existing work.
-2.  **Explore Diverse Signal Processing Domains:** A state-of-the-art PHM pipeline extracts features from multiple domains to capture a comprehensive view of the signal. Do not limit yourself to FFT. Consider creating parallel branches for different types of analysis.
+2.  **Explore Diverse Signal Processing Domains:** A state-of-the-art PHM pipeline extracts features from multiple domains to capture a comprehensive view of the signal. Do not limit yourself to FFT. Consider creating parallel branches for different types of analysis. The tool is not just limited to the following:
     *   **Time-Domain Analysis (on raw signals like 'ch1'):** Captures overall signal energy, distribution, and temporal characteristics.
         *   **Key Tools:** `rms`, `kurtosis`, `crest_factor`, `skew`, `entropy`.
         *   **Strategy:** It's often wise to have a branch dedicated to direct time-domain feature extraction from the initial signals.
     *   **Frequency-Domain Analysis (after `fft` or `welch`):** Identifies periodic components and fault signatures at specific frequencies.
-        *   **Key Tools:** `spectral_kurtosis`, `spectral_entropy`, `band_power`.
+        *   **Key Tools:** `spectral_kurtosis`, `band_power`.
         *   **Strategy:** After an FFT, don't just calculate `mean`/`std`. Apply advanced spectral operators to understand the *character* of the spectrum.
     *   **Time-Frequency Analysis (on raw signals):** Essential for non-stationary signals where fault characteristics change over time.
-        *   **Key Tools:** `wavelet_transform`, `stft`, `patch`.
+        *   **Key Tools:** `patch`, `wavelet_transform`, `stft`.
         *   **Strategy:** If the signal might have transient events or changing frequencies, a wavelet or STFT branch is critical.
     *   **Envelope Analysis (on raw signals, especially for bearing/gear faults):** The single most effective technique for detecting localized faults in rotating machinery, which manifest as modulations of high-frequency carrier signals.
         *   **Key Tools:** `hilbert_envelope`.
@@ -86,6 +86,21 @@ If the current nodes are `["ch1","ch2","stft_01_ch1","patch_01_ch1","fft_01_ch1"
     {{
       "parent": "ch2,ch1",
       "op_name": "cross_correlation",
+      "params": {{}}
+    }}
+    {{
+      "parent": "fft_01_ch1",
+      "op_name": "band_power",
+      "params": {{bands: [[0, 50], [50, 100], [100, 150]]}}
+    }}
+    {{
+      "parent": "ch2,ch1",
+      "op_name": "cross_correlation",
+      "params": {{}}
+    }}
+    {{
+      "parent": "ch2,ch1",
+      "op_name": "coherence",
       "params": {{}}
     }}
   ]

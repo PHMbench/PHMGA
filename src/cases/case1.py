@@ -124,5 +124,5 @@ def run_case(config_path: str):
 if __name__ == "__main__":
     # This allows running the case directly for testing
     # run_case("config/case1.yaml")
-    run_case("config/case_exp2.yaml")
+    # run_case("config/case_exp2.yaml")
     run_case("config/case_exp2.5.yaml")

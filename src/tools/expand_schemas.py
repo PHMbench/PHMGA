@@ -132,10 +132,10 @@ class MelSpectrogramOp(ExpandOp):
 
 
 @register_op
-class ScalogramOp(ExpandOp):
+class WaveletTransformOp(ExpandOp):
     """Compute scalogram using continuous wavelet transform."""
 
-    op_name: ClassVar[str] = "scalogram"
+    op_name: ClassVar[str] = "wavelet_transform"
     description: ClassVar[str] = "Continuous wavelet scalogram using PyWavelets."
     input_spec: ClassVar[str] = "(..., L, C)"
     output_spec: ClassVar[str] = "(..., S, L, C)"

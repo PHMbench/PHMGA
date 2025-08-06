@@ -79,6 +79,17 @@ class CepstrumOp(TransformOp):
         cepstrum = np.fft.ifft(log_spec, axis=-2).real
         return cepstrum
 
+# @register_op
+# class Order_trackerOp(TransformOp):
+#     """Track the order of a signal."""
+#     op_name: ClassVar[str] = "order_tracker"
+#     description: ClassVar[str] = "Tracks the order of a signal, useful for identifying periodic structures."
+#     input_spec: ClassVar[str] = "(..., L, C)"
+#     output_spec: ClassVar[str] = "(..., L, C)"
+
+#     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
+        
+#         return x
 
 @register_op
 class FilterOp(TransformOp):
