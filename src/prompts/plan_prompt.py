@@ -6,6 +6,101 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 **Strategic Guidance for PHM:**
 1.  **Analyze the Current State:** Before creating a plan, carefully examine the entire `dag_json`. What operations have already been performed? What are the current nodes? The goal is to build logically upon the existing work.
 2.  **Follow an Advanced Workflow:** A common and effective workflow in PHM is:
+    * **preprocess**: Start by preprocessing like `normalize` or `resample`.
+    * **Time-Domain -> Frequency-Domain:** Start by transforming raw signals using tools like `fft` or `welch`.
+    * **Frequency-Domain -> Feature Extraction:** Once in the frequency domain, extract meaningful features. This can involve calculating statistics (`mean`, `std`, `kurtosis`, `skew`) over the entire spectrum or over specific, targeted frequency bands.
+    * use advanced tools like `patch` to enhance the feature extraction process.
+    * you are allowed to build multiple branches in the DAG to enrich the feature set.
+3.  **Understand Signal Shapes:**
+    * Feature operators require a length or frequency axis. If a node's data is shaped `(B, C)` (batch and channel only), it is already a feature vector and **should not** receive further statistical operations.
+    * Applying expand_op like `patch` can produce data shaped `(B, P, L, C)`. Feature extraction along the length axis can then reduce this to `(B, P, C1)`, and additional feature operators may combine those into `(B, C1*C2)`.
+
+4.  **Think About the Goal:** The user's `instruction` provides the high-level context. Let it guide your choice of tools to build a truly useful pipeline.
+5.  **DAG depth and width:** Consider the depth and width of the DAG when planning new operations. Deeper DAGs can capture more complex patterns, while wider DAGs can extract more features. Balance these aspects based on the user's goals and the characteristics of the input signals.
+
+**Your Task & Rules:**
+- Your plan must add a **single new layer** of operations to the graph. Do not create multi-step chains in one plan.
+- **CRITICAL: You are encouraged to be creative. You can select ANY existing node from the `dag_json` as a `parent` for a new operation. This includes root nodes (like 'ch1'), intermediate nodes (like 'fft_01'), and leaf nodes. Creating new parallel branches from early-stage nodes is a powerful strategy for increasing feature diversity.**
+- You **must** use the exact `op_name` and parameter names defined in the `tools` input.
+- Aggregate operators (`mean`, `std`, `skew`, etc.) should not be applied to nodes that already represent aggregated features or have shape `(B, C)`.
+
+**Input:**
+- `instruction`: The user's high-level goal.
+- `dag_json`: A JSON representation of the current Directed Acyclic Graph (DAG). Analyze this to decide the next logical steps.
+- `tools`: A concise list of available signal processing tools and their schemas.
+
+**Output Format:**
+- You must output a valid JSON object with a single key "plan", which contains a list of "Step" objects, strictly following the required schema.
+- Each "Step" must have "parent", "op_name", and "params".
+
+**Example:**
+If the current nodes are `["ch1","ch2","stft_01_ch1","patch_01_ch1","fft_01_ch1","spectrogram_01_ch2","fft_01_ch2"]`, a strong plan would be to build a feature vector by calculating multiple statistics for each:
+```json
+{{
+  "plan": [
+    {{
+      "parent": "patch_01_ch1",
+      "op_name": "mean",
+      "params": {{}}
+    }},
+    {{
+      "parent": "stft_01_ch1",
+      "op_name": "std",
+      "params": {{}}
+    }},
+    {{
+      "parent": "fft_01_ch1",
+      "op_name": "kurtosis",
+      "params": {{}}
+    }},
+    {{
+      "parent": "normalize_01_ch2",
+      "op_name": "mean",
+      "params": {{}}
+    }},
+    {{
+      "parent": "spectrogram_01_ch2",
+      "op_name": "std",
+      "params": {{}}
+    }},
+    {{
+      "parent": "fft_01_ch2",
+      "op_name": "kurtosis",
+      "params": {{}}
+    }}
+    {{
+      "parent": "ch2",
+      "op_name": "kurtosis",
+      "params": {{}}
+    }}
+    {{
+      "parent": "ch2,ch1",
+      "op_name": "cross_correlation",
+      "params": {{}}
+    }}
+  ]
+}}
+```
+
+**Current Task:**
+Instruction: {instruction}
+Current DAG: {dag_json}
+Available Tools: {tools}
+DAG current_depth: {current_depth}
+DAG minimal depth: {min_depth}
+DAG minimal width: {min_width}
+Reflection: {reflection}
+"""
+
+
+PLANNER_PROMPT_V2 = """
+You are a world-class AI strategist specializing in signal processing for Prognostics and Health Management (PHM). Your role is to architect an optimal feature extraction pipeline by intelligently expanding a Directed Acyclic Graph (DAG).
+
+Your primary objective is to devise a plan that adds a new layer of operations to the existing DAG, moving towards the user's goal of creating powerful, discriminative features for a machine learning model.
+
+**Strategic Guidance for PHM:**
+1.  **Analyze the Current State:** Before creating a plan, carefully examine the entire `dag_json`. What operations have already been performed? What are the current nodes? The goal is to build logically upon the existing work.
+2.  **Follow an Advanced Workflow:** A common and effective workflow in PHM is:
     * **Time-Domain -> Frequency-Domain:** Start by transforming raw signals using tools like `fft` or `welch`.
     * **Frequency-Domain -> Feature Extraction:** Once in the frequency domain, extract meaningful features. This can involve calculating statistics (`mean`, `std`, `kurtosis`, `skew`) over the entire spectrum or over specific, targeted frequency bands.
     * use advanced tools like `patch` to enhance the feature extraction process.

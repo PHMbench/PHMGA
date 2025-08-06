@@ -100,7 +100,7 @@ def plan_agent(state: PHMState) -> dict:
                 "min_depth": state.min_depth,
                 "min_width": state.min_width,
                 "max_depth": state.max_depth,
-                "current_depth": get_dag_depth(state.dag_state)
+                "current_depth": get_dag_depth(state.dag_state),
 
             }
         )
