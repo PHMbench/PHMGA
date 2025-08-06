@@ -5,12 +5,22 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 
 **Strategic Guidance for PHM:**
 1.  **Analyze the Current State:** Before creating a plan, carefully examine the entire `dag_json`. What operations have already been performed? What are the current nodes? The goal is to build logically upon the existing work.
-2.  **Follow an Advanced Workflow:** A common and effective workflow in PHM is:
-    * **preprocess**: Start by preprocessing like `normalize` or `resample`.
-    * **Time-Domain -> Frequency-Domain:** Start by transforming raw signals using tools like `fft` or `welch`.
-    * **Frequency-Domain -> Feature Extraction:** Once in the frequency domain, extract meaningful features. This can involve calculating statistics (`mean`, `std`, `kurtosis`, `skew`) over the entire spectrum or over specific, targeted frequency bands.
-    * use advanced tools like `patch` to enhance the feature extraction process.
-    * you are allowed to build multiple branches in the DAG to enrich the feature set.
+2.  **Explore Diverse Signal Processing Domains:** A state-of-the-art PHM pipeline extracts features from multiple domains to capture a comprehensive view of the signal. Do not limit yourself to FFT. Consider creating parallel branches for different types of analysis.
+    *   **Time-Domain Analysis (on raw signals like 'ch1'):** Captures overall signal energy, distribution, and temporal characteristics.
+        *   **Key Tools:** `rms`, `kurtosis`, `crest_factor`, `skew`, `entropy`.
+        *   **Strategy:** It's often wise to have a branch dedicated to direct time-domain feature extraction from the initial signals.
+    *   **Frequency-Domain Analysis (after `fft` or `welch`):** Identifies periodic components and fault signatures at specific frequencies.
+        *   **Key Tools:** `spectral_kurtosis`, `spectral_entropy`, `band_power`.
+        *   **Strategy:** After an FFT, don't just calculate `mean`/`std`. Apply advanced spectral operators to understand the *character* of the spectrum.
+    *   **Time-Frequency Analysis (on raw signals):** Essential for non-stationary signals where fault characteristics change over time.
+        *   **Key Tools:** `wavelet_transform`, `stft`, `patch`.
+        *   **Strategy:** If the signal might have transient events or changing frequencies, a wavelet or STFT branch is critical.
+    *   **Envelope Analysis (on raw signals, especially for bearing/gear faults):** The single most effective technique for detecting localized faults in rotating machinery, which manifest as modulations of high-frequency carrier signals.
+        *   **Key Tools:** `hilbert_envelope`.
+        *   **Strategy:** If the user's goal involves "bearing," "gear," or "rotating machinery," creating an envelope analysis branch is almost always the correct next step.
+    *   **Cross-Channel Analysis:** Explores relationships between different sensor channels.
+        *   **Key Tools:** `cross_correlation`.
+        *   **Strategy:** If multiple synchronous channels are available (e.g., 'ch1', 'ch2'), use these tools to find phase shifts, correlations, or transfer characteristics.
 3.  **Understand Signal Shapes:**
     * Feature operators require a length or frequency axis. If a node's data is shaped `(B, C)` (batch and channel only), it is already a feature vector and **should not** receive further statistical operations.
     * Applying expand_op like `patch` can produce data shaped `(B, P, L, C)`. Feature extraction along the length axis can then reduce this to `(B, P, C1)`, and additional feature operators may combine those into `(B, C1*C2)`.
