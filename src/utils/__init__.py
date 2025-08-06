@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
-from src.states.phm_states import PHMState, DAGState, InputData
+from src.states.phm_states import PHMState, DAGState, InputData, ProcessedData
+from src.tools.signal_processing_schemas import get_operator, MultiVariableOp
 import pandas as pd
 import h5py
 import numpy as np
@@ -203,6 +204,164 @@ def dag_to_llm_payload(state: PHMState, max_nodes: int = 40) -> str:
         JSON payload for use in LLM prompts.
     """
     return state.tracker().export_json(max_nodes=max_nodes)
+
+
+def _get_results(node: InputData | ProcessedData) -> Dict[str, Any]:
+    """Safely extract the results dictionary from a node."""
+    return node.results or {}
+
+
+def _reset_inputs_and_clear_processed(
+    nodes: Dict[str, InputData | ProcessedData],
+    new_ref: Dict[str, Any] | Any,
+    new_tst: Dict[str, Any] | Any,
+) -> None:
+    """Update InputData nodes with new signals and clear ProcessedData results."""
+    for node_id, node in nodes.items():
+        if isinstance(node, InputData):
+            ref_val = new_ref.get(node_id) if isinstance(new_ref, dict) else new_ref
+            tst_val = new_tst.get(node_id) if isinstance(new_tst, dict) else new_tst
+            node.results = {"ref": ref_val, "tst": tst_val}
+        elif isinstance(node, ProcessedData):
+            node.results = None
+
+
+def _execute_multi_variable_op(
+    op: Any, parent_ids: List[str], nodes: Dict[str, InputData | ProcessedData]
+) -> Tuple[Any, Any]:
+    """Execute a MultiVariableOp on all parents and return ref/tst outputs."""
+    parent_refs = {pid: _get_results(nodes[pid]).get("ref") for pid in parent_ids}
+    parent_tsts = {pid: _get_results(nodes[pid]).get("tst") for pid in parent_ids}
+
+    parent_refs = {k: v for k, v in parent_refs.items() if isinstance(v, dict)}
+    parent_tsts = {k: v for k, v in parent_tsts.items() if isinstance(v, dict)}
+
+    out_ref, out_tst = None, None
+
+    if parent_refs:
+        signal_keys = list(next(iter(parent_refs.values())).keys())
+        ref_results = {}
+        for key in signal_keys:
+            single_input = {
+                pid: data.get(key) for pid, data in parent_refs.items() if data.get(key) is not None
+            }
+            if len(single_input) == len(parent_ids):
+                ref_results[key] = op.execute(single_input)
+        out_ref = ref_results
+
+    if parent_tsts:
+        signal_keys = list(next(iter(parent_tsts.values())).keys())
+        tst_results = {}
+        for key in signal_keys:
+            single_input = {
+                pid: data.get(key) for pid, data in parent_tsts.items() if data.get(key) is not None
+            }
+            if len(single_input) == len(parent_ids):
+                tst_results[key] = op.execute(single_input)
+        out_tst = tst_results
+
+    return out_ref, out_tst
+
+
+def _execute_single_variable_op(
+    op: Any, parent_id: str, nodes: Dict[str, InputData | ProcessedData]
+) -> Tuple[Any, Any]:
+    """Execute a single-variable operator on one parent node."""
+    parent_results = _get_results(nodes[parent_id])
+    ref_in = parent_results.get("ref")
+    tst_in = parent_results.get("tst")
+
+    if isinstance(ref_in, dict):
+        out_ref = {key: op.execute(val) for key, val in ref_in.items()} if ref_in else None
+    else:
+        out_ref = op.execute(ref_in) if ref_in is not None else None
+
+    if isinstance(tst_in, dict):
+        out_tst = {key: op.execute(val) for key, val in tst_in.items()} if tst_in else None
+    else:
+        out_tst = op.execute(tst_in) if tst_in is not None else None
+
+    return out_ref, out_tst
+
+
+def run_dag_on_new_data(
+    state: PHMState,
+    new_ref: Dict[str, Any],
+    new_tst: Dict[str, Any],
+) -> PHMState:
+    """Re-execute an existing DAG with new reference and test signals.
+
+    Parameters
+    ----------
+    state : PHMState
+        The state containing the DAG to be executed.
+    new_ref : Dict[str, Any]
+        Mapping of input node IDs to new reference signals.
+    new_tst : Dict[str, Any]
+        Mapping of input node IDs to new test signals.
+
+    Returns
+    -------
+    PHMState
+        The updated state after running the DAG on new data.
+    """
+
+    tracker = state.tracker()
+    nodes = state.dag_state.nodes
+
+    # --- 1. Refresh nodes with new data ---
+    _reset_inputs_and_clear_processed(nodes, new_ref, new_tst)
+
+    new_leaves: List[str] = []
+
+    # --- 2. Traverse DAG in topological order ---
+    for nid in nx.topological_sort(tracker.g):
+        node = nodes[nid]
+        if isinstance(node, InputData):
+            if nid not in new_leaves:
+                new_leaves.append(nid)
+            continue
+
+        tool = node.meta.get("tool")
+        params = node.meta.get("params", {}).copy()
+
+        try:
+            op_cls = get_operator(tool)
+        except KeyError:
+            state.dag_state.error_log.append(
+                f"Unknown tool '{tool}' for node {nid}"
+            )
+            continue
+
+        parent_ids = node.parents if isinstance(node.parents, list) else [node.parents]
+
+        # Auto-inject sampling frequency if required
+        if "fs" in getattr(op_cls, "model_fields", {}) and "fs" not in params:
+            fs_val = nodes[parent_ids[0]].meta.get("fs")
+            if fs_val is None:
+                fs_val = getattr(state, "fs", None)
+            if fs_val is not None:
+                params["fs"] = fs_val
+
+        op = op_cls(**params, parent=node.meta.get("parent"))
+
+        if issubclass(op_cls, MultiVariableOp) and len(parent_ids) > 1:
+            out_ref, out_tst = _execute_multi_variable_op(op, parent_ids, nodes)
+        else:
+            out_ref, out_tst = _execute_single_variable_op(op, parent_ids[0], nodes)
+
+        node.results = {"ref": out_ref, "tst": out_tst}
+
+        for pid in parent_ids:
+            if pid in new_leaves:
+                new_leaves.remove(pid)
+        new_leaves.append(nid)
+
+    # --- 3. Update DAG leaves and tracker ---
+    state.dag_state.leaves = new_leaves
+    tracker.update(state.dag_state)
+
+    return state
 
 
 def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -> Tuple[Dict[str, np.ndarray], Dict[str, str]]:
@@ -437,3 +596,50 @@ def get_dag_depth(dag_state: "DAGState") -> int:
     except nx.NetworkXError:
         # 这是一个备用逻辑，以防万一（例如，在空图上调用，尽管已经检查过）
         return 1 if G.nodes else 0
+
+
+if __name__ == "__main__":
+    import numpy as np
+
+    # 构建一个简单的 DAG: 输入信号 -> 求均值
+    ref = np.arange(10, dtype=float).reshape(1, 10, 1)
+    tst = np.arange(10, 20, dtype=float).reshape(1, 10, 1)
+
+    in_node = InputData(
+        node_id="ch1",
+        parents=[],
+        shape=ref.shape,
+        data={},
+        results={"ref": ref, "tst": tst},
+        meta={"fs": 1},
+    )
+
+    mean_node = ProcessedData(
+        node_id="n_mean",
+        parents=["ch1"],
+        shape=(1, 1),
+        source_signal_id="ch1",
+        method="mean",
+        meta={"tool": "mean", "params": {}, "parent": "ch1"},
+    )
+
+    dag = DAGState(
+        user_instruction="demo",
+        channels=["ch1"],
+        nodes={"ch1": in_node, "n_mean": mean_node},
+        leaves=["n_mean"],
+    )
+
+    state = PHMState(
+        case_name="demo",
+        user_instruction="demo",
+        reference_signal=in_node,
+        test_signal=in_node,
+        dag_state=dag,
+        fs=1,
+    )
+
+    new_ref = {"ch1": ref * 2}
+    new_tst = {"ch1": tst * 2}
+    updated = run_dag_on_new_data(state, new_ref, new_tst)
+    print("Mean results:", updated.dag_state.nodes["n_mean"].results)
