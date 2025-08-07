@@ -141,7 +141,7 @@ class WaveletTransformOp(ExpandOp):
     output_spec: ClassVar[str] = "(..., S, L, C)"
 
     wavelet: str = Field("morl", description="Name of the wavelet to use (e.g., 'morl', 'mexh').")
-    scales: list[int] = Field(..., description="List of scales to use for the CWT.")
+    scales: list[int] = Field(default_factory=lambda: list(np.logspace(0, 2, num=20, dtype=int)), description="List of scales to use for the CWT. Defaults to 20 log-spaced scales.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         try:

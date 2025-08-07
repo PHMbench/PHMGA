@@ -1,0 +1,62 @@
+# Configuration for Case 1: Standard Bearing Fault Diagnosis
+
+# File paths
+name: "exp2.5ottawa"
+save_dir: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save" # Add a general save directory
+metadata_path: "/mnt/crucial/LQ/PHM-Vibench/metadata_6_11.xlsx"
+h5_path: "/mnt/crucial/LQ/PHM-Vibench/cache.h5"
+state_save_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/exp2.5ottawa/exp2.5_built_state_ottawa.pkl"
+report_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/exp2.5ottawa/exp2.5_final_report_ottawa.md"
+
+# Data selection
+ref_ids:
+- 47007
+- 47008
+- 47009
+- 47016
+- 47017
+- 47018
+- 47019
+- 47020
+- 47021
+- 47028
+- 47029
+- 47030
+- 47031
+- 47032
+- 47033
+- 47040
+- 47041
+- 47042
+
+test_ids:
+- 47010
+- 47011
+- 47012
+- 47013
+- 47014
+- 47015
+- 47022
+- 47023
+- 47024
+- 47025
+- 47026
+- 47027
+- 47034
+- 47035
+- 47036
+- 47037
+- 47038
+- 47039
+
+
+builder:
+  min_depth: 4
+  max_depth: 8
+
+# User instruction for the LLM
+user_instruction: >
+  Analyze the bearing signals for potential faults. Note that this is a variable speed dataset,fault feature would vary with speed.
+  The reference set contains signals for 3 different states (health, inner, outer).
+  The test set also contains signals for the same 3 states. The goal is to correctly
+  classify each test signal by comparing it to the reference set.

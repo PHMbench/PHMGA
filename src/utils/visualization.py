@@ -43,7 +43,7 @@ def visualize_datasets_umap(
         # --- 1. Get Train and Test data ---
         X_train, y_train = data.get("X_train"), data.get("y_train")
         X_test, y_test = data.get("X_test"), data.get("y_test")
-
+        # y_train, y_test = int(y_train), int(y_test)
         # Basic validation
         if not isinstance(X_test, np.ndarray) or not isinstance(y_test, np.ndarray) or X_test.shape[0] == 0:
             print(f"  Skipping {node_id}: Test set is empty or invalid.")
@@ -76,7 +76,7 @@ def visualize_datasets_umap(
 
         # --- 3. Plot the results ---
         plt.figure(figsize=(12, 8))
-        
+
         y_combined = np.concatenate((y_train, y_test)) if n_train > 0 and plot_train else y_test
         unique_labels = np.unique(y_combined)
         norm = plt.Normalize(vmin=np.min(unique_labels), vmax=np.max(unique_labels))
@@ -102,15 +102,16 @@ def visualize_datasets_umap(
         plt.ylabel("D2")
         
         # --- Create a dynamic legend ---
-        marker_handles = []
         if plot_train and n_train > 0:
+            marker_handles = []
             marker_handles.append(plt.Line2D([0], [0], marker='o', color='w', label='Train', markerfacecolor='grey', markersize=10))
-        marker_handles.append(plt.Line2D([0], [0], marker='X', color='w', label='Test', markerfacecolor='grey', markersize=10))
+            marker_handles.append(plt.Line2D([0], [0], marker='X', color='w', label='Test', markerfacecolor='grey', markersize=10))
         
-        marker_legend = plt.legend(handles=marker_handles, title="Dataset")
-        plt.gca().add_artist(marker_legend)
+            marker_legend = plt.legend(handles=marker_handles, title="Dataset")
+            plt.gca().add_artist(marker_legend)
 
-        color_handles = [mpatches.Patch(color=cmap(norm(label)), label=str(label)) for label in unique_labels]
+        # FIX: Convert each label to an integer before creating the legend string.
+        color_handles = [mpatches.Patch(color=cmap(norm(label)), label=str(int(label))) for label in unique_labels]
         plt.legend(handles=color_handles, title="Classes", loc='upper right')
 
         plt.grid(True)

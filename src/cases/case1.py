@@ -15,7 +15,7 @@ os.environ["LANGCHAIN_PROJECT"] = ""
 
 from src.phm_outer_graph import build_builder_graph, build_executor_graph
 from src.utils import initialize_state, save_state, load_state, generate_final_report
-from src.utils.visualization import visualize_dag_feature_evolution_umap
+# from src.utils.visualization import visualize_dag_feature_evolution_umap
 from src.agents.reflect_agent import get_dag_depth
 
 def run_case(config_path: str):
@@ -125,4 +125,5 @@ if __name__ == "__main__":
     # This allows running the case directly for testing
     # run_case("config/case1.yaml")
     # run_case("config/case_exp2.yaml")
-    run_case("config/case_exp2.5.yaml")
+    # run_case("config/case_exp2.5.yaml")
+    run_case("config/case_exp_ottawa.yaml")

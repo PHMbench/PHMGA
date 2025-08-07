@@ -48,11 +48,7 @@ def report_agent_node(state: PHMState) -> Dict[str, str]:
         state.tracker().write_png(save_path)
     except Exception:
         pass
-    dag_overview = {
-        "n_nodes": len(state.dag_state.nodes),
-        "leaves": state.dag_state.leaves,
-        "graph_path": state.dag_state.graph_path or "",
-    }
+    dag_overview = json.loads(state.tracker().export_json())
     
     # MODIFIED: Extract similarity stats from the `sim` attribute of leaf nodes
     similarity_stats = {}
@@ -60,6 +56,8 @@ def report_agent_node(state: PHMState) -> Dict[str, str]:
         node = state.dag_state.nodes.get(leaf_id)
         if node and hasattr(node, "sim") and node.sim:
             similarity_stats[leaf_id] = node.sim
+            
+    similarity_stats = json.dumps(similarity_stats, ensure_ascii=False)
 
     ml_results = getattr(state, "ml_results", {}) or {}
     issues_summary = "\n".join(state.dag_state.error_log) or None
@@ -67,8 +65,8 @@ def report_agent_node(state: PHMState) -> Dict[str, str]:
     print(f"Generating final report with {len(state.dag_state.nodes)} nodes, "
           f"{len(state.dag_state.leaves)} leaves, "
           f"{len(similarity_stats)} similarity stats, "
-          f"{len(ml_results.get('models', {}))} ML models, "
-          f"{len(ml_results.get('ensemble_metrics', {}))} ensemble metrics, "
+        #   f"{len(ml_results.get('models', {}))} ML models, "
+        #   f"{len(ml_results.get('ensemble_metrics', {}))} ensemble metrics, "
           f"issues: {len(state.dag_state.error_log)}")
     out = report_agent(
         instruction=state.user_instruction,
