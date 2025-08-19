@@ -13,6 +13,8 @@ from src.tools.signal_processing_schemas import get_operator
 from src.tools.multi_schemas import MultiVariableOp
 
 
+# Legacy environment variable access (deprecated)
+# Use state.get_config() instead in new code
 DATA_DIR = os.environ.get("PHM_DATA_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
 MAX_STEPS = 20
 
@@ -159,9 +161,13 @@ def _execute_single_variable_op(op, parent_id, new_nodes):
 def execute_agent(state: PHMState) -> Dict[str, Any]:
     executed_steps = 0
     llm = get_llm(None)
-    
-    # Get the base save directory from environment, fallback to a default
-    base_save_dir = os.environ.get("PHM_SAVE_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
+
+    # Get the base save directory from unified state management
+    try:
+        base_save_dir = state.get_config('paths.save_dir', "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
+    except AttributeError:
+        # Fallback for backward compatibility
+        base_save_dir = os.environ.get("PHM_SAVE_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
     # Construct a case-specific directory
     case_save_dir = os.path.join(base_save_dir, state.case_name, "nodes")
 

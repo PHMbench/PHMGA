@@ -23,12 +23,9 @@ class SubtractOp(MultiVariableOp):
     output_spec: ClassVar[str] = "(..., L, C)"
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if len(x) != 2:
-            raise ValueError(f"SubtractOp requires exactly 2 inputs, but got {len(x)}.")
-        
-        values = list(x.values())
-        minuend, subtrahend = values[0], values[1]
-        return minuend - subtrahend
+        if "minuend" not in x or "subtrahend" not in x:
+            raise ValueError("SubtractOp requires 'minuend' and 'subtrahend' inputs.")
+        return x["minuend"] - x["subtrahend"]
 
 
 @register_op
@@ -44,11 +41,11 @@ class CrossCorrelationOp(MultiVariableOp):
     mode: Literal["full", "valid", "same"] = Field("full", description="The mode of the correlation.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if len(x) != 2:
-            raise ValueError(f"CrossCorrelationOp requires exactly 2 inputs, but got {len(x)}.")
+        if "signal1" not in x or "signal2" not in x:
+            raise ValueError("CrossCorrelationOp requires 'signal1' and 'signal2' inputs.")
         
-        values = list(x.values())
-        sig1, sig2 = values[0], values[1]
+        sig1 = x["signal1"]
+        sig2 = x["signal2"]
 
         # Assuming batch processing, correlation is applied on the last relevant axis (L)
         # We iterate through batch and channels
@@ -80,11 +77,11 @@ class DistanceOp(MultiVariableOp):
     metric: Literal["euclidean", "manhattan", "cosine"] = Field("euclidean", description="The distance metric to use.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if len(x) != 2:
-            raise ValueError(f"DistanceOp requires exactly 2 inputs, but got {len(x)}.")
+        if "vec1" not in x or "vec2" not in x:
+            raise ValueError("DistanceOp requires 'vec1' and 'vec2' inputs.")
         
-        values = list(x.values())
-        vec1, vec2 = values[0], values[1]
+        vec1 = x["vec1"]
+        vec2 = x["vec2"]
 
         if self.metric == "euclidean":
             return np.linalg.norm(vec1 - vec2, axis=-1)
@@ -100,19 +97,19 @@ class DistanceOp(MultiVariableOp):
 class ConcatenateOp(MultiVariableOp):
     """
     Concatenates multiple feature vectors along a specified axis.
-    This op is special and will take all values from the input dict.
+    Requires a list of inputs under the key 'vectors'.
     """
     op_name: ClassVar[str] = "concatenate"
     description: ClassVar[str] = "Concatenates multiple feature vectors."
-    input_spec: ClassVar[str] = "Multiple arrays in a dictionary."
+    input_spec: ClassVar[str] = "vectors: List[(..., C')]"
     output_spec: ClassVar[str] = "(..., C_new)"
     axis: int = Field(-1, description="The axis along which the arrays will be joined.")
 
-    def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if not x:
-            raise ValueError("ConcatenateOp requires at least one input vector.")
+    def execute(self, x: Dict[str, list[npt.NDArray]], **_) -> npt.NDArray:
+        if "vectors" not in x or not isinstance(x["vectors"], list):
+            raise ValueError("ConcatenateOp requires a list of vectors under the 'vectors' key.")
         
-        return np.concatenate(list(x.values()), axis=self.axis)
+        return np.concatenate(x["vectors"], axis=self.axis)
 
 @register_op
 class ElementWiseProductOp(MultiVariableOp):
@@ -126,11 +123,10 @@ class ElementWiseProductOp(MultiVariableOp):
     output_spec: ClassVar[str] = "(..., L, C)"
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if len(x) != 2:
-            raise ValueError(f"ElementWiseProductOp requires exactly 2 inputs, but got {len(x)}.")
+        if "signal1" not in x or "signal2" not in x:
+            raise ValueError("ElementWiseProductOp requires 'signal1' and 'signal2' inputs.")
         
-        values = list(x.values())
-        return values[0] * values[1]
+        return x["signal1"] * x["signal2"]
 
 @register_op
 class CoherenceOp(MultiVariableOp):
@@ -147,11 +143,11 @@ class CoherenceOp(MultiVariableOp):
     nperseg: int = Field(256, description="Length of each segment for Welch's method used in coherence calculation.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if len(x) != 2:
-            raise ValueError(f"CoherenceOp requires exactly 2 inputs, but got {len(x)}.")
+        if "signal1" not in x or "signal2" not in x:
+            raise ValueError("CoherenceOp requires 'signal1' and 'signal2' inputs.")
         
-        values = list(x.values())
-        sig1, sig2 = values[0], values[1]
+        sig1 = x["signal1"]
+        sig2 = x["signal2"]
 
         if sig1.ndim != 3 or sig2.ndim != 3:
             raise ValueError(f"Inputs for CoherenceOp must be 3D (B, L, C).")
@@ -179,11 +175,11 @@ class ArithmeticOp(MultiVariableOp):
     operation: Literal["add", "subtract", "multiply", "divide"] = Field(..., description="The arithmetic operation to perform.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if len(x) != 2:
-            raise ValueError(f"ArithmeticOp requires exactly 2 inputs, but got {len(x)}.")
+        if "signal1" not in x or "signal2" not in x:
+            raise ValueError("ArithmeticOp requires 'signal1' and 'signal2' inputs.")
         
-        values = list(x.values())
-        sig1, sig2 = values[0], values[1]
+        sig1 = x["signal1"]
+        sig2 = x["signal2"]
         
         if self.operation == "add":
             return sig1 + sig2
@@ -208,11 +204,11 @@ class PhaseDifferenceOp(MultiVariableOp):
     output_spec: ClassVar[str] = "(..., F, C)"
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if len(x) != 2:
-            raise ValueError(f"PhaseDifferenceOp requires exactly 2 inputs, but got {len(x)}.")
+        if "fft1" not in x or "fft2" not in x:
+            raise ValueError("PhaseDifferenceOp requires 'fft1' and 'fft2' inputs.")
         
-        values = list(x.values())
-        fft1, fft2 = values[0], values[1]
+        fft1 = x["fft1"]
+        fft2 = x["fft2"]
         
         # Phase difference is the angle of the conjugate product
         phase_diff = np.angle(fft1 * np.conj(fft2))
@@ -231,11 +227,11 @@ class ConvolutionOp(MultiVariableOp):
     mode: Literal["full", "valid", "same"] = Field("same", description="The mode of the convolution.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> npt.NDArray:
-        if len(x) != 2:
-            raise ValueError(f"ConvolutionOp requires exactly 2 inputs, but got {len(x)}.")
+        if "signal" not in x or "kernel" not in x:
+            raise ValueError("ConvolutionOp requires 'signal' and 'kernel' inputs.")
         
-        values = list(x.values())
-        sig, kernel = values[0], values[1]
+        sig = x["signal"]
+        kernel = x["kernel"]
 
         if sig.ndim != 3 or kernel.ndim != 1:
             raise ValueError("ConvolutionOp requires a 3D signal and a 1D kernel.")
@@ -259,11 +255,11 @@ class DynamicTimeWarpingOp(MultiVariableOp):
         except ImportError:
             raise ImportError("dtaidistance is not installed. Please install it with 'pip install dtaidistance'.")
 
-        if len(x) != 2:
-            raise ValueError(f"DTW requires exactly 2 inputs, but got {len(x)}.")
+        if "signal1" not in x or "signal2" not in x:
+            raise ValueError("DTW requires 'signal1' and 'signal2' inputs.")
         
-        values = list(x.values())
-        sig1, sig2 = values[0].squeeze(), values[1].squeeze()
+        sig1 = x["signal1"].squeeze()
+        sig2 = x["signal2"].squeeze()
 
         distance = dtw.distance(sig1, sig2)
         return np.array([distance])
@@ -282,11 +278,11 @@ class TransferFunctionOp(MultiVariableOp):
     fs: float = Field(..., description="Sampling frequency.")
 
     def execute(self, x: Dict[str, npt.NDArray], **_) -> Dict[str, npt.NDArray]:
-        if len(x) != 2:
-            raise ValueError(f"TransferFunctionOp requires exactly 2 inputs, but got {len(x)}.")
+        if "input_signal" not in x or "output_signal" not in x:
+            raise ValueError("TransferFunctionOp requires 'input_signal' and 'output_signal'.")
         
-        values = list(x.values())
-        input_sig, output_sig = values[0].squeeze(), values[1].squeeze()
+        input_sig = x["input_signal"].squeeze()
+        output_sig = x["output_signal"].squeeze()
         
         f, Pxx = signal.welch(input_sig, fs=self.fs)
         f, Pxy = signal.csd(input_sig, output_sig, fs=self.fs)

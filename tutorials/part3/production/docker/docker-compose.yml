@@ -1,0 +1,199 @@
+# PHMGA Production Docker Compose Configuration
+version: '3.8'
+
+services:
+  # Main PHMGA Application
+  phmga-app:
+    build:
+      context: ../../..
+      dockerfile: tutorials/part3/production/docker/Dockerfile
+    container_name: phmga-app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"  # Main application
+      - "8080:8080"  # Health check endpoint
+    environment:
+      - PHMGA_ENV=production
+      - PHMGA_LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_URL=postgresql://phmga:phmga_password@postgres:5432/phmga
+      - PROMETHEUS_GATEWAY=prometheus:9090
+    volumes:
+      - phmga-data:/app/data
+      - phmga-logs:/app/logs
+      - phmga-cache:/app/cache
+    depends_on:
+      - redis
+      - postgres
+      - prometheus
+    networks:
+      - phmga-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Redis for caching and message queuing
+  redis:
+    image: redis:7-alpine
+    container_name: phmga-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - phmga-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL for persistent data storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: phmga-postgres
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=phmga
+      - POSTGRES_USER=phmga
+      - POSTGRES_PASSWORD=phmga_password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - phmga-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phmga"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: phmga-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - phmga-network
+
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: phmga-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    depends_on:
+      - prometheus
+    networks:
+      - phmga-network
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: phmga-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - phmga-app
+      - grafana
+    networks:
+      - phmga-network
+
+  # Celery worker for background tasks
+  celery-worker:
+    build:
+      context: ../../..
+      dockerfile: tutorials/part3/production/docker/Dockerfile
+    container_name: phmga-celery-worker
+    restart: unless-stopped
+    command: celery -A tutorials.part3.production.celery_app worker --loglevel=info
+    environment:
+      - PHMGA_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_URL=postgresql://phmga:phmga_password@postgres:5432/phmga
+    volumes:
+      - phmga-data:/app/data
+      - phmga-logs:/app/logs
+      - phmga-cache:/app/cache
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - phmga-network
+
+  # Celery beat for scheduled tasks
+  celery-beat:
+    build:
+      context: ../../..
+      dockerfile: tutorials/part3/production/docker/Dockerfile
+    container_name: phmga-celery-beat
+    restart: unless-stopped
+    command: celery -A tutorials.part3.production.celery_app beat --loglevel=info
+    environment:
+      - PHMGA_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - POSTGRES_URL=postgresql://phmga:phmga_password@postgres:5432/phmga
+    volumes:
+      - phmga-data:/app/data
+      - phmga-logs:/app/logs
+    depends_on:
+      - redis
+      - postgres
+    networks:
+      - phmga-network
+
+# Named volumes for data persistence
+volumes:
+  phmga-data:
+    driver: local
+  phmga-logs:
+    driver: local
+  phmga-cache:
+    driver: local
+  redis-data:
+    driver: local
+  postgres-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# Custom network
+networks:
+  phmga-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

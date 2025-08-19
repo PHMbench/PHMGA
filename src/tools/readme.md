@@ -1,16 +1,137 @@
-# 信号处理工具说明
+# PHMGA Signal Processing Tools
 
-本文档介绍了用于信号处理的各种工具，根据其对输入数据维度（秩）的影响，分为以下类别：
+The tools module provides a comprehensive suite of signal processing operators for the PHMGA system. These operators are organized by their effect on data dimensionality and functionality, enabling flexible and powerful signal analysis pipelines.
 
-- **`EXPAND` (升维)**: 新增轴或将单轴拆分为多轴，如从时域到时频域。
-- **`TRANSFORM` (同维)**: 不改变数据维度数量，只改变域或数值，如滤波、归一化。
-- **`AGGREGATE` (降维)**: 减少数据维度，通常用于从信号中提取紧凑的特征，如计算统计量。
-- **`MULTI-VARIABLE` (多变量)**: 接收多个输入节点进行比较或组合。
-- **`DECISION` (决策)**: 不输出信号数据，而是输出判断结果或文本，如分类或评分。
+## Architecture Overview
+
+The signal processing system is built on a modular operator architecture with automatic registration and discovery. All operators inherit from base classes that define their behavior and integration patterns.
+
+### Operator Categories
+
+- **`EXPAND` (Rank ↑)**: Increase data dimensionality (e.g., time-domain to time-frequency domain)
+- **`TRANSFORM` (Rank =)**: Preserve dimensionality while changing domain or values (e.g., filtering, normalization)
+- **`AGGREGATE` (Rank ↓)**: Reduce dimensionality to extract compact features (e.g., statistical measures)
+- **`MULTI-VARIABLE`**: Process multiple input nodes for comparison or combination
+- **`DECISION`**: Output classification results or decisions rather than signal data
+
+### Core Design Principles
+
+1. **Automatic Registration**: Operators are automatically discovered and registered using decorators
+2. **Type Safety**: Comprehensive type hints and validation using Pydantic
+3. **Immutable Operations**: Operators don't modify input data, ensuring pipeline integrity
+4. **Metadata Preservation**: Shape and processing information tracked throughout pipeline
+5. **Error Handling**: Graceful degradation with comprehensive error reporting
+
+## Operator Registry System
+
+### Registration Mechanism
+
+```python
+from src.tools.signal_processing_schemas import register_op, TransformOp
+
+@register_op
+class CustomOp(TransformOp):
+    """Custom signal processing operator."""
+
+    op_name: ClassVar[str] = "custom"
+    description: ClassVar[str] = "Custom signal processing operation"
+    input_spec: ClassVar[str] = "(B, L, C)"
+    output_spec: ClassVar[str] = "(B, L, C)"
+
+    # Operator parameters
+    param1: float = Field(1.0, description="Custom parameter")
+
+    def execute(self, x: np.ndarray, **kwargs) -> np.ndarray:
+        """Implement custom processing logic."""
+        return x * self.param1
+```
+
+### Operator Discovery
+
+```python
+from src.tools.signal_processing_schemas import OP_REGISTRY, get_operator
+
+# List all available operators
+available_ops = list(OP_REGISTRY.keys())
+print(f"Available operators: {available_ops}")
+
+# Get specific operator class
+fft_op_class = get_operator("fft")
+
+# Instantiate operator
+fft_op = fft_op_class()
+
+# Apply to signal
+result = fft_op.execute(signal_data)
+```
+
+### Base Classes
+
+#### PHMOperator (Abstract Base)
+
+```python
+class PHMOperator(BaseModel):
+    """Abstract base class for all signal processing operators."""
+
+    # Class-level metadata
+    op_name: ClassVar[str]  # Unique operator identifier
+    description: ClassVar[str]  # Human-readable description
+    input_spec: ClassVar[str]  # Expected input shape specification
+    output_spec: ClassVar[str]  # Expected output shape specification
+    rank_class: ClassVar[RankClass]  # Operator category
+
+    # Instance parameters
+    parent: str = Field("", description="Parent node identifier")
+
+    # Runtime metadata (set during execution)
+    in_shape: tuple = Field(default=(), description="Actual input shape")
+    out_shape: tuple = Field(default=(), description="Actual output shape")
+
+    def execute(self, x: np.ndarray, **kwargs) -> np.ndarray | dict:
+        """Execute the operator on input data."""
+        raise NotImplementedError
+
+    def __call__(self, x: np.ndarray, **kwargs) -> np.ndarray | dict:
+        """Callable interface with lifecycle hooks."""
+        self._before_call(x)
+        result = self.execute(x, **kwargs)
+        self._after_call(result)
+        return result
+```
+
+#### Specialized Base Classes
+
+```python
+class ExpandOp(PHMOperator):
+    """Base class for dimensionality-increasing operators."""
+    rank_class: ClassVar[RankClass] = "EXPAND"
+
+class TransformOp(PHMOperator):
+    """Base class for dimensionality-preserving operators."""
+    rank_class: ClassVar[RankClass] = "TRANSFORM"
+
+class AggregateOp(PHMOperator):
+    """Base class for dimensionality-reducing operators."""
+    rank_class: ClassVar[RankClass] = "AGGREGATE"
+
+class MultiVariableOp(PHMOperator):
+    """Base class for multi-input operators."""
+    rank_class: ClassVar[RankClass] = "MultiVariable"
+
+class DecisionOp(PHMOperator):
+    """Base class for decision-making operators."""
+    rank_class: ClassVar[RankClass] = "DECISION"
+```
+
+## API Reference
+
+### Complete Operator Catalog
+
+The following sections provide comprehensive documentation for all available operators, organized by category.
 
 ---
 
-### 输入信号维度约定
+### Signal Dimension Conventions
 - `B`: 批处理大小 (Batch size)，即样本数量
 - `L`: 信号长度 (Length)
 - `C`: 通道数 (Channels)
@@ -118,6 +239,588 @@
 | **过零率 (Zero-Crossing Rate)** | $$\text{zcr}(x) = \frac{1}{2(L-1)}\sum_{i=1}^{L-1} |\text{sgn}(x_i) - \text{sgn}(x_{i-1})|$$ |
 
 </details>
+
+## Usage Examples
+
+### Basic Operator Usage
+
+#### Single Operator Application
+
+```python
+from src.tools.expand_schemas import STFTOp
+import numpy as np
+
+# Create test signal
+fs = 1000  # Sampling frequency
+t = np.linspace(0, 1, fs, endpoint=False)
+signal = np.sin(2 * np.pi * 50 * t) + 0.5 * np.sin(2 * np.pi * 150 * t)
+signal = signal.reshape(1, -1, 1)  # Shape: (batch=1, length=1000, channels=1)
+
+# Create and configure operator
+stft_op = STFTOp(
+    fs=fs,
+    nperseg=256,    # Window length
+    noverlap=128,   # Overlap length
+    window='hann'   # Window type
+)
+
+# Apply operator
+spectrogram = stft_op.execute(signal)
+print(f"Input shape: {signal.shape}")
+print(f"Output shape: {spectrogram.shape}")
+print(f"Operator metadata: {stft_op.op_name}, {stft_op.description}")
+```
+
+#### Chained Operations
+
+```python
+from src.tools.expand_schemas import STFTOp
+from src.tools.aggregate_schemas import MeanOp
+from src.tools.transform_schemas import FFTOp
+
+# Create processing chain
+signal = np.random.randn(1, 1024, 1)
+
+# Step 1: FFT transform
+fft_op = FFTOp()
+fft_result = fft_op.execute(signal)
+print(f"FFT: {signal.shape} → {fft_result.shape}")
+
+# Step 2: Aggregate to features
+mean_op = MeanOp(axis=-2)  # Average over frequency axis
+features = mean_op.execute(fft_result)
+print(f"Mean: {fft_result.shape} → {features.shape}")
+
+# Step 3: STFT for time-frequency analysis
+stft_op = STFTOp(fs=1000, nperseg=128)
+spectrogram = stft_op.execute(signal)
+print(f"STFT: {signal.shape} → {spectrogram.shape}")
+```
+
+### Multi-Variable Operations
+
+```python
+from src.tools.multi_schemas import ArithmeticOp, CompareOp
+
+# Create two signals for comparison
+signal1 = np.random.randn(1, 1024, 1)
+signal2 = np.random.randn(1, 1024, 1) * 1.5
+
+# Arithmetic operations
+add_op = ArithmeticOp(operation="add")
+sum_result = add_op.execute({"signal1": signal1, "signal2": signal2})
+
+subtract_op = ArithmeticOp(operation="subtract")
+diff_result = subtract_op.execute({"signal1": signal1, "signal2": signal2})
+
+# Comparison operations
+compare_op = CompareOp(metrics=["euclidean", "cosine"])
+comparison = compare_op.execute({"ref": signal1, "test": signal2})
+print(f"Comparison results: {comparison}")
+```
+
+### Feature Extraction Pipeline
+
+```python
+from src.tools.aggregate_schemas import (
+    MeanOp, StdOp, RMSOp, KurtosisOp, SkewnessOp
+)
+
+def extract_time_domain_features(signal: np.ndarray) -> dict:
+    """Extract comprehensive time-domain features."""
+
+    features = {}
+
+    # Statistical features
+    features['mean'] = MeanOp().execute(signal)
+    features['std'] = StdOp().execute(signal)
+    features['rms'] = RMSOp().execute(signal)
+    features['kurtosis'] = KurtosisOp().execute(signal)
+    features['skewness'] = SkewnessOp().execute(signal)
+
+    return features
+
+# Apply to signal
+signal = np.random.randn(1, 1024, 1)
+features = extract_time_domain_features(signal)
+
+for name, value in features.items():
+    print(f"{name}: {value.shape} = {value.flatten()}")
+```
+
+### Frequency Domain Analysis
+
+```python
+from src.tools.transform_schemas import FFTOp
+from src.tools.aggregate_schemas import BandPowerOp
+from src.tools.expand_schemas import STFTOp
+
+def frequency_analysis_pipeline(signal: np.ndarray, fs: float) -> dict:
+    """Complete frequency domain analysis."""
+
+    results = {}
+
+    # 1. FFT Analysis
+    fft_op = FFTOp()
+    fft_result = fft_op.execute(signal)
+    results['fft_spectrum'] = fft_result
+
+    # 2. Band Power Analysis
+    bands = [(0, 50), (50, 150), (150, 300), (300, 500)]  # Frequency bands
+    band_power_op = BandPowerOp(fs=fs, bands=bands)
+    band_powers = band_power_op.execute(signal)
+    results['band_powers'] = band_powers
+
+    # 3. Time-Frequency Analysis
+    stft_op = STFTOp(fs=fs, nperseg=256, noverlap=128)
+    spectrogram = stft_op.execute(signal)
+    results['spectrogram'] = spectrogram
+
+    return results
+
+# Apply pipeline
+fs = 1000
+signal = np.random.randn(1, 1024, 1)
+freq_results = frequency_analysis_pipeline(signal, fs)
+
+for name, result in freq_results.items():
+    print(f"{name}: {result.shape}")
+```
+
+### Advanced Signal Processing
+
+```python
+from src.tools.expand_schemas import EmpiricalModeDecompositionOp, TimeDelayEmbeddingOp
+from src.tools.transform_schemas import FilterOp
+
+def advanced_signal_analysis(signal: np.ndarray, fs: float) -> dict:
+    """Advanced signal processing techniques."""
+
+    results = {}
+
+    # 1. Empirical Mode Decomposition
+    emd_op = EmpiricalModeDecompositionOp()
+    imfs = emd_op.execute(signal)
+    results['imfs'] = imfs
+    print(f"EMD decomposed signal into {imfs.shape[-2]} IMFs")
+
+    # 2. Time-Delay Embedding for phase space reconstruction
+    tde_op = TimeDelayEmbeddingOp(dimension=3, delay=4)
+    phase_space = tde_op.execute(signal)
+    results['phase_space'] = phase_space
+    print(f"Phase space reconstruction: {phase_space.shape}")
+
+    # 3. Filtering
+    filter_op = FilterOp(
+        filter_type="bandpass",
+        low_freq=50,
+        high_freq=200,
+        fs=fs,
+        order=4
+    )
+    filtered_signal = filter_op.execute(signal)
+    results['filtered'] = filtered_signal
+
+    return results
+
+# Apply advanced analysis
+signal = np.random.randn(1, 2048, 1)  # Longer signal for EMD
+advanced_results = advanced_signal_analysis(signal, 1000)
+```
+
+## Integration with PHMGA System
+
+### Agent Integration
+
+Operators are seamlessly integrated with the PHMGA agent system:
+
+```python
+from src.agents.execute_agent import execute_agent
+from src.states.phm_states import PHMState
+
+# Operators are automatically discovered and used by execute_agent
+state = PHMState(
+    detailed_plan=[
+        {"parent": "ch1", "op_name": "fft", "params": {}},
+        {"parent": "fft_ch1", "op_name": "mean", "params": {"axis": -2}},
+        {"parent": "mean_fft_ch1", "op_name": "compare", "params": {"metrics": ["euclidean"]}}
+    ],
+    # ... other state fields
+)
+
+# Execute agent automatically applies operators
+result = execute_agent(state)
+```
+
+### DAG Construction
+
+Operators automatically build the computational DAG:
+
+```python
+from src.tools.signal_processing_schemas import get_operator
+
+# Get operator class
+op_class = get_operator("stft")
+
+# Create operator instance with parameters
+op_instance = op_class(fs=1000, nperseg=256, parent="ch1")
+
+# Operator metadata is used for DAG construction
+print(f"Operator: {op_instance.op_name}")
+print(f"Input spec: {op_instance.input_spec}")
+print(f"Output spec: {op_instance.output_spec}")
+print(f"Parent node: {op_instance.parent}")
+```
+
+### Error Handling
+
+Operators include comprehensive error handling:
+
+```python
+try:
+    # Operator execution with validation
+    result = operator.execute(invalid_input)
+except ValueError as e:
+    print(f"Input validation error: {e}")
+except Exception as e:
+    print(f"Execution error: {e}")
+    # Error is logged to DAG error log
+    state.dag_state.error_log.append(f"Operator {operator.op_name} failed: {e}")
+```
+
+## Custom Operator Development
+
+### Creating New Operators
+
+#### Basic Transform Operator
+
+```python
+from src.tools.signal_processing_schemas import register_op, TransformOp
+import numpy as np
+from pydantic import Field
+from typing import ClassVar
+
+@register_op
+class CustomNormalizeOp(TransformOp):
+    """Custom normalization operator with configurable method."""
+
+    op_name: ClassVar[str] = "custom_normalize"
+    description: ClassVar[str] = "Custom signal normalization with multiple methods"
+    input_spec: ClassVar[str] = "(B, L, C)"
+    output_spec: ClassVar[str] = "(B, L, C)"
+
+    # Operator parameters
+    method: str = Field("zscore", description="Normalization method: 'zscore', 'minmax', 'robust'")
+    axis: int = Field(-2, description="Axis along which to normalize")
+
+    def execute(self, x: np.ndarray, **kwargs) -> np.ndarray:
+        """Execute custom normalization."""
+
+        if self.method == "zscore":
+            mean = np.mean(x, axis=self.axis, keepdims=True)
+            std = np.std(x, axis=self.axis, keepdims=True)
+            return (x - mean) / (std + 1e-8)
+
+        elif self.method == "minmax":
+            min_val = np.min(x, axis=self.axis, keepdims=True)
+            max_val = np.max(x, axis=self.axis, keepdims=True)
+            return (x - min_val) / (max_val - min_val + 1e-8)
+
+        elif self.method == "robust":
+            median = np.median(x, axis=self.axis, keepdims=True)
+            mad = np.median(np.abs(x - median), axis=self.axis, keepdims=True)
+            return (x - median) / (mad + 1e-8)
+
+        else:
+            raise ValueError(f"Unknown normalization method: {self.method}")
+
+# Usage
+custom_op = CustomNormalizeOp(method="robust", axis=-2)
+normalized = custom_op.execute(signal_data)
+```
+
+#### Advanced Multi-Variable Operator
+
+```python
+@register_op
+class CrossCorrelationOp(MultiVariableOp):
+    """Cross-correlation analysis between multiple signals."""
+
+    op_name: ClassVar[str] = "cross_correlation"
+    description: ClassVar[str] = "Compute cross-correlation between signal pairs"
+    input_spec: ClassVar[str] = "Dict[str, (B, L, C)]"
+    output_spec: ClassVar[str] = "(B, 2*L-1, C)"
+
+    mode: str = Field("full", description="Correlation mode: 'full', 'valid', 'same'")
+    normalize: bool = Field(True, description="Normalize correlation coefficients")
+
+    def execute(self, x: Dict[str, np.ndarray], **kwargs) -> np.ndarray:
+        """Execute cross-correlation analysis."""
+
+        if len(x) != 2:
+            raise ValueError("Cross-correlation requires exactly 2 input signals")
+
+        signals = list(x.values())
+        sig1, sig2 = signals[0], signals[1]
+
+        # Ensure signals have same shape
+        if sig1.shape != sig2.shape:
+            raise ValueError(f"Signal shapes must match: {sig1.shape} vs {sig2.shape}")
+
+        # Compute cross-correlation for each batch and channel
+        batch_size, length, channels = sig1.shape
+
+        if self.mode == "full":
+            output_length = 2 * length - 1
+        elif self.mode == "same":
+            output_length = length
+        else:  # valid
+            output_length = max(0, length - length + 1)
+
+        result = np.zeros((batch_size, output_length, channels))
+
+        for b in range(batch_size):
+            for c in range(channels):
+                corr = np.correlate(sig1[b, :, c], sig2[b, :, c], mode=self.mode)
+
+                if self.normalize:
+                    # Normalize by signal energies
+                    norm_factor = np.sqrt(np.sum(sig1[b, :, c]**2) * np.sum(sig2[b, :, c]**2))
+                    corr = corr / (norm_factor + 1e-8)
+
+                result[b, :, c] = corr
+
+        return result
+
+# Usage
+cross_corr_op = CrossCorrelationOp(mode="full", normalize=True)
+correlation = cross_corr_op.execute({"signal1": sig1, "signal2": sig2})
+```
+
+#### Decision Operator
+
+```python
+@register_op
+class ThresholdClassifierOp(DecisionOp):
+    """Simple threshold-based classifier."""
+
+    op_name: ClassVar[str] = "threshold_classifier"
+    description: ClassVar[str] = "Classify signals based on feature thresholds"
+    input_spec: ClassVar[str] = "(B, F)"  # Features
+    output_spec: ClassVar[str] = "Dict[str, Any]"
+
+    thresholds: Dict[str, float] = Field(
+        default_factory=dict,
+        description="Feature thresholds for classification"
+    )
+    labels: Dict[str, str] = Field(
+        default_factory=lambda: {"below": "healthy", "above": "faulty"},
+        description="Classification labels"
+    )
+
+    def execute(self, x: np.ndarray, **kwargs) -> Dict[str, Any]:
+        """Execute threshold-based classification."""
+
+        batch_size, n_features = x.shape
+        predictions = []
+        confidence_scores = []
+
+        for b in range(batch_size):
+            features = x[b, :]
+
+            # Simple threshold logic (can be extended)
+            if len(self.thresholds) > 0:
+                # Use provided thresholds
+                above_threshold = any(
+                    features[i] > thresh
+                    for i, thresh in enumerate(self.thresholds.values())
+                    if i < len(features)
+                )
+            else:
+                # Use mean as threshold
+                above_threshold = np.mean(features) > 0.5
+
+            prediction = self.labels["above"] if above_threshold else self.labels["below"]
+            confidence = float(np.max(features)) if above_threshold else float(1 - np.max(features))
+
+            predictions.append(prediction)
+            confidence_scores.append(confidence)
+
+        return {
+            "predictions": predictions,
+            "confidence_scores": confidence_scores,
+            "n_samples": batch_size,
+            "decision_rule": "threshold_based"
+        }
+
+# Usage
+classifier_op = ThresholdClassifierOp(
+    thresholds={"feature_0": 0.5, "feature_1": 0.3},
+    labels={"below": "normal", "above": "anomaly"}
+)
+classification = classifier_op.execute(feature_matrix)
+```
+
+### Testing Custom Operators
+
+```python
+def test_custom_operator():
+    """Test custom operator implementation."""
+
+    # Create test data
+    test_signal = np.random.randn(2, 1024, 1)
+
+    # Test operator
+    op = CustomNormalizeOp(method="zscore")
+    result = op.execute(test_signal)
+
+    # Validate results
+    assert result.shape == test_signal.shape
+    assert np.allclose(np.mean(result, axis=-2), 0, atol=1e-6)
+    assert np.allclose(np.std(result, axis=-2), 1, atol=1e-6)
+
+    print("✅ Custom operator test passed!")
+
+if __name__ == "__main__":
+    test_custom_operator()
+```
+
+## Performance Optimization
+
+### Efficient Operator Implementation
+
+```python
+@register_op
+class OptimizedFFTOp(TransformOp):
+    """Performance-optimized FFT operator."""
+
+    op_name: ClassVar[str] = "optimized_fft"
+    description: ClassVar[str] = "Memory-efficient FFT with batch processing"
+    input_spec: ClassVar[str] = "(B, L, C)"
+    output_spec: ClassVar[str] = "(B, F, C)"
+
+    def execute(self, x: np.ndarray, **kwargs) -> np.ndarray:
+        """Execute optimized FFT."""
+
+        # Use real FFT for real-valued signals
+        if np.isrealobj(x):
+            result = np.fft.rfft(x, axis=-2)
+        else:
+            result = np.fft.fft(x, axis=-2)
+
+        # Return magnitude spectrum
+        return np.abs(result)
+```
+
+### Memory Management
+
+```python
+def process_large_signals(signals: List[np.ndarray], operators: List[PHMOperator]) -> List[np.ndarray]:
+    """Process large signals with memory management."""
+
+    results = []
+
+    for signal in signals:
+        # Process in chunks if signal is too large
+        if signal.nbytes > 100 * 1024 * 1024:  # 100MB threshold
+            chunk_size = 1024
+            chunks = [signal[:, i:i+chunk_size, :] for i in range(0, signal.shape[1], chunk_size)]
+
+            chunk_results = []
+            for chunk in chunks:
+                for op in operators:
+                    chunk = op.execute(chunk)
+                chunk_results.append(chunk)
+
+            # Concatenate results
+            result = np.concatenate(chunk_results, axis=1)
+        else:
+            # Process normally
+            result = signal
+            for op in operators:
+                result = op.execute(result)
+
+        results.append(result)
+
+    return results
+```
+
+## Dependencies and Requirements
+
+### Core Dependencies
+
+```python
+# Required packages
+numpy>=1.21.0          # Numerical computing
+scipy>=1.7.0           # Scientific computing
+pydantic>=2.0.0        # Data validation
+typing-extensions      # Type hints
+
+# Optional dependencies
+librosa>=0.9.0         # Audio processing (for some operators)
+scikit-learn>=1.0.0    # Machine learning (for some operators)
+matplotlib>=3.5.0      # Visualization (for debugging)
+```
+
+### Installation
+
+```bash
+# Install core dependencies
+pip install numpy scipy pydantic typing-extensions
+
+# Install optional dependencies
+pip install librosa scikit-learn matplotlib
+
+# Or install all at once
+pip install -r requirements.txt
+```
+
+## Troubleshooting
+
+### Common Issues
+
+#### Operator Not Found
+```python
+# Problem: KeyError when getting operator
+try:
+    op_class = get_operator("nonexistent_op")
+except KeyError as e:
+    print(f"Operator not found: {e}")
+    print(f"Available operators: {list(OP_REGISTRY.keys())}")
+```
+
+#### Shape Mismatch
+```python
+# Problem: Input shape doesn't match operator expectations
+def validate_input_shape(operator: PHMOperator, input_data: np.ndarray) -> bool:
+    """Validate input shape against operator specification."""
+
+    expected_dims = len(operator.input_spec.split(','))
+    actual_dims = len(input_data.shape)
+
+    if actual_dims != expected_dims:
+        print(f"Shape mismatch: expected {expected_dims}D, got {actual_dims}D")
+        return False
+
+    return True
+```
+
+#### Parameter Resolution
+```python
+# Problem: Missing required parameters
+def check_required_parameters(op_class: type, params: dict) -> List[str]:
+    """Check for missing required parameters."""
+
+    missing = []
+    for field_name, field_info in op_class.model_fields.items():
+        if field_info.is_required() and field_name not in params:
+            missing.append(field_name)
+
+    return missing
+```
+
+This comprehensive tools documentation provides everything needed to understand, use, and extend the PHMGA signal processing system.
+```
 
 ---
 

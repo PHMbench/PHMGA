@@ -9,15 +9,26 @@ import os
 import pickle
 import uuid
 
-# 禁用 LangSmith
-os.environ["LANGCHAIN_TRACING_V2"] = "false"
-os.environ["LANGCHAIN_ENDPOINT"] = ""
-os.environ["LANGCHAIN_API_KEY"] = ""
-os.environ["LANGCHAIN_PROJECT"] = ""
-
-# Load environment variables from .env file
+# Load environment variables from .env file first
 from dotenv import load_dotenv
 load_dotenv()
+
+# Configure LangSmith settings using unified state management
+try:
+    from src.states.phm_states import get_unified_state
+    unified_state = get_unified_state()
+
+    # Apply system configuration from unified state
+    os.environ["LANGCHAIN_TRACING_V2"] = str(unified_state.get('system.langchain_tracing', False)).lower()
+    os.environ["LANGCHAIN_ENDPOINT"] = unified_state.get('system.langchain_endpoint', "")
+    os.environ["LANGCHAIN_API_KEY"] = unified_state.get('system.langchain_api_key', "")
+    os.environ["LANGCHAIN_PROJECT"] = unified_state.get('system.langchain_project', "")
+except ImportError:
+    # Fallback to legacy configuration
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
+    os.environ["LANGCHAIN_ENDPOINT"] = ""
+    os.environ["LANGCHAIN_API_KEY"] = ""
+    os.environ["LANGCHAIN_PROJECT"] = ""
 
 # 导入解耦后的两个图构建器
 from src.phm_outer_graph import build_builder_graph, build_executor_graph

@@ -1,0 +1,366 @@
+# PHMGA Framework - Continuous Integration Pipeline
+name: PHMGA CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: '3.9'
+  NODE_VERSION: '16'
+
+jobs:
+  # Code Quality and Linting
+  code-quality:
+    runs-on: ubuntu-latest
+    name: Code Quality Checks
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flake8 black isort mypy pylint
+        pip install -r requirements.txt
+    
+    - name: Run Black (code formatting)
+      run: black --check --diff .
+    
+    - name: Run isort (import sorting)
+      run: isort --check-only --diff .
+    
+    - name: Run flake8 (linting)
+      run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+    
+    - name: Run mypy (type checking)
+      run: mypy src/ tutorials/ --ignore-missing-imports
+    
+    - name: Run pylint (code analysis)
+      run: pylint src/ tutorials/ --disable=all --enable=unused-import,unused-variable
+
+  # Unit and Integration Tests
+  test-suite:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    
+    name: Tests (Python ${{ matrix.python-version }} on ${{ matrix.os }})
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libffi-dev libssl-dev
+    
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-cov pytest-xdist hypothesis
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Run unit tests
+      run: |
+        pytest tests/ -v --cov=src --cov=tutorials --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.9'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+
+  # Performance Benchmarks
+  performance-tests:
+    runs-on: ubuntu-latest
+    name: Performance Benchmarks
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest-benchmark
+    
+    - name: Run performance benchmarks
+      run: |
+        python -m pytest tests/test_framework.py::PerformanceBenchmarks -v --benchmark-only
+    
+    - name: Store benchmark results
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        tool: 'pytest'
+        output-file-path: benchmark-results.json
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+
+  # Security Scanning
+  security-scan:
+    runs-on: ubuntu-latest
+    name: Security Vulnerability Scan
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit
+        pip install -r requirements.txt
+    
+    - name: Run safety (dependency vulnerability scan)
+      run: safety check --json --output safety-report.json
+      continue-on-error: true
+    
+    - name: Run bandit (security linting)
+      run: bandit -r src/ tutorials/ -f json -o bandit-report.json
+      continue-on-error: true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          safety-report.json
+          bandit-report.json
+
+  # Documentation Build
+  documentation:
+    runs-on: ubuntu-latest
+    name: Documentation Build
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install sphinx sphinx-rtd-theme myst-parser
+        pip install -r requirements.txt
+    
+    - name: Build documentation
+      run: |
+        cd docs/
+        make html
+    
+    - name: Upload documentation
+      uses: actions/upload-artifact@v3
+      with:
+        name: documentation
+        path: docs/_build/html/
+
+  # Docker Build and Test
+  docker-build:
+    runs-on: ubuntu-latest
+    name: Docker Build and Test
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Build Docker image
+      run: |
+        docker build -f tutorials/part3/production/docker/Dockerfile -t phmga:test .
+    
+    - name: Test Docker image
+      run: |
+        docker run --rm phmga:test python -c "import src; print('Import successful')"
+    
+    - name: Run container health check
+      run: |
+        docker run -d --name phmga-test -p 8080:8080 phmga:test
+        sleep 30
+        curl -f http://localhost:8080/health || exit 1
+        docker stop phmga-test
+
+  # Integration Tests with External Services
+  integration-tests:
+    runs-on: ubuntu-latest
+    name: Integration Tests
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: phmga_test
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest-asyncio
+    
+    - name: Run integration tests
+      env:
+        REDIS_URL: redis://localhost:6379
+        POSTGRES_URL: postgresql://test:test@localhost:5432/phmga_test
+      run: |
+        pytest tests/integration/ -v
+
+  # Deployment (only on main branch)
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [code-quality, test-suite, performance-tests, security-scan, docker-build]
+    runs-on: ubuntu-latest
+    name: Deploy to Production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Container Registry
+      uses: docker/login-action@v2
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        file: tutorials/part3/production/docker/Dockerfile
+        push: true
+        tags: |
+          ghcr.io/${{ github.repository }}:latest
+          ghcr.io/${{ github.repository }}:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Deploy to staging
+      run: |
+        echo "Deploying to staging environment..."
+        # Add deployment commands here
+    
+    - name: Run smoke tests
+      run: |
+        echo "Running smoke tests..."
+        # Add smoke test commands here
+    
+    - name: Notify deployment
+      uses: 8398a7/action-slack@v3
+      with:
+        status: ${{ job.status }}
+        channel: '#deployments'
+        webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+      if: always()
+
+  # Release (on tags)
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [code-quality, test-suite, performance-tests, security-scan]
+    runs-on: ubuntu-latest
+    name: Create Release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Build package
+      run: |
+        python -m pip install --upgrade pip build
+        python -m build
+    
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/*
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
