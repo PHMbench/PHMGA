@@ -1,0 +1,77 @@
+# Example YAML configuration for simplified PHM state management
+# This demonstrates the new structure that works with the simplified state system
+
+# Case identification
+name: "case_simplified_example"
+user_instruction: >
+  Analyze the bearing signals for potential faults using the new simplified state management.
+  The reference set contains signals for multiple states and the test set contains
+  signals for the same states. The goal is to correctly classify each test signal.
+
+# File paths (these are stored in config.extra, not in state)
+metadata_path: "/mnt/crucial/LQ/PHM-Vibench/metadata_6_11.xlsx"
+h5_path: "/mnt/crucial/LQ/PHM-Vibench/cache.h5"
+state_save_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/simplified/state.pkl"
+report_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/simplified/report.md"
+
+# Data selection (stored in config.extra)
+ref_ids:
+  - 47050
+  - 47052
+  - 47044
+  - 47046
+  - 47047
+test_ids:
+  - 47051
+  - 47045
+  - 47048
+
+# LLM configuration (maps to config.llm)
+llm:
+  provider: "google"  # or "openai"
+  model: "gemini-2.5-pro"
+  temperature: 0.7
+  max_retries: 3
+  # API keys should be set via environment variables:
+  # GEMINI_API_KEY or OPENAI_API_KEY
+  
+  # Legacy model configurations (optional)
+  query_generator_model: "gemini-2.5-pro"
+  reflection_model: "gemini-2.5-pro"
+  answer_model: "gemini-2.5-pro"
+
+# Processing configuration (maps to config.processing)
+processing:
+  min_depth: 4
+  max_depth: 8
+  min_width: 4
+  max_steps: 100
+  default_fs: 1000.0
+
+# Paths configuration (maps to config.paths)
+paths:
+  data_dir: "/mnt/crucial/LQ/PHM-Vibench"
+  save_dir: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save"
+  cache_dir: "/tmp/phmga_cache"
+
+# Builder configuration (stored in config.extra)
+builder:
+  min_depth: 4
+  max_depth: 8
+
+# Additional configuration (stored in config.extra)
+sampling_frequency: 1000.0
+analysis_type: "bearing_fault_diagnosis"
+expected_states: ["health", "ball", "cage", "inner", "outer"]
+
+# Note: Environment variables are NOT stored in YAML
+# They are read directly by the system:
+# - GEMINI_API_KEY: Google API key
+# - OPENAI_API_KEY: OpenAI API key  
+# - LLM_PROVIDER: Override provider selection
+# - LLM_MODEL: Override model selection
+# - PHM_MAX_DEPTH: Override max depth
+# - PHM_MIN_DEPTH: Override min depth
+# - PHM_DATA_DIR: Override data directory
+# - PHM_SAVE_DIR: Override save directory
+# - PHM_CACHE_DIR: Override cache directory

@@ -1,0 +1,161 @@
+# Configuration for Case 2: Advanced Predictive Maintenance
+
+# File paths
+name: "case2_predictive"
+save_dir: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save"
+metadata_path: "/mnt/crucial/LQ/PHM-Vibench/metadata_6_11.xlsx"
+h5_path: "/mnt/crucial/LQ/PHM-Vibench/cache.h5"
+state_save_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/case2/case2_built_state.pkl"
+report_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/case2/case2_predictive_maintenance_report.md"
+
+# Data selection for predictive maintenance analysis
+ref_ids:
+  # Healthy bearing signals for baseline establishment
+  - 47050  # Healthy condition
+  - 47052  # Healthy condition
+  - 47044  # Healthy condition
+  - 47046  # Healthy condition
+  - 47047  # Healthy condition
+
+test_ids:
+  # Signals with varying degrees of degradation for RUL estimation
+  - 47049  # Early stage degradation
+  - 47053  # Moderate degradation
+  - 47055  # Advanced degradation
+  - 47056  # Severe degradation
+  - 47058  # Critical condition
+
+# Research configuration for predictive maintenance
+research:
+  max_iterations: 5
+  quality_threshold: 0.85
+  enable_parallel_agents: true
+  focus_areas:
+    - "remaining_useful_life_estimation"
+    - "health_index_calculation"
+    - "maintenance_scheduling"
+    - "risk_assessment"
+
+# Predictive maintenance specific parameters
+predictive_maintenance:
+  # Health index calculation
+  health_features:
+    - "rms"
+    - "kurtosis"
+    - "crest_factor"
+    - "spectral_kurtosis"
+    - "envelope_energy"
+  
+  feature_weights:
+    rms: 0.2
+    kurtosis: 0.25
+    crest_factor: 0.2
+    spectral_kurtosis: 0.15
+    envelope_energy: 0.2
+  
+  # RUL estimation parameters
+  rul_estimation:
+    failure_threshold: 0.3  # Health index threshold for failure
+    degradation_models:
+      - "linear"
+      - "exponential"
+      - "power_law"
+    confidence_threshold: 0.7
+  
+  # Maintenance scheduling
+  maintenance_strategies:
+    immediate:
+      rul_threshold: 7      # days
+      health_threshold: 0.3
+    urgent:
+      rul_threshold: 30     # days
+      health_threshold: 0.5
+    planned:
+      rul_threshold: 90     # days
+      health_threshold: 0.7
+    routine:
+      rul_threshold: 365    # days
+      health_threshold: 0.8
+  
+  # Risk assessment parameters
+  risk_assessment:
+    critical_threshold: 0.8
+    high_threshold: 0.6
+    medium_threshold: 0.4
+    factors:
+      - "remaining_useful_life"
+      - "health_index"
+      - "degradation_rate"
+      - "operational_conditions"
+
+# Signal processing configuration
+builder:
+  min_depth: 4
+  max_depth: 8
+  min_width: 4
+  focus_on_predictive_features: true
+
+# User instruction for predictive maintenance
+user_instruction: >
+  Perform comprehensive predictive maintenance analysis on bearing signals.
+  Establish baseline health characteristics from reference signals and analyze
+  test signals for degradation patterns. Estimate remaining useful life using
+  multiple degradation models and calculate comprehensive health index.
+  Generate optimal maintenance schedule based on condition assessment and
+  provide risk analysis for operational decision making. Focus on proactive
+  maintenance strategies that prevent unexpected failures while optimizing
+  maintenance costs and equipment availability.
+
+# Advanced analysis options
+advanced_options:
+  enable_multi_sensor_fusion: false  # Set to true if multiple sensor types available
+  enable_environmental_factors: false  # Set to true to include temperature, load, etc.
+  enable_uncertainty_quantification: true
+  enable_sensitivity_analysis: true
+  
+  # Reporting options
+  generate_trend_analysis: true
+  include_confidence_intervals: true
+  create_maintenance_dashboard: false  # Future feature
+  
+  # Validation options
+  cross_validation_folds: 5
+  bootstrap_samples: 1000
+  monte_carlo_simulations: 500
+
+# Output configuration
+output:
+  save_intermediate_results: true
+  generate_plots: true
+  export_maintenance_schedule: true
+  create_risk_matrix: true
+  
+  # Report sections to include
+  report_sections:
+    - "executive_summary"
+    - "health_assessment"
+    - "rul_estimation"
+    - "maintenance_schedule"
+    - "risk_analysis"
+    - "recommendations"
+    - "research_hypotheses"
+    - "validation_results"
+    - "appendices"
+
+# Integration with existing PHM system
+integration:
+  use_existing_dag_if_available: true
+  enhance_with_research_agents: true
+  maintain_backward_compatibility: true
+  
+  # Agent coordination
+  agent_priorities:
+    data_analyst: 1
+    algorithm_researcher: 2
+    domain_expert: 1
+    integration_agent: 3
+  
+  # Workflow options
+  parallel_execution: true
+  adaptive_workflow: true
+  conflict_resolution: "consensus_based"
