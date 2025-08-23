@@ -56,7 +56,7 @@ def plan_agent(state: PHMState) -> dict:
         for name, prop in schema.get('properties', {}).items():
             if name not in excluded_params:
                 param_desc = prop.get('description', 'No description.')
-                params_info.append(f"        - {name}: {param_desc}")
+                params_info.append(f"- {name}: {param_desc}")
         
         params_str = "\n".join(params_info) if params_info else "        params: {}"
         

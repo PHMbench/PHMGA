@@ -19,7 +19,7 @@ from langgraph.graph import START, END
 from langchain_core.runnables import RunnableConfig
 from google.genai import Client
 
-from ..states.research_state import (
+from ..states.research_states import (
     OverallState,
     QueryGenerationState,
     ReflectionState,

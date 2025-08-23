@@ -1,17 +1,24 @@
 """
-Base classes and utilities for research-oriented PHM agents.
+Enhanced base classes and utilities for research-oriented PHM agents.
 
-This module provides the foundation for implementing research agents that can
-autonomously investigate signal processing techniques, generate hypotheses,
-and validate findings in the PHM domain.
+This module provides a robust foundation for implementing research agents with
+improved architecture, dependency injection, performance monitoring, and
+standardized interfaces.
 """
 
 from __future__ import annotations
 from abc import ABC, abstractmethod
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Protocol, Union
 import numpy as np
 from pydantic import BaseModel, Field
 import logging
+import time
+import psutil
+import functools
+from dataclasses import dataclass
+from enum import Enum
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ..states.research_states import ResearchPHMState, ResearchHypothesis, ResearchObjective
 from ..model import get_llm
@@ -20,19 +27,253 @@ from ..configuration import Configuration
 logger = logging.getLogger(__name__)
 
 
+# Performance monitoring decorators
+def monitor_performance(func):
+    """Decorator to monitor memory usage and execution time."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        start_memory = psutil.Process().memory_info().rss
+
+        try:
+            result = func(*args, **kwargs)
+            success = True
+        except Exception as e:
+            result = None
+            success = False
+            raise e
+        finally:
+            end_time = time.time()
+            end_memory = psutil.Process().memory_info().rss
+
+            execution_time = end_time - start_time
+            memory_delta = (end_memory - start_memory) / 1024 / 1024  # MB
+
+            logger.info(f"{func.__name__}: Time={execution_time:.2f}s, "
+                       f"Memory={memory_delta:+.1f}MB, Success={success}")
+
+        return result
+    return wrapper
+
+
+def circuit_breaker(max_failures: int = 3, reset_timeout: int = 60):
+    """Circuit breaker pattern for agent methods."""
+    def decorator(func):
+        func.failure_count = 0
+        func.last_failure_time = 0
+
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            current_time = time.time()
+
+            # Reset failure count after timeout
+            if current_time - func.last_failure_time > reset_timeout:
+                func.failure_count = 0
+
+            # Check if circuit is open
+            if func.failure_count >= max_failures:
+                raise Exception(f"Circuit breaker open for {func.__name__}")
+
+            try:
+                result = func(*args, **kwargs)
+                func.failure_count = 0  # Reset on success
+                return result
+            except Exception as e:
+                func.failure_count += 1
+                func.last_failure_time = current_time
+                logger.error(f"Circuit breaker: {func.__name__} failed "
+                           f"({func.failure_count}/{max_failures})")
+                raise e
+
+        return wrapper
+    return decorator
+
+
+# Agent communication protocols
+class AgentMessageType(Enum):
+    """Types of messages agents can exchange."""
+    ANALYSIS_REQUEST = "analysis_request"
+    ANALYSIS_RESULT = "analysis_result"
+    HYPOTHESIS_REQUEST = "hypothesis_request"
+    HYPOTHESIS_RESULT = "hypothesis_result"
+    VALIDATION_REQUEST = "validation_request"
+    VALIDATION_RESULT = "validation_result"
+    ERROR = "error"
+
+
+@dataclass
+class AgentMessage:
+    """Typed message object for agent communication."""
+    message_id: str
+    sender: str
+    recipient: str
+    message_type: AgentMessageType
+    payload: Dict[str, Any]
+    timestamp: float = Field(default_factory=time.time)
+
+    def __post_init__(self):
+        if not self.message_id:
+            self.message_id = str(uuid.uuid4())
+
+
+@dataclass
+class AnalysisResult:
+    """Typed result object for agent analysis."""
+    agent_name: str
+    confidence: float
+    results: Dict[str, Any]
+    execution_time: float
+    memory_usage: float
+    errors: List[str] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+    def is_successful(self) -> bool:
+        """Check if analysis was successful."""
+        return len(self.errors) == 0 and self.confidence > 0.0
+
+    def get_summary(self) -> Dict[str, Any]:
+        """Get a summary of the analysis result."""
+        return {
+            "agent": self.agent_name,
+            "confidence": self.confidence,
+            "success": self.is_successful(),
+            "execution_time": self.execution_time,
+            "memory_usage": self.memory_usage,
+            "error_count": len(self.errors),
+            "warning_count": len(self.warnings)
+        }
+
+
+# Input validation protocols
+class InputValidator(Protocol):
+    """Protocol for input validation."""
+
+    def validate(self, data: Any) -> Tuple[bool, List[str]]:
+        """Validate input data and return (is_valid, error_messages)."""
+        ...
+
+
+class SignalValidator:
+    """Validator for signal data."""
+
+    def __init__(self, min_length: int = 10, max_length: int = 1000000):
+        self.min_length = min_length
+        self.max_length = max_length
+
+    def validate(self, signals: np.ndarray) -> Tuple[bool, List[str]]:
+        """Validate signal array."""
+        errors = []
+
+        if signals is None:
+            errors.append("Signal data is None")
+            return False, errors
+
+        if not isinstance(signals, np.ndarray):
+            errors.append(f"Expected numpy array, got {type(signals)}")
+            return False, errors
+
+        if signals.size == 0:
+            errors.append("Signal array is empty")
+            return False, errors
+
+        if len(signals.shape) < 2:
+            errors.append(f"Signal must be at least 2D, got shape {signals.shape}")
+            return False, errors
+
+        signal_length = signals.shape[1]
+        if signal_length < self.min_length:
+            errors.append(f"Signal too short: {signal_length} < {self.min_length}")
+
+        if signal_length > self.max_length:
+            errors.append(f"Signal too long: {signal_length} > {self.max_length}")
+
+        if np.any(np.isnan(signals)):
+            errors.append("Signal contains NaN values")
+
+        if np.any(np.isinf(signals)):
+            errors.append("Signal contains infinite values")
+
+        return len(errors) == 0, errors
+
+
+class StateValidator:
+    """Validator for research state."""
+
+    def validate(self, state: ResearchPHMState) -> Tuple[bool, List[str]]:
+        """Validate research state."""
+        errors = []
+
+        if state is None:
+            errors.append("Research state is None")
+            return False, errors
+
+        # Validate required fields
+        if not hasattr(state, 'reference_signal') or state.reference_signal is None:
+            errors.append("Missing reference signal")
+
+        if not hasattr(state, 'test_signal') or state.test_signal is None:
+            errors.append("Missing test signal")
+
+        if not hasattr(state, 'fs') or state.fs is None or state.fs <= 0:
+            errors.append("Invalid sampling frequency")
+
+        # Validate signal data
+        signal_validator = SignalValidator()
+
+        if state.reference_signal and state.reference_signal.results:
+            ref_data = state.reference_signal.results.get("ref")
+            if ref_data is not None:
+                is_valid, signal_errors = signal_validator.validate(ref_data)
+                if not is_valid:
+                    errors.extend([f"Reference signal: {e}" for e in signal_errors])
+
+        if state.test_signal and state.test_signal.results:
+            test_data = state.test_signal.results.get("test")
+            if test_data is not None:
+                is_valid, signal_errors = signal_validator.validate(test_data)
+                if not is_valid:
+                    errors.extend([f"Test signal: {e}" for e in signal_errors])
+
+        return len(errors) == 0, errors
+
+
 class ResearchAgentBase(ABC):
     """
-    Abstract base class for all research agents.
-    
-    Provides common functionality for research workflow integration,
-    hypothesis generation, and result validation.
+    Enhanced abstract base class for all research agents.
+
+    Provides comprehensive functionality including:
+    - Performance monitoring and resource management
+    - Input validation and error handling
+    - Standardized communication interfaces
+    - Dependency injection support
+    - Circuit breaker pattern for reliability
     """
-    
-    def __init__(self, agent_name: str):
+
+    def __init__(self,
+                 agent_name: str,
+                 config: Optional[Dict[str, Any]] = None,
+                 validators: Optional[Dict[str, InputValidator]] = None,
+                 dependencies: Optional[Dict[str, Any]] = None):
         self.agent_name = agent_name
+        self.config = config or {}
+        self.validators = validators or self._create_default_validators()
+        self.dependencies = dependencies or {}
         self.llm = None
+        self.execution_stats = {
+            "total_executions": 0,
+            "successful_executions": 0,
+            "total_time": 0.0,
+            "total_memory": 0.0
+        }
         self._initialize_llm()
-    
+
+    def _create_default_validators(self) -> Dict[str, InputValidator]:
+        """Create default validators for this agent."""
+        return {
+            "state": StateValidator(),
+            "signal": SignalValidator()
+        }
+
     def _initialize_llm(self):
         """Initialize the LLM for this agent."""
         try:
@@ -41,33 +282,154 @@ class ResearchAgentBase(ABC):
         except Exception as e:
             logger.warning(f"Failed to initialize LLM for {self.agent_name}: {e}")
             self.llm = None
+
+    def validate_input(self, state: ResearchPHMState) -> Tuple[bool, List[str]]:
+        """Validate input state before processing."""
+        if "state" in self.validators:
+            return self.validators["state"].validate(state)
+        return True, []
+
+    def get_config_value(self, key: str, default: Any = None) -> Any:
+        """Get configuration value with type safety."""
+        return self.config.get(key, default)
+
+    def update_execution_stats(self, execution_time: float, memory_usage: float, success: bool):
+        """Update execution statistics."""
+        self.execution_stats["total_executions"] += 1
+        if success:
+            self.execution_stats["successful_executions"] += 1
+        self.execution_stats["total_time"] += execution_time
+        self.execution_stats["total_memory"] += memory_usage
+
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """Get performance metrics for this agent."""
+        total_exec = self.execution_stats["total_executions"]
+        if total_exec == 0:
+            return {"no_executions": True}
+
+        return {
+            "total_executions": total_exec,
+            "success_rate": self.execution_stats["successful_executions"] / total_exec,
+            "avg_execution_time": self.execution_stats["total_time"] / total_exec,
+            "avg_memory_usage": self.execution_stats["total_memory"] / total_exec,
+            "total_time": self.execution_stats["total_time"],
+            "total_memory": self.execution_stats["total_memory"]
+        }
     
-    @abstractmethod
-    def analyze(self, state: ResearchPHMState) -> Dict[str, Any]:
+    @monitor_performance
+    @circuit_breaker(max_failures=3)
+    def analyze(self, state: ResearchPHMState) -> AnalysisResult:
         """
-        Perform the core analysis for this research agent.
-        
+        Perform the core analysis for this research agent with monitoring and validation.
+
         Args:
             state: Current research state
-            
+
+        Returns:
+            AnalysisResult object containing analysis results and metadata
+        """
+        start_time = time.time()
+        start_memory = psutil.Process().memory_info().rss
+
+        # Validate input
+        is_valid, errors = self.validate_input(state)
+        if not is_valid:
+            return AnalysisResult(
+                agent_name=self.agent_name,
+                confidence=0.0,
+                results={},
+                execution_time=0.0,
+                memory_usage=0.0,
+                errors=errors
+            )
+
+        try:
+            # Perform the actual analysis
+            results = self._perform_analysis(state)
+            confidence = self._calculate_confidence(results)
+
+            end_time = time.time()
+            end_memory = psutil.Process().memory_info().rss
+
+            execution_time = end_time - start_time
+            memory_usage = (end_memory - start_memory) / 1024 / 1024  # MB
+
+            # Update stats
+            self.update_execution_stats(execution_time, memory_usage, True)
+
+            return AnalysisResult(
+                agent_name=self.agent_name,
+                confidence=confidence,
+                results=results,
+                execution_time=execution_time,
+                memory_usage=memory_usage
+            )
+
+        except Exception as e:
+            end_time = time.time()
+            end_memory = psutil.Process().memory_info().rss
+
+            execution_time = end_time - start_time
+            memory_usage = (end_memory - start_memory) / 1024 / 1024  # MB
+
+            # Update stats
+            self.update_execution_stats(execution_time, memory_usage, False)
+
+            logger.error(f"{self.agent_name}: Analysis failed: {e}")
+            return AnalysisResult(
+                agent_name=self.agent_name,
+                confidence=0.0,
+                results={},
+                execution_time=execution_time,
+                memory_usage=memory_usage,
+                errors=[str(e)]
+            )
+
+    @abstractmethod
+    def _perform_analysis(self, state: ResearchPHMState) -> Dict[str, Any]:
+        """
+        Perform the actual analysis implementation.
+
+        Args:
+            state: Current research state
+
         Returns:
             Dictionary containing analysis results
         """
         pass
-    
+
     @abstractmethod
-    def generate_hypotheses(self, state: ResearchPHMState, analysis_results: Dict[str, Any]) -> List[ResearchHypothesis]:
+    def generate_hypotheses(self, state: ResearchPHMState, analysis_result: AnalysisResult) -> List[ResearchHypothesis]:
         """
         Generate research hypotheses based on analysis results.
-        
+
         Args:
             state: Current research state
-            analysis_results: Results from the analyze method
-            
+            analysis_result: Results from the analyze method
+
         Returns:
             List of generated hypotheses
         """
         pass
+
+    def _calculate_confidence(self, results: Dict[str, Any]) -> float:
+        """
+        Calculate confidence score for analysis results.
+
+        Args:
+            results: Analysis results
+
+        Returns:
+            Confidence score between 0 and 1
+        """
+        if not results:
+            return 0.0
+
+        # Default confidence calculation - can be overridden by subclasses
+        successful_analyses = sum(1 for v in results.values() if v is not None and not isinstance(v, dict) or (isinstance(v, dict) and "error" not in v))
+        total_analyses = len(results)
+
+        return successful_analyses / total_analyses if total_analyses > 0 else 0.0
     
     def validate_findings(self, state: ResearchPHMState, findings: Dict[str, Any]) -> Dict[str, Any]:
         """

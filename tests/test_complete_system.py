@@ -14,6 +14,9 @@ import os
 import sys
 from pathlib import Path
 
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 # Set up test environment
 os.environ["GEMINI_API_KEY"] = "test_gemini_key_12345"
 os.environ["OPENAI_API_KEY"] = "test_openai_key_12345"
