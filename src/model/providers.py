@@ -208,6 +208,78 @@ class OpenAIProvider(BaseLLMProvider):
         )
 
 
+class TongyiProvider(BaseLLMProvider):
+    """Tongyi/Qwen LLM provider implementation."""
+    
+    @property
+    def provider_name(self) -> str:
+        return "tongyi"
+    
+    @property
+    def supported_models(self) -> List[str]:
+        return [
+            "qwen-turbo",
+            "qwen-plus", 
+            "qwen-max",
+            "qwen-max-longcontext"
+        ]
+    
+    def _create_client(self) -> BaseChatModel:
+        """Create Tongyi client."""
+        try:
+            from langchain_community.llms import Tongyi
+        except ImportError as e:
+            raise ImportError(
+                "Tongyi provider requires langchain-community and dashscope. "
+                "Install with: pip install langchain-community dashscope"
+            ) from e
+        
+        return Tongyi(
+            model=self.config.model,
+            dashscope_api_key=self.config.api_key,
+            temperature=self.config.temperature,
+            max_retries=self.config.max_retries,
+            timeout=self.config.timeout,
+            **self.config.extra_params
+        )
+
+
+class GLMProvider(BaseLLMProvider):
+    """GLM (智谱) LLM provider implementation."""
+    
+    @property
+    def provider_name(self) -> str:
+        return "glm"
+    
+    @property
+    def supported_models(self) -> List[str]:
+        return [
+            "glm-4",
+            "glm-4-air",
+            "glm-4-flash", 
+            "glm-3-turbo"
+        ]
+    
+    def _create_client(self) -> BaseChatModel:
+        """Create GLM client."""
+        try:
+            from langchain_community.chat_models import ChatZhipuAI
+        except ImportError as e:
+            raise ImportError(
+                "GLM provider requires langchain-community and zhipuai. "
+                "Install with: pip install langchain-community zhipuai"
+            ) from e
+        
+        return ChatZhipuAI(
+            model=self.config.model,
+            api_key=self.config.api_key,
+            temperature=self.config.temperature,
+            max_retries=self.config.max_retries,
+            timeout=self.config.timeout,
+            **self.config.extra_params
+        )
+
+
 class MockLLMProvider(BaseLLMProvider):
     """Mock LLM provider for testing."""
     
@@ -249,6 +321,8 @@ class LLMProviderRegistry:
         """Register default providers."""
         self.register("google", GoogleLLMProvider)
         self.register("openai", OpenAIProvider)
+        self.register("tongyi", TongyiProvider)
+        self.register("glm", GLMProvider)
         self.register("mock", MockLLMProvider)
     
     def register(self, name: str, provider_class: Type[BaseLLMProvider]):
@@ -356,6 +430,10 @@ def create_llm_provider(
             api_key = os.getenv("GEMINI_API_KEY")
         elif provider == "openai":
             api_key = os.getenv("OPENAI_API_KEY")
+        elif provider == "tongyi":
+            api_key = os.getenv("DASHSCOPE_API_KEY")
+        elif provider == "glm":
+            api_key = os.getenv("ZHIPUAI_API_KEY")
 
     config = LLMProviderConfig(
         provider=provider,
@@ -481,6 +559,10 @@ class LLMProviderFactory:
             return create_llm_provider("google", "gemini-2.5-pro")
         elif os.getenv("OPENAI_API_KEY"):
             return create_llm_provider("openai", "gpt-4o")
+        elif os.getenv("DASHSCOPE_API_KEY"):
+            return create_llm_provider("tongyi", "qwen-turbo")
+        elif os.getenv("ZHIPUAI_API_KEY"):
+            return create_llm_provider("glm", "glm-4")
         else:
             warnings.warn(
                 "No API keys found. Using mock provider for testing.",
