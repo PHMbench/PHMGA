@@ -1,44 +1,37 @@
-langgraph
+# Core LangGraph and LangChain dependencies
+langgraph>=0.2.0
 langgraph-prebuilt
-langgraph-sdk
 langgraph-checkpoint-sqlite
-langsmith
+langchain-core>=0.3.0
 langchain-community
-langchain-core
 langchain-openai
 langchain-google-genai
-langchain-experimental
-scikit-image
-PyWavelets
-librosa
-scikit-learn
-ruptures
-emd
-nolds
-dtaidistance
-pyentrp
-antropy
-PyEMD
-vmdpy
-padasip
-notebook
-tavily-python
-wikipedia
-trustcall
-langgraph-cli[inmem]
-google-generativeai
-google.genai
-networkx
-graphviz
-PyWavelets
-scikit-learn
-dtw
-pandas
-h5py
-openpyxl
-numpy
-scipy
-matplotlib
+langsmith
 
-umap-learn
-seaborn
+# Scientific computing and data handling
+numpy>=1.24.0
+pandas>=1.5.0
+scipy>=1.10.0
+scikit-learn>=1.3.0
+h5py>=3.8.0
+openpyxl>=3.1.0
+
+# Signal processing specific
+PyWavelets>=1.4.0
+librosa>=0.10.0
+scikit-image
+
+# Configuration and utilities
+pyyaml>=6.0
+python-dotenv>=1.0.0
+pydantic>=2.0.0
+networkx>=3.0
+uuid
+
+# Optional: For advanced signal processing (install if needed)
+# emd
+# nolds  
+# PyEMD
+# vmdpy
+# antropy
+# pyentrp
