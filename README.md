@@ -114,7 +114,7 @@ test_ids: [47051, 47045, 47048, 47054, 47057]
 - **API Keys**: Requires valid Google Gemini API key only (OpenAI not supported in this branch)
 - **Processing**: Creates DAG visualizations and saves results to `save/` directory
 - **Mock Mode**: Falls back to sample data if real datasets unavailable
-- **Dataset Access**: Visit [PHMbench homepage](https://phmbench.github.io/) for dataset download instructions
+- **Dataset Access**: Visit [PHMbench homepage](https://github.com/PHMbench/) for dataset download instructions
 
 ## 🧪 Expected Output
 
