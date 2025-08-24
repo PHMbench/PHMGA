@@ -205,11 +205,11 @@ def _internal_method(self):
 def optimize_parameters(population: List[Individual], 
                        config: GAConfig) -> Tuple[float, Dict[str, Any]]:
     """
-    Optimize genetic algorithm parameters using performance metrics.
+    Optimize graph agent system parameters using performance metrics.
     
     Args:
         population: List of individuals in current population
-        config: Configuration object with GA parameters
+        config: Configuration object with Graph Agent parameters
         
     Returns:
         Tuple containing best fitness value and optimization metrics
@@ -258,7 +258,7 @@ class TestGeneticAlgorithm(unittest.TestCase):
             self.ga.cleanup()
     
     def test_initialization(self):
-        """Test proper initialization of genetic algorithm."""
+        """Test proper initialization of graph agent system."""
         self.assertEqual(self.ga.generation, 0)
         self.assertIsNone(self.ga.best_individual)
     

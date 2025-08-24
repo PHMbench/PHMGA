@@ -1,14 +1,14 @@
-# PHMGA: Prognostics and Health Management Genetic Algorithm Framework
+# PHMGA: Prognostics and Health Management Graph Agent Framework
 
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![LangGraph](https://img.shields.io/badge/LangGraph-Enabled-green.svg)](https://langchain-ai.github.io/langgraph/)
 
-PHMGA is an advanced framework for Prognostics and Health Management (PHM) that combines genetic algorithms with autonomous signal processing capabilities. The framework leverages LangGraph for orchestrating complex workflows and provides both traditional and LLM-enhanced approaches for signal analysis and fault diagnosis.
+PHMGA is an advanced framework for Prognostics and Health Management (PHM) that combines graph-based multi-agent systems with autonomous signal processing capabilities. The framework leverages LangGraph for orchestrating complex workflows and provides intelligent agent-driven approaches for signal analysis and fault diagnosis.
 
 ## 🚀 Key Features
 
-- **Autonomous Signal Processing**: Self-optimizing signal processing pipelines using genetic algorithms
+- **Autonomous Signal Processing**: Self-optimizing signal processing pipelines using intelligent graph agents
 - **Dual-Layer Architecture**: Static outer workflow graph with dynamic inner computational DAGs
 - **LLM Integration**: Natural language interfaces for algorithm configuration and optimization
 - **Modular Design**: Extensible operator library for signal processing, feature extraction, and analysis

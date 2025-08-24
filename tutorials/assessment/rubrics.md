@@ -11,28 +11,28 @@ This document provides comprehensive assessment rubrics for evaluating progress 
 #### Knowledge Assessment (25 points)
 
 **Excellent (23-25 points)**
-- Demonstrates deep understanding of genetic algorithm principles
+- Demonstrates deep understanding of graph agent principles
 - Can explain selection, crossover, and mutation mechanisms clearly
 - Understands fitness function design and optimization landscapes
 - Articulates differences between traditional and LLM-enhanced approaches
 - Shows awareness of parameter sensitivity and tuning strategies
 
 **Proficient (18-22 points)**
-- Shows solid understanding of GA fundamentals
+- Shows solid understanding of Graph Agent fundamentals
 - Can explain most core concepts with minor gaps
 - Understands basic optimization principles
 - Recognizes benefits of LLM enhancement
 - Demonstrates awareness of parameter effects
 
 **Developing (13-17 points)**
-- Shows basic understanding of genetic algorithms
+- Shows basic understanding of graph agent systems
 - Can explain simple concepts but struggles with complex topics
 - Limited understanding of optimization principles
 - Minimal awareness of LLM integration benefits
 - Basic recognition of parameter importance
 
 **Needs Improvement (0-12 points)**
-- Limited or incorrect understanding of GA principles
+- Limited or incorrect understanding of Graph Agent principles
 - Cannot explain core concepts clearly
 - Lacks understanding of optimization fundamentals
 - No awareness of LLM enhancement benefits
@@ -41,28 +41,28 @@ This document provides comprehensive assessment rubrics for evaluating progress 
 #### Implementation Skills (35 points)
 
 **Excellent (32-35 points)**
-- Implements complete, working GA from scratch
+- Implements complete, working Graph Agent system from scratch
 - Code is well-structured, documented, and follows best practices
 - Successfully integrates LLM capabilities
 - Implements comprehensive benchmarking and analysis
 - Demonstrates creativity in problem-solving approaches
 
 **Proficient (25-31 points)**
-- Implements functional GA with minor issues
+- Implements functional Graph Agent system with minor issues
 - Code is generally well-organized with adequate documentation
 - Successfully uses provided LLM integration
 - Completes basic benchmarking tasks
 - Shows good problem-solving skills
 
 **Developing (18-24 points)**
-- Implements basic GA with significant guidance
+- Implements basic Graph Agent system with significant guidance
 - Code works but lacks organization or documentation
 - Uses LLM features with assistance
 - Completes simple benchmarking with help
 - Shows developing problem-solving abilities
 
 **Needs Improvement (0-17 points)**
-- Cannot implement working GA independently
+- Cannot implement working Graph Agent system independently
 - Code is poorly structured or non-functional
 - Cannot use LLM features effectively
 - Cannot complete benchmarking tasks
@@ -376,7 +376,7 @@ This document provides comprehensive assessment rubrics for evaluating progress 
 
 ### Bronze Level (60-69% overall)
 - Demonstrates basic understanding of PHMGA concepts
-- Can implement simple genetic algorithms
+- Can implement simple graph agent workflows
 - Shows awareness of framework components
 - Completes guided exercises successfully
 
@@ -401,7 +401,7 @@ This document provides comprehensive assessment rubrics for evaluating progress 
 ## 📝 Self-Assessment Checklist
 
 ### Part 1 Completion Checklist
-- [ ] Implemented traditional genetic algorithm from scratch
+- [ ] Implemented traditional graph agent system from scratch
 - [ ] Successfully integrated LLM enhancement features
 - [ ] Completed comprehensive performance benchmarking
 - [ ] Analyzed parameter sensitivity and optimization

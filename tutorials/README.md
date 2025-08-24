@@ -233,8 +233,8 @@ Use this checklist to track your progress:
 - [Troubleshooting Guide](../README.md#troubleshooting)
 
 ### Research Papers
-- "Genetic Algorithms for Signal Processing Optimization"
-- "LLM-Enhanced Evolutionary Computation"
+- "Graph Agents for Signal Processing Optimization"
+- "LLM-Enhanced Graph Agent Systems"
 - "Autonomous Health Monitoring Systems"
 
 ### External Learning

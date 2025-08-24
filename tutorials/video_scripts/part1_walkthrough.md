@@ -1,7 +1,7 @@
 # Video Walkthrough Script: Part 1 - Foundation Tutorial
 
 **Duration**: 45-60 minutes  
-**Target Audience**: Beginners to genetic algorithms and PHMGA framework  
+**Target Audience**: Beginners to graph agent systems and PHMGA framework  
 **Format**: Screen recording with live coding demonstration
 
 ## 🎬 Video Structure
@@ -10,13 +10,13 @@
 
 **[SCENE: Welcome screen with PHMGA logo]**
 
-**Narrator**: "Welcome to the PHMGA Tutorial Series! I'm [Name], and today we're diving into Part 1: Foundation - Basic Function Implementation. By the end of this video, you'll understand genetic algorithms, implement both traditional and LLM-enhanced versions, and see how they compare in real-world optimization problems."
+**Narrator**: "Welcome to the PHMGA Tutorial Series! I'm [Name], and today we're diving into Part 1: Foundation - Basic Function Implementation. By the end of this video, you'll understand graph agent systems, implement both basic and LLM-enhanced versions, and see how they compare in real-world optimization problems."
 
 **[SCENE: Agenda slide]**
 
 "Here's what we'll cover today:
-1. Understanding genetic algorithms and optimization
-2. Implementing a traditional genetic algorithm from scratch
+1. Understanding graph agent systems and optimization
+2. Implementing a basic graph agent system from scratch
 3. Enhancing it with LLM capabilities
 4. Comparing performance and analyzing results
 5. Hands-on exercises you can try yourself"
@@ -57,7 +57,7 @@ ax1.scatter([3], [-1], [5], color='red', s=100)
 ax1.set_title('3D Surface Plot')
 ```
 
-**Narrator**: "As you can see, this function has a clear global minimum at x=3, y=-1 with a value of 5. The red dot shows our target. Now, how can genetic algorithms help us find this optimum?"
+**Narrator**: "As you can see, this function has a clear global minimum at x=3, y=-1 with a value of 5. The red dot shows our target. Now, how can graph agent systems help us find this optimum?"
 
 **[SCENE: Genetic algorithm concepts animation]**
 
@@ -73,7 +73,7 @@ ax1.set_title('3D Surface Plot')
 
 **[SCENE: Open traditional_ga.py file]**
 
-**Narrator**: "Let's implement a genetic algorithm from scratch. We'll start with the Individual class that represents a candidate solution."
+**Narrator**: "Let's implement a graph agent system from scratch. We'll start with the Individual class that represents a candidate solution."
 
 **[LIVE CODING: Walk through Individual class]**
 
@@ -94,7 +94,7 @@ class Individual:
         return self.fitness
 ```
 
-**Narrator**: "Notice how we use negative fitness for maximization. This is a common pattern in genetic algorithms."
+**Narrator**: "Notice how we use negative fitness for maximization. This is a common pattern in graph agent optimization."
 
 **[LIVE CODING: Demonstrate mutation]**
 
@@ -132,9 +132,9 @@ def crossover(self, other, crossover_rate):
     return Individual(child1_genes, self.bounds), Individual(child2_genes, self.bounds)
 ```
 
-**[LIVE CODING: Walk through main GA class]**
+**[LIVE CODING: Walk through main Graph Agent class]**
 
-**Narrator**: "Now let's see the main genetic algorithm class. The key method is evolve_generation..."
+**Narrator**: "Now let's see the main graph agent class. The key method is evolve_generation..."
 
 **[Show evolution loop and explain each step]**
 
@@ -158,7 +158,7 @@ results = ga.run(verbose=True)
 
 **[SCENE: Open llm_enhanced_ga.py]**
 
-**Narrator**: "Now let's see how we can enhance our genetic algorithm with Large Language Model capabilities. The LLM can help with parameter tuning and provide insights."
+**Narrator**: "Now let's see how we can enhance our graph agent system with Large Language Model capabilities. The LLM can help with parameter tuning and provide insights."
 
 **[LIVE CODING: Show LLM interface]**
 
@@ -301,7 +301,7 @@ def exercise_1_rosenbrock():
 
 **[Run a few cells to demonstrate]**
 
-"You can experiment with different parameters and see the effects immediately. This is perfect for building intuition about genetic algorithms."
+"You can experiment with different parameters and see the effects immediately. This is perfect for building intuition about graph agent systems."
 
 ### Conclusion and Next Steps (5 minutes)
 
@@ -309,8 +309,8 @@ def exercise_1_rosenbrock():
 
 **Narrator**: "Let's recap what we've learned today:
 
-1. **Genetic Algorithm Fundamentals**: Population, selection, crossover, mutation, evolution
-2. **Implementation Skills**: Built a complete GA from scratch with proper structure
+1. **Graph Agent Fundamentals**: Nodes, edges, state management, planning, execution
+2. **Implementation Skills**: Built a complete Graph Agent system from scratch with proper structure
 3. **LLM Enhancement**: Integrated natural language capabilities for adaptive optimization
 4. **Performance Analysis**: Comprehensive benchmarking and comparison techniques
 5. **Practical Application**: Hands-on exercises with real optimization problems"
