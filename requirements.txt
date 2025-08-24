@@ -4,7 +4,6 @@ langgraph-prebuilt
 langgraph-checkpoint-sqlite
 langchain-core>=0.3.0
 langchain-community
-langchain-openai
 langchain-google-genai
 langsmith
 
@@ -26,7 +25,7 @@ pyyaml>=6.0
 python-dotenv>=1.0.0
 pydantic>=2.0.0
 networkx>=3.0
-uuid
+# uuid  # Built-in Python module, not needed
 
 # Optional: For advanced signal processing (install if needed)
 # emd

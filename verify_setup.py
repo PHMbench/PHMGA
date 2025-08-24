@@ -49,18 +49,14 @@ def check_environment():
         from dotenv import load_dotenv
         load_dotenv()
         
-        # Check for at least one API key
+        # Check for Google/Gemini API key
         google_key = os.getenv('GOOGLE_API_KEY') or os.getenv('GEMINI_API_KEY')
-        openai_key = os.getenv('OPENAI_API_KEY')
         
         if google_key and google_key != "your_gemini_api_key_here":
             print("✅ Google/Gemini API key configured")
             return True
-        elif openai_key and openai_key != "your_openai_api_key_here":
-            print("✅ OpenAI API key configured") 
-            return True
         else:
-            print("⚠️  No valid API keys found in .env")
+            print("⚠️  No valid Google/Gemini API key found in .env (OpenAI not supported in NVTA branch)")
             return False
     else:
         print("⚠️  .env file not found (copy from .env.example)")

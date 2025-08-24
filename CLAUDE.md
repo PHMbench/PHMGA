@@ -19,10 +19,12 @@ pip install -r requirements.txt
 
 ### Required Environment Variables (.env file)
 ```bash
+# Google/Gemini API (required - OpenAI not supported in NVTA branch)
 GOOGLE_API_KEY="your_key"
 GEMINI_API_KEY="your_key"  
-OPENAI_API_KEY="your_key"
 USE_REAL_LLM="1"
+
+# Optional - LangChain tracing
 LANGCHAIN_API_KEY="your_key"
 LANGCHAIN_TRACING_V2=true
 ```
@@ -142,9 +144,9 @@ src/
 4. Operator automatically available to agents
 
 ### LLM Provider Configuration
-- Set via environment: `LLM_PROVIDER=google` or `openai`
+- **NVTA Branch**: Only Google/Gemini supported (OpenAI removed)
 - Model selection: `LLM_MODEL=gemini-2.0-flash-exp`
-- Configuration in `src/configuration.py` and `src/model.py`
+- Configuration in `src/configuration.py` and `src/model/__init__.py`
 
 ### DAG Persistence
 - States saved via pickle: `save_state(state, path)`
@@ -153,12 +155,12 @@ src/
 
 ## Current Development Focus
 
-The NVTA_2025_Version branch focuses on research experiments for signal processing automation using graph agents. Key areas:
-- Signal processing method discovery
-- Database integration for results
-- Deep research planning capabilities  
-- State map refactoring
-- Comprehensive logging
+The **NVTA_2025_Version branch** is a minimal demo focusing on core PHM Graph Agent functionality. Changes from main branch:
+- **Google API only** (OpenAI support removed)
+- **Minimal dependencies** and simplified structure
+- **Core demo cases** (case_exp2, case_exp2.5, case_exp_ottawa)
+- **Removed research modules** and redundant files
+- **Streamlined for demonstration purposes**
 
 ## Important Files
 

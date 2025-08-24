@@ -9,8 +9,8 @@ A **minimal demo** of the PHM Graph Agent system - an intelligent multi-agent fr
 
 ### 1. **Install Dependencies**
 ```bash
-# Clone the repository
-git clone https://github.com/PHMbench/PHMGA.git
+# Clone the repository (NVTA_2025_Version branch)
+git clone -b NVTA_2025_Version https://github.com/PHMbench/PHMGA.git
 cd PHMGA
 
 # Install requirements  
@@ -22,9 +22,8 @@ pip install -r requirements.txt
 # Copy environment template
 cp .env.example .env
 
-# Edit .env and add your API keys:
+# Edit .env and add your Google API key:
 GOOGLE_API_KEY="your_gemini_api_key" 
-OPENAI_API_KEY="your_openai_api_key"
 USE_REAL_LLM="1"
 ```
 
@@ -112,9 +111,10 @@ test_ids: [47051, 47045, 47048, 47054, 47057]
 ## ⚠️ Demo Notes
 
 - **Data Files**: Demo handles missing data files gracefully with warnings
-- **API Keys**: Requires valid Google Gemini or OpenAI API keys
+- **API Keys**: Requires valid Google Gemini API key only (OpenAI not supported in this branch)
 - **Processing**: Creates DAG visualizations and saves results to `save/` directory
 - **Mock Mode**: Falls back to sample data if real datasets unavailable
+- **Dataset Access**: Visit [PHMbench homepage](https://phmbench.github.io/) for dataset download instructions
 
 ## 🧪 Expected Output
 
