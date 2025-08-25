@@ -150,19 +150,19 @@ The following sections provide comprehensive documentation for all available ope
 
 这类操作会增加数据的维度，通常用于将一维时序信号转换为二维的时频表示或图像块。
 
-| 工具 | 描述 | 输入维度 | 输出维度 |
-| :--- | :--- | :--- | :--- |
-| **Patching** | 将长信号切分成多个重叠或不重叠的短片段 (Patch)。 | `(B, L, C)` | `(B, N, P, C)` |
-| **STFT** | 短时傅里叶变换，生成频谱图 (Spectrogram)，将时域信号转换为时频域表示。 | `(B, L, C)` | `(B, F, T, C)` |
-| **CWT** | 连续小波变换，生成尺度图 (Scalogram)，提供信号在不同尺度下的时频分析。 | `(B, L, C)` | `(B, S, L, C)` |
-| **Mel Spectrogram**| Mel 频谱图，在频率轴上使用 Mel 尺度，更符合人类听觉特性。 | `(B, L, C)` | `(B, M, T, C)` |
-| **Spectrogram** | 频谱图，是 STFT 结果的幅值平方。 | `(B, L, C)` | `(B, F, T, C)` |
-| **VQT** | 可变Q变换，一种在对数频率尺度上具有恒定分辨率的高级时频分析方法。 | `(B, L, C)` | `(B, Q, T, C)` |
-| **Time-Delay Embedding** | 时间延迟嵌入，用于从时间序列重构相空间。 | `(B, L, C)` | `(B, L', D, C)` |
-| **EMD** | 经验模态分解，将信号分解为多个本征模态函数（IMF）。 | `(B, L, C)` | `(B, L, I, C)` |
-| **VMD** | 变分模态分解，一种比 EMD 更稳健的信号分解方法。 | `(B, L, C)` | `(B, L, K, C)` |
-| **Wigner-Ville** | 维格纳-威利分布，一种高分辨率时频分析方法。 | `(B, L, C)` | `(B, L, F, C)` |
-| **Scalogram** | 尺度图，是 CWT 结果的幅值或幅值平方。 | `(B, L, C)` | `(B, S, L, C)` |
+| 工具 | 描述 | 输入维度 | 输出维度 | 计算公式 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Patching** | 将长信号切分成多个重叠或不重叠的短片段 (Patch)。 | `(B, L, C)` | `(B, N, P, C)` | $x[n] \to x[i, j]$ |
+| **STFT** | 短时傅里叶变换，生成频谱图 (Spectrogram)，将时域信号转换为时频域表示。 | `(B, L, C)` | `(B, F, T, C)` | $X(f, t) = \sum_n x[n] w[n-t] e^{-j2\pi fn/N}$ |
+| **CWT** | 连续小波变换，生成尺度图 (Scalogram)，提供信号在不同尺度下的时频分析。 | `(B, L, C)` | `(B, S, L, C)` | $C(s, \tau) = \int x(t) \psi^*\left(\frac{t-\tau}{s}\right) dt$ |
+| **Mel Spectrogram**| Mel 频谱图，在频率轴上使用 Mel 尺度，更符合人类听觉特性。 | `(B, L, C)` | `(B, M, T, C)` | $M(m, t) = |\text{STFT}(x)|^2 \times \text{Mel}_{\text{filter}}$ |
+| **Spectrogram** | 频谱图，是 STFT 结果的幅值平方。 | `(B, L, C)` | `(B, F, T, C)` | $S(f, t) = |\text{STFT}(x(t))|^2$ |
+| **VQT** | 可变Q变换，一种在对数频率尺度上具有恒定分辨率的高级时频分析方法。 | `(B, L, C)` | `(B, Q, T, C)` | $V(k, t) = \sum_n x[n] w_k[n-t] e^{-j2\pi f_k n/N}$ |
+| **Time-Delay Embedding** | 时间延迟嵌入，用于从时间序列重构相空间。 | `(B, L, C)` | `(B, L', D, C)` | $X(t) = [x(t), x(t-\tau), \ldots, x(t-(d-1)\tau)]$ |
+| **EMD** | 经验模态分解，将信号分解为多个本征模态函数（IMF）。 | `(B, L, C)` | `(B, L, I, C)` | $x(t) = \sum_i \text{IMF}_i(t) + r(t)$ |
+| **VMD** | 变分模态分解，一种比 EMD 更稳健的信号分解方法。 | `(B, L, C)` | `(B, L, K, C)` | $x(t) = \sum_k u_k(t)$ |
+| **Wigner-Ville** | 维格纳-威利分布，一种高分辨率时频分析方法。 | `(B, L, C)` | `(B, L, F, C)` | $W(t, f) = \int x(t+\tau/2) x^*(t-\tau/2) e^{-j2\pi f\tau} d\tau$ |
+| **Scalogram** | 尺度图，是 CWT 结果的幅值或幅值平方。 | `(B, L, C)` | `(B, S, L, C)` | $S(s, \tau) = |\text{CWT}(s, \tau)|^2$ |
 
 </details>
 
@@ -173,23 +173,23 @@ The following sections provide comprehensive documentation for all available ope
 
 这类操作在不改变数据维度数量的前提下，对信号进行变换或处理。
 
-| 工具 | 描述 | 输入维度 | 输出维度 |
-| :--- | :--- | :--- | :--- |
-| **Normalize** | 对信号进行归一化处理，如 Z-score 标准化或 Min-Max 缩放。 | `(B, L, C)` | `(B, L, C)` |
-| **Detrend** | 移除信号中的趋势项，通常是线性的。 | `(B, L, C)` | `(B, L, C)` |
-| **FFT** | 快速傅里叶变换，将时域信号转换为频域表示。虽然域改变，但通常保持维度不变。 | `(B, L, C)` | `(B, F, C)` |
-| **PSD** | 功率谱密度，使用 Welch 方法计算信号的功率谱。 | `(B, L, C)` | `(B, F, C)` |
-| **Integrate** | 计算信号的累积积分（例如，从加速度到速度）。 | `(B, L, C)` | `(B, L, C)` |
-| **Differentiate** | 计算信号的差分（例如，从速度到加速度）。 | `(B, L, C)` | `(B, L-1, C)` |
-| **Power to dB** | 将功率谱或频谱图转换为分贝（dB）单位。 | `(B, F, ...)` | `(B, F, ...)` |
-| **PCA** | 主成分分析，用于特征降维。 | `(B, C')` | `(B, n_components)` |
-| **Adaptive Filter** | 自适应滤波，用于从信号中去除噪声。 | `Dict['d', 'x']` | `Dict['y', 'e', 'w']` |
-| **Savitzky-Golay Filter** | SG 滤波器，一种强大的平滑去噪方法。 | `(B, L, C)` | `(B, L, C)` |
-| **Cepstrum** | 倒谱分析，用于检测信号中的谐波成分。 | `(B, L, C)` | `(B, L, C)` |
-| **Filter** | 使用滤波器（如低通、高通、带通）去除或保留特定频率成分。 | `(B, L, C)` | `(B, L, C)` |
-| **Denoise (Wavelet)** | 使用小波阈值去噪，一种先进的去噪方法。 | `(B, L, C)` | `(B, L, C)` |
-| **Hilbert Envelope**| 通过希尔伯特变换计算信号的解析信号，并提取其包络。 | `(B, L, C)` | `(B, L, C)` |
-| **Resample** | 将信号重采样到新的长度。 | `(B, L, C)` | `(B, L_new, C)` |
+| 工具 | 描述 | 输入维度 | 输出维度 | 计算公式 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Normalize** | 对信号进行归一化处理，如 Z-score 标准化或 Min-Max 缩放。 | `(B, L, C)` | `(B, L, C)` | $\frac{x - \mu}{\sigma}$ or $\frac{x - \min}{\max - \min}$ |
+| **Detrend** | 移除信号中的趋势项，通常是线性的。 | `(B, L, C)` | `(B, L, C)` | $x'(t) = x(t) - (at + b)$ |
+| **FFT** | 快速傅里叶变换，将时域信号转换为频域表示。虽然域改变，但通常保持维度不变。 | `(B, L, C)` | `(B, F, C)` | $X[k] = \sum_n x[n] e^{-j2\pi kn/N}$ |
+| **PSD** | 功率谱密度，使用 Welch 方法计算信号的功率谱。 | `(B, L, C)` | `(B, F, C)` | $P(f) = \frac{|X(f)|^2}{N}$ |
+| **Integrate** | 计算信号的累积积分（例如，从加速度到速度）。 | `(B, L, C)` | `(B, L, C)` | $y[n] = \sum_{i=0}^n x[i]$ |
+| **Differentiate** | 计算信号的差分（例如，从速度到加速度）。 | `(B, L, C)` | `(B, L-1, C)` | $y[n] = x[n] - x[n-1]$ |
+| **Power to dB** | 将功率谱或频谱图转换为分贝（dB）单位。 | `(B, F, ...)` | `(B, F, ...)` | $10 \log_{10}(P)$ |
+| **PCA** | 主成分分析，用于特征降维。 | `(B, C')` | `(B, n_components)` | $Y = XW$ |
+| **Adaptive Filter** | 自适应滤波，用于从信号中去除噪声。 | `Dict['d', 'x']` | `Dict['y', 'e', 'w']` | $y[n] = w^T[n] x[n]$ |
+| **Savitzky-Golay Filter** | SG 滤波器，一种强大的平滑去噪方法。 | `(B, L, C)` | `(B, L, C)` | 多项式最小二乘拟合 |
+| **Cepstrum** | 倒谱分析，用于检测信号中的谐波成分。 | `(B, L, C)` | `(B, L, C)` | $c[n] = \text{IFFT}(\log|\text{FFT}(x[n])|)$ |
+| **Filter** | 使用滤波器（如低通、高通、带通）去除或保留特定频率成分。 | `(B, L, C)` | `(B, L, C)` | $Y(z) = H(z) X(z)$ |
+| **Denoise (Wavelet)** | 使用小波阈值去噪，一种先进的去噪方法。 | `(B, L, C)` | `(B, L, C)` | 小波阈值处理 |
+| **Hilbert Envelope**| 通过希尔伯特变换计算信号的解析信号，并提取其包络。 | `(B, L, C)` | `(B, L, C)` | $|x(t) + j\mathcal{H}\{x(t)\}|$ |
+| **Resample** | 将信号重采样到新的长度。 | `(B, L, C)` | `(B, L_new, C)` | 插值/抽取算法 |
 
 </details>
 
@@ -200,21 +200,21 @@ The following sections provide comprehensive documentation for all available ope
 
 这类操作会减少数据的维度，通常用于从信号中提取紧凑的特征表示。
 
-| 工具 | 描述 | 输入维度 | 输出维度 |
-| :--- | :--- | :--- | :--- |
-| **时域统计特征** | 计算信号的各种统计量，如均值、方差、峰度等。 | `(B, L, C)` | `(B, C')` |
-| **过零率 (ZCR)** | 计算信号穿过零点的频率。 | `(B, L, C)` | `(B, C')` |
-| **峰峰值 (P2P)** | 计算信号的最大值和最小值之差。 | `(B, L, C)` | `(B, C')` |
-| **Hjorth 参数** | 计算信号的活动性、移动性和复杂性。 | `(B, L, C)` | `(B, 3, C)` |
-| **近似熵 (ApEn)** | 量化信号的规律性和复杂度。 | `(B, L, C)` | `(B, C')` |
-| **排列熵 (PermEn)** | 基于排序模式量化信号的复杂度。 | `(B, L, C)` | `(B, C')` |
-| **频域统计特征** | 计算功率谱密度(PSD)的统计量。 | `(B, F, C)` | `(B, C')` |
-| **谱质心** | 计算频谱的能量中心，是重要的频域特征。 | `(B, F, C)` | `(B, C')` |
-| **谱偏度** | 计算频谱的偏度。 | `(B, F, C)` | `(B, C')` |
-| **谱峰度** | 计算频谱的峰度。 | `(B, F, C)` | `(B, C')` |
-| **谱平坦度** | 衡量频谱的音调特性。 | `(B, F, C)` | `(B, C')` |
-| **频带功率 (Band Power)** | 计算特定频带内的平均功率。 | `(B, F, C)` | `(B, C')` |
-| **CNN Pooling** | 卷积神经网络中的池化层（如平均池化、最大池化），用于降低特征图的空间维度。 | `(B, H, W, C)` | `(B, H', W', C)` 或 `(B, C')` |
+| 工具 | 描述 | 输入维度 | 输出维度 | 计算公式 |
+| :--- | :--- | :--- | :--- | :--- |
+| **时域统计特征** | 计算信号的各种统计量，如均值、方差、峰度等。 | `(B, L, C)` | `(B, C')` | 参见下方详细公式表 |
+| **过零率 (ZCR)** | 计算信号穿过零点的频率。 | `(B, L, C)` | `(B, C')` | $\text{ZCR} = \frac{1}{2(L-1)}\sum_{i=1}^{L-1} |\text{sgn}(x_i) - \text{sgn}(x_{i-1})|$ |
+| **峰峰值 (P2P)** | 计算信号的最大值和最小值之差。 | `(B, L, C)` | `(B, C')` | $\text{P2P} = \max(x) - \min(x)$ |
+| **Hjorth 参数** | 计算信号的活动性、移动性和复杂性。 | `(B, L, C)` | `(B, 3, C)` | Activity, Mobility, Complexity |
+| **近似熵 (ApEn)** | 量化信号的规律性和复杂度。 | `(B, L, C)` | `(B, C')` | $-\log(\phi(m+1) / \phi(m))$ |
+| **排列熵 (PermEn)** | 基于排序模式量化信号的复杂度。 | `(B, L, C)` | `(B, C')` | $-\sum p_i \log(p_i)$ (排序模式) |
+| **频域统计特征** | 计算功率谱密度(PSD)的统计量。 | `(B, F, C)` | `(B, C')` | PSD上的统计量 |
+| **谱质心** | 计算频谱的能量中心，是重要的频域特征。 | `(B, F, C)` | `(B, C')` | $\frac{\sum f \times |X(f)|^2}{\sum |X(f)|^2}$ |
+| **谱偏度** | 计算频谱的偏度。 | `(B, F, C)` | `(B, C')` | 频谱的三阶矩 |
+| **谱峰度** | 计算频谱的峰度。 | `(B, F, C)` | `(B, C')` | 频谱的四阶矩 |
+| **谱平坦度** | 衡量频谱的音调特性。 | `(B, F, C)` | `(B, C')` | 几何平均 / 算术平均 |
+| **频带功率 (Band Power)** | 计算特定频带内的平均功率。 | `(B, F, C)` | `(B, C')` | $\int_{f_1}^{f_2} P(f) df$ |
+| **CNN Pooling** | 卷积神经网络中的池化层（如平均池化、最大池化），用于降低特征图的空间维度。 | `(B, H, W, C)` | `(B, H', W', C)` 或 `(B, C')` | $\max$ or $\text{mean}$ pooling |
 
 #### 特征提取详情
 
@@ -237,6 +237,52 @@ The following sections provide comprehensive documentation for all available ope
 | **裕度因子 (Clearance Factor)** | $$\text{clearance\_factor}(x) = \frac{\max_{i} |x_i|}{\left(\frac{1}{L}\sum_{i=1}^{L} \sqrt{|x_i|}\right)^2}$$ |
 | **峰峰值 (Peak-to-Peak)** | $$\text{p2p}(x) = \max(x) - \min(x)$$ |
 | **过零率 (Zero-Crossing Rate)** | $$\text{zcr}(x) = \frac{1}{2(L-1)}\sum_{i=1}^{L-1} |\text{sgn}(x_i) - \text{sgn}(x_{i-1})|$$ |
+
+</details>
+---
+
+<details>
+<summary><strong>MULTI-VARIABLE</strong>: 接收多个输入</summary>
+
+这类工具用于比较或组合来自不同处理分支的节点。
+
+| 工具 | 描述 | 输入 | 输出 | 计算公式 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Subtract** | 信号相减，计算两个信号的差值（残差）。 | 两个 `(B, L, C)` | `(B, L, C)` | $z = x - y$ |
+| **Arithmetic** | 在两个信号之间执行基本的数学运算（+,-,*,/）。 | 两个 `(B, L, C)` | `(B, L, C)` | $z = x \oplus y$ where $\oplus \in \{+, -, \times, \div\}$ |
+| **Element-wise Product** | 信号逐元素相乘，可用于调制或加窗。 | 两个 `(B, L, C)` | `(B, L, C)` | $z[n] = x[n] \times y[n]$ |
+| **Convolution** | 对信号和核执行一维卷积。 | `(B, L, C)` 和 `(K,)` | `(B, L', C)` | $z[n] = \sum_k x[k] h[n-k]$ |
+| **Transfer Function** | 估计输入输出信号间的传递函数。 | `(L,)` 和 `(L,)` | 字典 | $H(f) = \frac{Y(f)}{X(f)}$ |
+| **Phase Difference** | 计算两个信号在频域的相位差。 | 两个 `(B, F, C)` | `(B, F, C)` | $\Delta\phi = \arg(X) - \arg(Y)$ |
+| **Coherence** | 相干函数，分析两个信号在频域的线性相关性。 | 两个 `(B, L, C)` | `(B, F, C)` | $C_{xy}(f) = \frac{|P_{xy}(f)|^2}{P_{xx}(f) P_{yy}(f)}$ |
+| **DTW Distance** | 动态时间规整，计算两个不等长序列的相似度。 | `(L1, C)` 和 `(L2, C)` | 标量 | 动态规划对齐成本 |
+| **Cross-Correlation** | 计算两个信号的互相关，分析其相似性与延迟。 | 两个 `(B, L, C)` | `(B, L_corr, C)` | $R_{xy}[k] = \sum_n x[n] y[n-k]$ |
+| **Distance** | 计算两个特征向量之间的距离（如欧氏距离）。 | 两个 `(B, C')` | `(B,)` | $d = \|x - y\|_p$ |
+| **Concatenate** | 沿指定轴拼接多个特征向量。 | 多个 `(B, C')` | `(B, C_new)` | $z = [x; y]$ |
+| **Compare** | 比较两个或多个特征向量/矩阵，例如计算距离或相似度。 | 多个 `(B, C')` | `(B, C'')` 或字典 | 多种相似度/距离指标 |
+
+</details>
+
+---
+
+<details>
+<summary><strong>DECISION</strong>: 输出判断</summary>
+
+这类工具通常是流程的终点，输出最终的结论。
+
+| 工具 | 描述 | 输入 | 输出 | 计算公式 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Threshold** | 判断输入值是否超过阈值。 | 标量 | 字典 (布尔值) | $y = \begin{cases} 1 & \text{if } x > \theta \\ 0 & \text{otherwise} \end{cases}$ |
+| **Find Peaks** | 在信号或频谱中寻找峰值。 | `(L,)` | 字典 | $\arg\max_{\text{local}}(x)$ |
+| **Change Point Detection** | 检测信号统计特性的突变点。 | `(L, C)` | 字典 | 统计变化检测 (CUSUM, 等) |
+| **Outlier Detection** | 使用孤立森林等算法检测特征集中的异常点。 | `(B, C')` | 字典 | 孤立分数或 LOF |
+| **KS-Test** | KS检验，判断两个样本是否来自同一分布。 | `(L1,)` 和 `(L2,)` | 字典 | $D = \max|F_1(x) - F_2(x)|$ |
+| **Harmonic Analysis** | 从频谱中识别基频的谐波系列。 | 字典 | 字典 | $f_n = n \times f_0$ |
+| **Rule-Based Decision** | 基于一组简单的规则（例如 "rms > 0.5 AND crest < 1.2"）做出决策。 | 字典 | 字典 (布尔值) | 布尔逻辑评估 |
+| **Similarity Classifier** | 通过计算与参考特征的相似度来进行分类。 | 字典 | 字典 (字符串) | $\arg\min_c d(x, c)$ |
+| **Anomaly Scorer** | 基于与健康状态的距离计算异常分数。 | 字典 | 字典 (浮点数) | $\text{score} = d(x, \mu_{\text{normal}})$ |
+| **Classifier** | 基于提取的特征进行分类，输出故障类型。 | `(B, C')` | 字符串标签 | 模型特定 (SVM, RF, 等) |
+| **Scoring** | 对比参考和测试信号的特征，给出一个健康评分或异常分数。 | 多个 `(B, C')` | 浮点数值 | 距离/相似度指标 |
 
 </details>
 
@@ -822,49 +868,3 @@ def check_required_parameters(op_class: type, params: dict) -> List[str]:
 This comprehensive tools documentation provides everything needed to understand, use, and extend the PHMGA signal processing system.
 ```
 
----
-
-<details>
-<summary><strong>MULTI-VARIABLE</strong>: 接收多个输入</summary>
-
-这类工具用于比较或组合来自不同处理分支的节点。
-
-| 工具 | 描述 | 输入 | 输出 |
-| :--- | :--- | :--- | :--- |
-| **Subtract** | 信号相减，计算两个信号的差值（残差）。 | 两个 `(B, L, C)` | `(B, L, C)` |
-| **Arithmetic** | 在两个信号之间执行基本的数学运算（+,-,*,/）。 | 两个 `(B, L, C)` | `(B, L, C)` |
-| **Element-wise Product** | 信号逐元素相乘，可用于调制或加窗。 | 两个 `(B, L, C)` | `(B, L, C)` |
-| **Convolution** | 对信号和核执行一维卷积。 | `(B, L, C)` 和 `(K,)` | `(B, L', C)` |
-| **Transfer Function** | 估计输入输出信号间的传递函数。 | `(L,)` 和 `(L,)` | 字典 |
-| **Phase Difference** | 计算两个信号在频域的相位差。 | 两个 `(B, F, C)` | `(B, F, C)` |
-| **Coherence** | 相干函数，分析两个信号在频域的线性相关性。 | 两个 `(B, L, C)` | `(B, F, C)` |
-| **DTW Distance** | 动态时间规整，计算两个不等长序列的相似度。 | `(L1, C)` 和 `(L2, C)` | 标量 |
-| **Cross-Correlation** | 计算两个信号的互相关，分析其相似性与延迟。 | 两个 `(B, L, C)` | `(B, L_corr, C)` |
-| **Distance** | 计算两个特征向量之间的距离（如欧氏距离）。 | 两个 `(B, C')` | `(B,)` |
-| **Concatenate** | 沿指定轴拼接多个特征向量。 | 多个 `(B, C')` | `(B, C_new)` |
-| **Compare** | 比较两个或多个特征向量/矩阵，例如计算距离或相似度。 | 多个 `(B, C')` | `(B, C'')` 或字典 |
-
-</details>
-
----
-
-<details>
-<summary><strong>DECISION</strong>: 输出判断</summary>
-
-这类工具通常是流程的终点，输出最终的结论。
-
-| 工具 | 描述 | 输入 | 输出 |
-| :--- | :--- | :--- | :--- |
-| **Threshold** | 判断输入值是否超过阈值。 | 标量 | 字典 (布尔值) |
-| **Find Peaks** | 在信号或频谱中寻找峰值。 | `(L,)` | 字典 |
-| **Change Point Detection** | 检测信号统计特性的突变点。 | `(L, C)` | 字典 |
-| **Outlier Detection** | 使用孤立森林等算法检测特征集中的异常点。 | `(B, C')` | 字典 |
-| **KS-Test** | KS检验，判断两个样本是否来自同一分布。 | `(L1,)` 和 `(L2,)` | 字典 |
-| **Harmonic Analysis** | 从频谱中识别基频的谐波系列。 | 字典 | 字典 |
-| **Rule-Based Decision** | 基于一组简单的规则（例如 "rms > 0.5 AND crest < 1.2"）做出决策。 | 字典 | 字典 (布尔值) |
-| **Similarity Classifier** | 通过计算与参考特征的相似度来进行分类。 | 字典 | 字典 (字符串) |
-| **Anomaly Scorer** | 基于与健康状态的距离计算异常分数。 | 字典 | 字典 (浮点数) |
-| **Classifier** | 基于提取的特征进行分类，输出故障类型。 | `(B, C')` | 字符串标签 |
-| **Scoring** | 对比参考和测试信号的特征，给出一个健康评分或异常分数。 | 多个 `(B, C')` | 浮点数值 |
-
-</details>
