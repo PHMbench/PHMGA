@@ -126,7 +126,7 @@ if __name__ == "__main__":
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
     os.environ["FAKE_LLM"] = "true"
     from src import model
-    from phm_core import PHMState, DAGState, InputData
+    from src.states.phm_states import PHMState, DAGState, InputData
 
     model._FAKE_LLM = FakeListChatModel(responses=['{"decision": "finish", "reason": "ok"}'])
 

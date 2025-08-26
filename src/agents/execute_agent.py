@@ -316,7 +316,7 @@ if __name__ == "__main__":
     from langchain_community.chat_models import FakeListChatModel
 
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from phm_core import PHMState, DAGState, InputData
+    from src.states.phm_states import PHMState, DAGState, InputData
 
     os.environ["FAKE_LLM"] = "true"
     from src import model

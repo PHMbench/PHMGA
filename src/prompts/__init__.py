@@ -1,0 +1,3 @@
+"""
+PHMGA prompt templates.
+"""

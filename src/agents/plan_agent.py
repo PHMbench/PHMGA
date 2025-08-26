@@ -225,7 +225,7 @@ if __name__ == "__main__":
     from langchain_community.chat_models import FakeListChatModel
     from dotenv import load_dotenv
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from phm_core import PHMState, DAGState, InputData
+    from src.states.phm_states import PHMState, DAGState, InputData
     from src.tools import __init__ as init_tools
 
     # 加载环境变量 (例如 GOOGLE_API_KEY)

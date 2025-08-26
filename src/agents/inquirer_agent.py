@@ -79,7 +79,7 @@ if __name__ == "__main__":
     import numpy as np
     from scipy.stats import kurtosis
     sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from phm_core import PHMState, DAGState, InputData
+    from src.states.phm_states import PHMState, DAGState, InputData
 
     # --- 1. Setup: Mock data and operators ---
     ref_sig = {'id1': np.random.randn(1, 1024, 2),
