@@ -1,778 +1,538 @@
 """
 Complete PHMGA System Integration
 
-Integrates all tutorial components (Parts 1-4) into a production-ready
-Prognostics and Health Management Graph Agent system.
+Educational wrapper for the production PHMGA system.
+Integrates all tutorial concepts with the real production system from src/.
 """
 
 import sys
 import os
 import time
-import json
+import yaml
+import uuid
 import numpy as np
 from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Import foundation components from previous parts
-sys.path.append('../../Part1_Foundations/modules')
-sys.path.append('../../Part2_Multi_Agent_Router/modules')  
-sys.path.append('../../Part3_Gemini_Research_Agent/modules')
-sys.path.append('../../Part4_DAG_Architecture/modules')
+# Add src/ to path for production system imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../../src'))
 
-# Core foundation imports
-from llm_providers import create_research_llm, LLMProvider
+# Import production PHMGA components
+from states.phm_states import PHMState, DAGState, InputData, ProcessedData
+from phm_outer_graph import build_builder_graph, build_executor_graph
+from utils import initialize_state, save_state, load_state, generate_final_report
+from agents.reflect_agent import get_dag_depth
+from tools.signal_processing_schemas import OP_REGISTRY, list_available_operators
 
-# Multi-agent router imports
-from agent_router import AgentRouter, RouterConfig
-from research_agents import ArxivAgent, SemanticScholarAgent, CrossRefAgent
-
-# Research workflow imports
-from research_graph import ResearchWorkflowGraph
-from state_schemas import ResearchConfiguration, create_initial_research_state
-
-# DAG processing imports
-from phm_dag_structure import PHMSignalProcessingDAG, SignalProcessingNode
-from dag_fundamentals import ResearchDAG, DAGNode, NodeType
+# Import LangGraph for workflow management
+from langgraph.graph import StateGraph
 
 
 @dataclass
 class PHMGAConfig:
-    """Configuration for the complete PHMGA system"""
+    """Configuration for educational PHMGA system"""
     
-    # LLM Configuration (Part 1)
-    llm_provider: LLMProvider = LLMProvider.AUTO
-    llm_temperature: float = 0.3
-    llm_model: str = "default"
+    # Core PHMGA Configuration
+    llm_provider: str = "google"  # or "openai" 
+    llm_model: str = "gemini-2.0-flash-exp"
+    min_depth: int = 2  # Tutorial-friendly depth
+    max_depth: int = 4  # Tutorial-friendly depth
     
-    # Agent Router Configuration (Part 2) 
-    enable_arxiv_agent: bool = True
-    enable_semantic_scholar: bool = True
-    enable_crossref_agent: bool = True
-    max_concurrent_agents: int = 3
+    # Tutorial-specific settings
+    tutorial_mode: bool = True
+    verbose_output: bool = True
+    save_intermediate_results: bool = True
     
-    # Research Configuration (Part 3)
-    research_enabled: bool = True
-    max_research_loops: int = 2
-    research_quality_threshold: float = 0.8
-    
-    # DAG Processing Configuration (Part 4)
-    enable_parallel_processing: bool = True
-    max_parallel_nodes: int = 8
-    dag_execution_timeout: int = 300
-    
-    # PHM Specific Configuration
-    signal_sampling_rate: int = 10000  # 10 kHz default
+    # Signal processing settings
+    sampling_rate: Optional[float] = None
     fault_classes: List[str] = field(default_factory=lambda: ["normal", "inner_race", "outer_race", "ball"])
     confidence_threshold: float = 0.7
     alert_threshold: float = 0.8
-    
-    # Production Settings
-    real_time_mode: bool = False
-    batch_processing_size: int = 100
-    logging_level: str = "INFO"
-    enable_monitoring: bool = True
-    
-    @classmethod
-    def for_production(cls) -> "PHMGAConfig":
-        """Create production-optimized configuration"""
-        return cls(
-            llm_provider=LLMProvider.AUTO,
-            enable_parallel_processing=True,
-            max_parallel_nodes=12,
-            real_time_mode=True,
-            confidence_threshold=0.8,
-            alert_threshold=0.9,
-            logging_level="WARNING"
-        )
-    
-    @classmethod
-    def for_research(cls) -> "PHMGAConfig":
-        """Create research-optimized configuration"""
-        return cls(
-            research_enabled=True,
-            max_research_loops=3,
-            research_quality_threshold=0.9,
-            llm_temperature=0.1,  # Lower temperature for consistency
-            logging_level="DEBUG"
-        )
     
     @classmethod
     def for_tutorial(cls) -> "PHMGAConfig":
         """Create tutorial-friendly configuration"""
         return cls(
-            enable_parallel_processing=False,  # Easier to follow
-            max_research_loops=1,
-            batch_processing_size=10,
-            logging_level="INFO"
+            tutorial_mode=True,
+            verbose_output=True,
+            min_depth=2,
+            max_depth=4,
+            save_intermediate_results=True
+        )
+    
+    @classmethod
+    def for_production(cls) -> "PHMGAConfig":
+        """Create production-optimized configuration"""
+        return cls(
+            tutorial_mode=False,
+            verbose_output=False,
+            min_depth=4,
+            max_depth=8,
+            save_intermediate_results=False
         )
 
 
 class PHMGASystem:
     """
-    Complete Prognostics and Health Management Graph Agent System.
+    Educational wrapper for the production PHMGA system.
     
-    Integrates all tutorial components into a unified system for
-    bearing fault diagnosis and continuous research integration.
+    This class provides a simplified interface to the sophisticated 
+    production PHMGA system while maintaining educational clarity.
     """
     
     def __init__(self, config: PHMGAConfig):
         self.config = config
-        self.session_id = f"phmga_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        self.session_id = f"tutorial_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # Initialize system components
-        self._initialize_llm_system()        # Part 1: LLM Foundation
-        self._initialize_agent_router()      # Part 2: Multi-Agent Router
-        self._initialize_research_system()   # Part 3: Research Integration
-        self._initialize_dag_processor()     # Part 4: DAG Processing
+        # Initialize production system components
+        self.builder_graph = None
+        self.executor_graph = None
+        self.current_state = None
         
-        # PHM-specific components
-        self.fault_detection_results = {}
-        self.research_knowledge_base = {}
+        # Tutorial tracking
+        self.processing_history = []
+        self.operator_usage = {}
         self.performance_metrics = {}
         
-        # System state tracking
-        self.system_status = "initialized"
-        self.last_update = datetime.now()
-        self.processing_statistics = {
-            "total_signals_processed": 0,
-            "total_faults_detected": 0,
-            "average_processing_time": 0.0,
-            "system_uptime": 0.0
-        }
+        self._initialize_system()
         
-        print(f"🏭 PHMGA System initialized with session ID: {self.session_id}")
+        if config.verbose_output:
+            print(f"🎓 PHMGA Tutorial System initialized")
+            print(f"   Session ID: {self.session_id}")
+            print(f"   Available operators: {len(OP_REGISTRY)}")
     
-    def _initialize_llm_system(self):
-        """Initialize LLM foundation from Part 1"""
+    def _initialize_system(self):
+        """Initialize production PHMGA system components"""
         try:
-            self.research_llm = create_research_llm(
-                provider=self.config.llm_provider,
-                temperature=self.config.llm_temperature,
-                model=self.config.llm_model
-            )
-            print("✅ LLM System initialized (Part 1 Foundation)")
-        except Exception as e:
-            print(f"⚠️ LLM initialization failed: {e}")
-            self.research_llm = None
-    
-    def _initialize_agent_router(self):
-        """Initialize multi-agent router from Part 2"""
-        try:
-            # Configure research agents
-            router_config = RouterConfig(
-                enable_parallel_execution=True,
-                max_concurrent_agents=self.config.max_concurrent_agents,
-                timeout_seconds=30
-            )
+            # Build production LangGraph workflows
+            self.builder_graph = build_builder_graph()
+            self.executor_graph = build_executor_graph()
             
-            self.agent_router = AgentRouter(self.research_llm, router_config)
-            
-            # Register available agents
-            if self.config.enable_arxiv_agent:
-                arxiv_agent = ArxivAgent()
-                self.agent_router.register_agent("arxiv", arxiv_agent)
-            
-            if self.config.enable_semantic_scholar:
-                scholar_agent = SemanticScholarAgent()
-                self.agent_router.register_agent("semantic_scholar", scholar_agent)
-            
-            if self.config.enable_crossref_agent:
-                crossref_agent = CrossRefAgent()
-                self.agent_router.register_agent("crossref", crossref_agent)
-            
-            print(f"✅ Multi-Agent Router initialized with {len(self.agent_router.agents)} agents (Part 2)")
-            
-        except Exception as e:
-            print(f"⚠️ Agent Router initialization failed: {e}")
-            self.agent_router = None
-    
-    def _initialize_research_system(self):
-        """Initialize research integration from Part 3"""
-        if not self.config.research_enabled or not self.research_llm:
-            self.research_system = None
-            return
-        
-        try:
-            # Configure research system
-            research_config = ResearchConfiguration(
-                llm_provider="auto",
-                max_research_loops=self.config.max_research_loops,
-                coverage_threshold=self.config.research_quality_threshold
-            )
-            
-            self.research_system = ResearchWorkflowGraph(self.research_llm, research_config)
-            print("✅ Research Integration System initialized (Part 3)")
-            
-        except Exception as e:
-            print(f"⚠️ Research system initialization failed: {e}")
-            self.research_system = None
-    
-    def _initialize_dag_processor(self):
-        """Initialize DAG processing system from Part 4"""
-        try:
-            self.dag_processor = PHMSignalProcessingDAG("integrated_fault_diagnosis")
-            
-            # Configure for production settings
-            if self.config.enable_parallel_processing:
-                self.dag_processor.parallel_enabled = True
+            # Show available operators for educational purposes
+            if self.config.tutorial_mode:
+                self._display_available_operators()
                 
-            print(f"✅ DAG Processing System initialized with {len(self.dag_processor.nodes)} nodes (Part 4)")
-            
         except Exception as e:
-            print(f"⚠️ DAG processor initialization failed: {e}")
-            self.dag_processor = None
+            print(f"⚠️ System initialization error: {e}")
     
-    def diagnose_bearing_faults(self, signal_data: np.ndarray, 
-                               metadata: Dict[str, Any] = None) -> Dict[str, Any]:
+    def _display_available_operators(self):
+        """Display available signal processing operators for educational purposes"""
+        if self.config.verbose_output:
+            print("\n🔧 Available Signal Processing Operators:")
+            operators_info = list_available_operators()
+            for category, ops in operators_info.items():
+                print(f"   {category.upper()}:")
+                for op_name in ops:
+                    op_class = OP_REGISTRY.get(op_name)
+                    if op_class:
+                        print(f"      • {op_name}: {getattr(op_class, 'description', 'Signal processing operator')}")
+    
+    def initialize_case(self, user_instruction: str, metadata_path: str, h5_path: str, 
+                       ref_ids: List[int], test_ids: List[int], case_name: str = "tutorial_case") -> PHMState:
         """
-        Complete bearing fault diagnosis using integrated PHMGA system.
+        Initialize a new PHM analysis case using production system.
         
         Args:
-            signal_data: Input vibration signal data
-            metadata: Additional signal metadata
+            user_instruction: Description of the analysis objective
+            metadata_path: Path to signal metadata Excel file
+            h5_path: Path to HDF5 signal data file
+            ref_ids: Reference signal IDs for healthy/normal condition
+            test_ids: Test signal IDs for analysis
+            case_name: Name for this case study
             
         Returns:
-            Comprehensive diagnosis results
+            Initialized PHMState object
         """
         
-        diagnosis_start = time.time()
-        
-        # Validate inputs
-        if signal_data is None or signal_data.size == 0:
-            return {"error": "Invalid signal data provided"}
-        
-        print(f"🔍 Starting bearing fault diagnosis...")
-        print(f"   📊 Signal shape: {signal_data.shape}")
-        print(f"   🕒 Analysis timestamp: {datetime.now().isoformat()}")
-        
-        diagnosis_results = {
-            "session_id": self.session_id,
-            "analysis_timestamp": datetime.now().isoformat(),
-            "signal_metadata": metadata or {},
-            "processing_stages": {}
-        }
+        if self.config.verbose_output:
+            print(f"🏗️ Initializing PHM Case: {case_name}")
+            print(f"   User instruction: {user_instruction}")
+            print(f"   Reference IDs: {ref_ids}")
+            print(f"   Test IDs: {test_ids}")
         
         try:
-            # Stage 1: Signal Processing via DAG (Part 4)
-            if self.dag_processor:
-                print("   🕸️ Stage 1: DAG-based signal processing...")
-                stage1_start = time.time()
-                
-                # Prepare signal data for DAG processing
-                initial_inputs = {
-                    "raw_signal": signal_data,
-                    "sampling_rate": metadata.get("sampling_rate", self.config.signal_sampling_rate),
-                    "signal_metadata": metadata
-                }
-                
-                dag_results = self.dag_processor.execute(initial_inputs)
-                
-                diagnosis_results["processing_stages"]["dag_processing"] = {
-                    "execution_time": time.time() - stage1_start,
-                    "nodes_executed": len([r for r in dag_results.values() if r is not None]),
-                    "processing_successful": "diagnosis_output" in dag_results
-                }
-                
-                # Extract diagnosis from DAG results
-                if "diagnosis_output" in dag_results:
-                    dag_diagnosis = dag_results["diagnosis_output"]
-                    diagnosis_results["primary_diagnosis"] = dag_diagnosis
-                    
-                    print(f"      ✅ DAG processing completed in {diagnosis_results['processing_stages']['dag_processing']['execution_time']:.2f}s")
-                else:
-                    print(f"      ⚠️ DAG processing incomplete")
-            
-            # Stage 2: Research Enhancement (Part 3)
-            if self.research_system and self.config.research_enabled:
-                print("   🔬 Stage 2: Research-enhanced analysis...")
-                stage2_start = time.time()
-                
-                # Generate research question based on preliminary diagnosis
-                primary_diag = diagnosis_results.get("primary_diagnosis", {})
-                if "diagnoses" in primary_diag and primary_diag["diagnoses"]:
-                    main_fault = primary_diag["diagnoses"][0].get("fault_type", "bearing fault")
-                    research_question = f"Recent advances in {main_fault} detection and diagnosis methods"
-                    
-                    try:
-                        research_results = self.research_system.conduct_research(research_question)
-                        
-                        diagnosis_results["processing_stages"]["research_enhancement"] = {
-                            "execution_time": time.time() - stage2_start,
-                            "research_question": research_question,
-                            "knowledge_updates": len(research_results.get("sources_found", [])),
-                            "confidence_improvement": research_results.get("confidence_score", 0.0)
-                        }
-                        
-                        print(f"      ✅ Research enhancement completed in {diagnosis_results['processing_stages']['research_enhancement']['execution_time']:.2f}s")
-                        
-                    except Exception as e:
-                        print(f"      ⚠️ Research enhancement failed: {e}")
-                        diagnosis_results["processing_stages"]["research_enhancement"] = {
-                            "execution_time": time.time() - stage2_start,
-                            "error": str(e)
-                        }
-            
-            # Stage 3: Multi-Agent Validation (Part 2)
-            if self.agent_router:
-                print("   🤖 Stage 3: Multi-agent validation...")
-                stage3_start = time.time()
-                
-                # Route validation task to appropriate agents
-                validation_query = {
-                    "task_type": "validation",
-                    "diagnosis_results": diagnosis_results.get("primary_diagnosis", {}),
-                    "signal_characteristics": {
-                        "shape": signal_data.shape,
-                        "sampling_rate": metadata.get("sampling_rate", self.config.signal_sampling_rate)
-                    }
-                }
-                
-                try:
-                    agent_results = self.agent_router.route_task(validation_query)
-                    
-                    diagnosis_results["processing_stages"]["agent_validation"] = {
-                        "execution_time": time.time() - stage3_start,
-                        "agents_consulted": len(agent_results.get("agent_responses", {})),
-                        "validation_successful": agent_results.get("routing_successful", False)
-                    }
-                    
-                    print(f"      ✅ Agent validation completed in {diagnosis_results['processing_stages']['agent_validation']['execution_time']:.2f}s")
-                    
-                except Exception as e:
-                    print(f"      ⚠️ Agent validation failed: {e}")
-                    diagnosis_results["processing_stages"]["agent_validation"] = {
-                        "execution_time": time.time() - stage3_start,
-                        "error": str(e)
-                    }
-            
-            # Stage 4: Final Assessment and Recommendations
-            print("   📋 Stage 4: Final assessment...")
-            stage4_start = time.time()
-            
-            final_assessment = self._generate_final_assessment(diagnosis_results)
-            diagnosis_results["final_assessment"] = final_assessment
-            
-            diagnosis_results["processing_stages"]["final_assessment"] = {
-                "execution_time": time.time() - stage4_start
-            }
-            
-            # Update system statistics
-            self.processing_statistics["total_signals_processed"] += 1
-            if final_assessment.get("fault_detected", False):
-                self.processing_statistics["total_faults_detected"] += 1
-            
-            total_time = time.time() - diagnosis_start
-            self.processing_statistics["average_processing_time"] = (
-                (self.processing_statistics["average_processing_time"] * 
-                 (self.processing_statistics["total_signals_processed"] - 1) + total_time) /
-                self.processing_statistics["total_signals_processed"]
+            # Use production initialization function
+            initial_state = initialize_state(
+                user_instruction=user_instruction,
+                metadata_path=metadata_path,
+                h5_path=h5_path,
+                ref_ids=ref_ids,
+                test_ids=test_ids,
+                case_name=case_name
             )
             
-            diagnosis_results["total_processing_time"] = total_time
+            # Configure for tutorial settings
+            initial_state.llm_provider = self.config.llm_provider
+            initial_state.llm_model = self.config.llm_model
+            initial_state.min_depth = self.config.min_depth
+            initial_state.max_depth = self.config.max_depth
             
-            print(f"✅ Complete diagnosis finished in {total_time:.2f}s")
+            self.current_state = initial_state
             
-            return diagnosis_results
+            if self.config.verbose_output:
+                print(f"✅ Case initialized successfully")
+                print(f"   Signal channels: {initial_state.dag_state.channels}")
+                print(f"   Initial nodes: {len(initial_state.dag_state.nodes)}")
+            
+            return initial_state
             
         except Exception as e:
-            print(f"❌ Diagnosis failed with error: {e}")
-            diagnosis_results["error"] = str(e)
-            diagnosis_results["total_processing_time"] = time.time() - diagnosis_start
-            return diagnosis_results
+            print(f"❌ Case initialization failed: {e}")
+            raise
     
-    def _generate_final_assessment(self, diagnosis_results: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate final integrated assessment"""
-        
-        assessment = {
-            "fault_detected": False,
-            "fault_type": "normal",
-            "confidence": 0.0,
-            "severity": "low",
-            "recommendations": [],
-            "system_integration_score": 0.0
-        }
-        
-        # Extract primary diagnosis
-        primary_diag = diagnosis_results.get("primary_diagnosis", {})
-        if "diagnoses" in primary_diag and primary_diag["diagnoses"]:
-            main_diagnosis = primary_diag["diagnoses"][0]
-            
-            assessment["fault_type"] = main_diagnosis.get("fault_type", "normal")
-            assessment["confidence"] = main_diagnosis.get("confidence", 0.0)
-            assessment["severity"] = main_diagnosis.get("severity", "low")
-            assessment["fault_detected"] = assessment["fault_type"] != "normal"
-            
-            # Generate recommendations based on fault type
-            if assessment["fault_detected"]:
-                if assessment["confidence"] > self.config.alert_threshold:
-                    assessment["recommendations"].append("Immediate maintenance required")
-                elif assessment["confidence"] > self.config.confidence_threshold:
-                    assessment["recommendations"].append("Schedule maintenance inspection")
-                else:
-                    assessment["recommendations"].append("Continue monitoring")
-        
-        # Calculate system integration score
-        stages_completed = len([s for s in diagnosis_results.get("processing_stages", {}).values() 
-                              if "error" not in s])
-        total_stages = len(diagnosis_results.get("processing_stages", {}))
-        
-        if total_stages > 0:
-            assessment["system_integration_score"] = stages_completed / total_stages
-        
-        return assessment
-    
-    def run_case_study(self, case_name: str = "case1_bearing_faults") -> Dict[str, Any]:
+    def build_processing_dag(self, initial_state: PHMState = None) -> PHMState:
         """
-        Run complete case study demonstration.
+        Build signal processing DAG using production builder workflow.
         
         Args:
-            case_name: Name of the case study to run
+            initial_state: Initial PHM state (uses current_state if None)
             
         Returns:
-            Complete case study results
+            State with completed DAG
         """
         
-        print(f"🏭 RUNNING PHMGA CASE STUDY: {case_name}")
-        print("=" * 60)
+        state = initial_state or self.current_state
+        if not state:
+            raise ValueError("No state available. Initialize a case first.")
         
-        case_start = time.time()
+        if self.config.verbose_output:
+            print(f"\n🕸️ Building Signal Processing DAG")
+            print(f"   Initial depth: {get_dag_depth(state.dag_state)}")
+            print(f"   Target depth range: {self.config.min_depth}-{self.config.max_depth}")
         
-        case_results = {
-            "case_name": case_name,
-            "system_config": self.config.__dict__,
-            "session_id": self.session_id,
-            "start_time": datetime.now().isoformat(),
-            "signal_analyses": [],
-            "system_performance": {},
-            "research_insights": {},
-            "validation_results": {}
-        }
+        # Track DAG building process for educational purposes
+        build_history = []
         
         try:
-            # Generate synthetic bearing fault signals for demonstration
-            print("\\n📡 Generating synthetic bearing fault signals...")
-            test_signals = self._generate_test_signals()
+            built_state = state.model_copy(deep=True)
+            iteration = 0
             
-            print(f"   Generated {len(test_signals)} test signals:")
-            for i, (signal, metadata) in enumerate(test_signals):
-                print(f"   • Signal {i+1}: {metadata['fault_type']} ({metadata['signal_length']} samples)")
-            
-            # Process each test signal
-            print("\\n🔍 Processing test signals through PHMGA system...")
-            
-            for i, (signal_data, signal_metadata) in enumerate(test_signals):
-                print(f"\\n   📊 Processing Signal {i+1}/{len(test_signals)}...")
+            # Use production builder graph
+            while True:
+                iteration += 1
+                if self.config.verbose_output:
+                    print(f"\n   Building Iteration {iteration}")
                 
-                # Run complete diagnosis
-                diagnosis = self.diagnose_bearing_faults(signal_data, signal_metadata)
-                diagnosis["signal_index"] = i + 1
-                diagnosis["true_fault_type"] = signal_metadata["fault_type"]
+                # Execute one iteration of the builder graph
+                thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}}
                 
-                case_results["signal_analyses"].append(diagnosis)
+                # Track state before iteration
+                pre_iteration_nodes = len(built_state.dag_state.nodes)
+                pre_iteration_leaves = built_state.dag_state.leaves.copy()
                 
-                # Show quick results
-                final_assessment = diagnosis.get("final_assessment", {})
-                detected_fault = final_assessment.get("fault_type", "unknown")
-                confidence = final_assessment.get("confidence", 0.0)
-                true_fault = signal_metadata["fault_type"]
+                # Execute builder iteration
+                for event in self.builder_graph.stream(built_state, config=thread_config):
+                    for node_name, state_update in event.items():
+                        if self.config.verbose_output:
+                            print(f"      Executing: {node_name}")
+                        
+                        if state_update is not None:
+                            for key, value in state_update.items():
+                                setattr(built_state, key, value)
                 
-                correct = detected_fault.lower() == true_fault.lower()
-                print(f"      🎯 True: {true_fault} | Detected: {detected_fault} | Confidence: {confidence:.2f} | {'✅' if correct else '❌'}\")\n",
+                # Track what happened in this iteration
+                post_iteration_nodes = len(built_state.dag_state.nodes)
+                post_iteration_leaves = built_state.dag_state.leaves.copy()
+                
+                iteration_info = {
+                    "iteration": iteration,
+                    "nodes_added": post_iteration_nodes - pre_iteration_nodes,
+                    "nodes_before": pre_iteration_nodes,
+                    "nodes_after": post_iteration_nodes,
+                    "leaves_before": pre_iteration_leaves,
+                    "leaves_after": post_iteration_leaves,
+                    "depth": get_dag_depth(built_state.dag_state)
+                }
+                build_history.append(iteration_info)
+                
+                if self.config.verbose_output:
+                    print(f"      Added {iteration_info['nodes_added']} nodes")
+                    print(f"      Current depth: {iteration_info['depth']}")
+                    print(f"      Current leaves: {post_iteration_leaves}")
+                
+                # Check stopping conditions
+                current_depth = get_dag_depth(built_state.dag_state)
+                
+                if current_depth >= self.config.max_depth:
+                    if self.config.verbose_output:
+                        print(f"   ✅ Reached max depth {self.config.max_depth}")
+                    break
+                
+                if current_depth < self.config.min_depth:
+                    if self.config.verbose_output:
+                        print(f"   📈 Below min depth {self.config.min_depth}, continuing...")
+                    built_state.needs_revision = True
+                
+                if not built_state.needs_revision:
+                    if self.config.verbose_output:
+                        print(f"   ✅ Reflect agent approved DAG")
+                    break
             
-            # Calculate overall performance metrics
-            print("\\n📈 Calculating system performance metrics...")
-            performance_metrics = self._calculate_performance_metrics(case_results["signal_analyses"])
-            case_results["system_performance"] = performance_metrics
+            # Store build history for educational review
+            self.processing_history.append({
+                "phase": "dag_building",
+                "iterations": build_history,
+                "final_depth": get_dag_depth(built_state.dag_state),
+                "total_nodes": len(built_state.dag_state.nodes),
+                "final_leaves": built_state.dag_state.leaves
+            })
             
-            # Generate research insights summary
-            if self.research_system:
-                print("\\n🔬 Generating research insights summary...")
-                research_insights = self._generate_research_insights(case_results["signal_analyses"])
-                case_results["research_insights"] = research_insights
+            self.current_state = built_state
             
-            # System validation
-            print("\\n✅ Running system validation...")
-            validation_results = self._validate_system_performance(case_results)
-            case_results["validation_results"] = validation_results
+            if self.config.verbose_output:
+                print(f"\n✅ DAG Building Complete")
+                print(f"   Total iterations: {iteration}")
+                print(f"   Final depth: {get_dag_depth(built_state.dag_state)}")
+                print(f"   Total nodes: {len(built_state.dag_state.nodes)}")
+                print(f"   Final leaves: {built_state.dag_state.leaves}")
             
-            case_results["total_case_time"] = time.time() - case_start
-            case_results["end_time"] = datetime.now().isoformat()
-            
-            # Print final summary
-            print(f"\\n🎓 CASE STUDY COMPLETED")
-            print(f"=" * 40)
-            print(f"• Total Time: {case_results['total_case_time']:.2f} seconds")
-            print(f"• Signals Processed: {len(case_results['signal_analyses'])}")
-            print(f"• Overall Accuracy: {performance_metrics.get('accuracy', 0.0):.1%}")
-            print(f"• Average Confidence: {performance_metrics.get('average_confidence', 0.0):.2f}")
-            print(f"• System Integration Score: {performance_metrics.get('integration_score', 0.0):.2f}")
-            
-            return case_results
+            return built_state
             
         except Exception as e:
-            print(f"❌ Case study failed: {e}")
-            case_results["error"] = str(e)
-            case_results["total_case_time"] = time.time() - case_start
-            return case_results
+            print(f"❌ DAG building failed: {e}")
+            raise
     
-    def _generate_test_signals(self) -> List[Tuple[np.ndarray, Dict[str, Any]]]:
-        """Generate synthetic test signals for different fault types"""
+    def execute_analysis(self, built_state: PHMState = None) -> PHMState:
+        """
+        Execute analysis using production executor workflow.
         
-        np.random.seed(42)  # Reproducible results
+        Args:
+            built_state: State with completed DAG (uses current_state if None)
+            
+        Returns:
+            State with analysis results
+        """
         
-        fs = self.config.signal_sampling_rate
-        duration = 1.0  # 1 second signals
-        t = np.linspace(0, duration, int(fs * duration))
+        state = built_state or self.current_state
+        if not state:
+            raise ValueError("No built state available. Build a DAG first.")
         
-        test_signals = []
+        if self.config.verbose_output:
+            print(f"\n🔬 Executing Analysis")
+            print(f"   DAG nodes: {len(state.dag_state.nodes)}")
+            print(f"   Processing leaves: {state.dag_state.leaves}")
         
-        # Normal condition
-        normal_signal = np.sin(2 * np.pi * 60 * t) + 0.1 * np.random.randn(len(t))
-        test_signals.append((normal_signal, {
-            "fault_type": "normal",
-            "sampling_rate": fs,
-            "signal_length": len(normal_signal),
-            "description": "Healthy bearing signal"
-        }))
-        
-        # Inner race fault
-        inner_fault_signal = (np.sin(2 * np.pi * 60 * t) + 
-                             0.5 * np.sin(2 * np.pi * 157 * t) + 
-                             0.1 * np.random.randn(len(t)))
-        test_signals.append((inner_fault_signal, {
-            "fault_type": "inner_race",
-            "sampling_rate": fs,
-            "signal_length": len(inner_fault_signal),
-            "description": "Inner race fault at 157 Hz"
-        }))
-        
-        # Outer race fault
-        outer_fault_signal = (np.sin(2 * np.pi * 60 * t) + 
-                             0.4 * np.sin(2 * np.pi * 236 * t) + 
-                             0.1 * np.random.randn(len(t)))
-        test_signals.append((outer_fault_signal, {
-            "fault_type": "outer_race",
-            "sampling_rate": fs, 
-            "signal_length": len(outer_fault_signal),
-            "description": "Outer race fault at 236 Hz"
-        }))
-        
-        # Ball fault
-        ball_fault_signal = (np.sin(2 * np.pi * 60 * t) + 
-                            0.3 * np.sin(2 * np.pi * 140 * t) + 
-                            0.1 * np.random.randn(len(t)))
-        test_signals.append((ball_fault_signal, {
-            "fault_type": "ball",
-            "sampling_rate": fs,
-            "signal_length": len(ball_fault_signal), 
-            "description": "Ball fault at 140 Hz"
-        }))
-        
-        return test_signals
+        try:
+            # Execute production executor graph
+            thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+            
+            final_state = state.model_copy(deep=True)
+            execution_stages = []
+            
+            for event in self.executor_graph.stream(final_state, config=thread_config):
+                for node_name, state_update in event.items():
+                    stage_start = time.time()
+                    
+                    if self.config.verbose_output:
+                        print(f"   Executing stage: {node_name}")
+                    
+                    if state_update is not None:
+                        for key, value in state_update.items():
+                            setattr(final_state, key, value)
+                    
+                    execution_stages.append({
+                        "stage": node_name,
+                        "execution_time": time.time() - stage_start,
+                        "timestamp": datetime.now().isoformat()
+                    })
+            
+            # Store execution history
+            self.processing_history.append({
+                "phase": "analysis_execution", 
+                "stages": execution_stages,
+                "ml_results_available": bool(final_state.ml_results),
+                "insights_generated": len(final_state.insights),
+                "final_report_available": bool(final_state.final_report)
+            })
+            
+            self.current_state = final_state
+            
+            if self.config.verbose_output:
+                print(f"\n✅ Analysis Execution Complete")
+                print(f"   Stages executed: {len(execution_stages)}")
+                print(f"   ML results: {'Available' if final_state.ml_results else 'None'}")
+                print(f"   Insights: {len(final_state.insights)}")
+                print(f"   Report: {'Generated' if final_state.final_report else 'None'}")
+            
+            return final_state
+            
+        except Exception as e:
+            print(f"❌ Analysis execution failed: {e}")
+            raise
     
-    def _calculate_performance_metrics(self, signal_analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Calculate overall system performance metrics"""
+    def run_complete_analysis(self, user_instruction: str, metadata_path: str, h5_path: str,
+                             ref_ids: List[int], test_ids: List[int], 
+                             case_name: str = "tutorial_analysis") -> PHMState:
+        """
+        Run complete end-to-end analysis using production PHMGA system.
         
-        if not signal_analyses:
-            return {"error": "No signal analyses to evaluate"}
-        
-        # Extract predictions and ground truth
-        predictions = []
-        true_labels = []
-        confidences = []
-        processing_times = []
-        integration_scores = []
-        
-        for analysis in signal_analyses:
-            final_assessment = analysis.get("final_assessment", {})
+        Args:
+            user_instruction: Analysis objective description
+            metadata_path: Path to signal metadata
+            h5_path: Path to signal data
+            ref_ids: Reference (healthy) signal IDs
+            test_ids: Test signal IDs for analysis
+            case_name: Name for the analysis case
             
-            predicted_fault = final_assessment.get("fault_type", "unknown")
-            true_fault = analysis.get("true_fault_type", "unknown")
-            confidence = final_assessment.get("confidence", 0.0)
-            processing_time = analysis.get("total_processing_time", 0.0)
-            integration_score = final_assessment.get("system_integration_score", 0.0)
+        Returns:
+            Complete analysis results
+        """
+        
+        if self.config.verbose_output:
+            print(f"🚀 Running Complete PHMGA Analysis")
+            print(f"   Case: {case_name}")
+            print("=" * 50)
+        
+        analysis_start = time.time()
+        
+        try:
+            # Phase 1: Initialize case
+            print(f"\n📋 Phase 1: Case Initialization")
+            initial_state = self.initialize_case(
+                user_instruction=user_instruction,
+                metadata_path=metadata_path, 
+                h5_path=h5_path,
+                ref_ids=ref_ids,
+                test_ids=test_ids,
+                case_name=case_name
+            )
             
-            predictions.append(predicted_fault.lower())
-            true_labels.append(true_fault.lower())
-            confidences.append(confidence)
-            processing_times.append(processing_time)
-            integration_scores.append(integration_score)
-        
-        # Calculate accuracy
-        correct_predictions = sum(1 for pred, true in zip(predictions, true_labels) if pred == true)
-        accuracy = correct_predictions / len(predictions) if predictions else 0.0
-        
-        # Calculate average metrics
-        avg_confidence = np.mean(confidences) if confidences else 0.0
-        avg_processing_time = np.mean(processing_times) if processing_times else 0.0
-        avg_integration_score = np.mean(integration_scores) if integration_scores else 0.0
-        
-        # Fault-specific metrics
-        fault_performance = {}
-        unique_faults = list(set(true_labels))
-        
-        for fault in unique_faults:
-            fault_indices = [i for i, label in enumerate(true_labels) if label == fault]
-            fault_predictions = [predictions[i] for i in fault_indices]
+            # Phase 2: Build processing DAG
+            print(f"\n🕸️ Phase 2: DAG Construction") 
+            built_state = self.build_processing_dag(initial_state)
             
-            fault_correct = sum(1 for pred in fault_predictions if pred == fault)
-            fault_accuracy = fault_correct / len(fault_predictions) if fault_predictions else 0.0
+            # Phase 3: Execute analysis
+            print(f"\n🔬 Phase 3: Analysis Execution")
+            final_state = self.execute_analysis(built_state)
             
-            fault_performance[fault] = {
-                "accuracy": fault_accuracy,
-                "sample_count": len(fault_predictions),
-                "correct_predictions": fault_correct
+            total_time = time.time() - analysis_start
+            
+            if self.config.verbose_output:
+                print(f"\n🎯 Complete Analysis Finished")
+                print(f"   Total time: {total_time:.2f} seconds")
+                print(f"   Final DAG depth: {get_dag_depth(final_state.dag_state)}")
+                print(f"   ML results: {'✅' if final_state.ml_results else '❌'}")
+                print(f"   Final report: {'✅' if final_state.final_report else '❌'}")
+            
+            # Store overall performance metrics
+            self.performance_metrics[case_name] = {
+                "total_execution_time": total_time,
+                "dag_depth": get_dag_depth(final_state.dag_state),
+                "total_nodes": len(final_state.dag_state.nodes),
+                "insights_generated": len(final_state.insights),
+                "ml_results_available": bool(final_state.ml_results),
+                "analysis_timestamp": datetime.now().isoformat()
             }
-        
-        return {
-            "accuracy": accuracy,
-            "average_confidence": avg_confidence,
-            "average_processing_time": avg_processing_time,
-            "integration_score": avg_integration_score,
-            "total_samples": len(predictions),
-            "correct_predictions": correct_predictions,
-            "fault_specific_performance": fault_performance,
-            "processing_time_std": np.std(processing_times) if processing_times else 0.0
-        }
+            
+            return final_state
+            
+        except Exception as e:
+            print(f"❌ Complete analysis failed: {e}")
+            raise
     
-    def _generate_research_insights(self, signal_analyses: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Generate insights from research integration results"""
-        
-        research_stages = []
-        for analysis in signal_analyses:
-            research_stage = analysis.get("processing_stages", {}).get("research_enhancement")
-            if research_stage and "error" not in research_stage:
-                research_stages.append(research_stage)
-        
-        if not research_stages:
-            return {"message": "No research integration data available"}
-        
-        insights = {
-            "research_queries_executed": len(research_stages),
-            "average_research_time": np.mean([stage["execution_time"] for stage in research_stages]),
-            "total_knowledge_updates": sum(stage.get("knowledge_updates", 0) for stage in research_stages),
-            "average_confidence_improvement": np.mean([stage.get("confidence_improvement", 0) for stage in research_stages]),
-            "research_topics": [stage.get("research_question", "") for stage in research_stages if stage.get("research_question")]
-        }
-        
-        return insights
+    def save_results(self, state: PHMState, save_path: str):
+        """Save analysis results using production save function"""
+        try:
+            save_state(state, save_path)
+            if self.config.verbose_output:
+                print(f"💾 Results saved to: {save_path}")
+        except Exception as e:
+            print(f"❌ Save failed: {e}")
+            raise
     
-    def _validate_system_performance(self, case_results: Dict[str, Any]) -> Dict[str, Any]:
-        """Validate overall system performance against requirements"""
-        
-        performance = case_results.get("system_performance", {})
-        
-        validation = {
-            "accuracy_target": 0.8,  # 80% minimum accuracy
-            "confidence_target": 0.7,  # 70% minimum confidence
-            "processing_time_target": 5.0,  # 5 seconds maximum
-            "integration_target": 0.8  # 80% integration score
-        }
-        
-        results = {}
-        
-        # Accuracy validation
-        accuracy = performance.get("accuracy", 0.0)
-        results["accuracy_validation"] = {
-            "achieved": accuracy,
-            "target": validation["accuracy_target"],
-            "passed": accuracy >= validation["accuracy_target"],
-            "margin": accuracy - validation["accuracy_target"]
-        }
-        
-        # Confidence validation
-        avg_confidence = performance.get("average_confidence", 0.0)
-        results["confidence_validation"] = {
-            "achieved": avg_confidence,
-            "target": validation["confidence_target"],
-            "passed": avg_confidence >= validation["confidence_target"],
-            "margin": avg_confidence - validation["confidence_target"]
-        }
-        
-        # Processing time validation
-        avg_time = performance.get("average_processing_time", 0.0)
-        results["processing_time_validation"] = {
-            "achieved": avg_time,
-            "target": validation["processing_time_target"],
-            "passed": avg_time <= validation["processing_time_target"],
-            "margin": validation["processing_time_target"] - avg_time
-        }
-        
-        # Integration score validation
-        integration_score = performance.get("integration_score", 0.0)
-        results["integration_validation"] = {
-            "achieved": integration_score,
-            "target": validation["integration_target"],
-            "passed": integration_score >= validation["integration_target"],
-            "margin": integration_score - validation["integration_target"]
-        }
-        
-        # Overall validation
-        all_passed = all(result["passed"] for result in results.values())
-        results["overall_validation"] = {
-            "passed": all_passed,
-            "passed_checks": sum(1 for result in results.values() if result["passed"]),
-            "total_checks": len(results)
-        }
-        
-        return results
+    def load_results(self, save_path: str) -> PHMState:
+        """Load analysis results using production load function"""
+        try:
+            loaded_state = load_state(save_path)
+            if loaded_state:
+                self.current_state = loaded_state
+                if self.config.verbose_output:
+                    print(f"📂 Results loaded from: {save_path}")
+                return loaded_state
+            else:
+                raise ValueError("Failed to load state")
+        except Exception as e:
+            print(f"❌ Load failed: {e}")
+            raise
     
-    def get_system_status(self) -> Dict[str, Any]:
-        """Get current system status and statistics"""
-        
-        current_time = datetime.now()
-        uptime = (current_time - self.last_update).total_seconds()
+    def generate_report(self, state: PHMState, report_path: str):
+        """Generate final report using production function"""
+        try:
+            generate_final_report(state, report_path)
+            if self.config.verbose_output:
+                print(f"📄 Report generated: {report_path}")
+        except Exception as e:
+            print(f"❌ Report generation failed: {e}")
+            raise
+    
+    def get_processing_summary(self) -> Dict[str, Any]:
+        """Get summary of processing history for educational review"""
         
         return {
             "session_id": self.session_id,
-            "system_status": self.system_status,
-            "uptime_seconds": uptime,
-            "last_update": self.last_update.isoformat(),
-            "processing_statistics": self.processing_statistics.copy(),
-            "component_status": {
-                "llm_system": "active" if self.research_llm else "inactive",
-                "agent_router": "active" if self.agent_router else "inactive",
-                "research_system": "active" if self.research_system else "inactive",
-                "dag_processor": "active" if self.dag_processor else "inactive"
-            },
-            "configuration": self.config.__dict__
+            "config": self.config.__dict__,
+            "processing_history": self.processing_history,
+            "operator_usage": self.operator_usage,
+            "performance_metrics": self.performance_metrics,
+            "current_state_summary": {
+                "available": self.current_state is not None,
+                "case_name": self.current_state.case_name if self.current_state else None,
+                "dag_nodes": len(self.current_state.dag_state.nodes) if self.current_state else 0,
+                "dag_depth": get_dag_depth(self.current_state.dag_state) if self.current_state else 0
+            } if self.current_state else {"available": False}
         }
 
 
-def demonstrate_phmga_system():
-    """Demonstrate the complete PHMGA system"""
+def create_tutorial_system(config_type: str = "tutorial") -> PHMGASystem:
+    """
+    Create a PHMGA system configured for educational use.
     
-    print("🏭 COMPLETE PHMGA SYSTEM DEMONSTRATION")
-    print("=" * 50)
+    Args:
+        config_type: "tutorial", "production", or custom PHMGAConfig
+        
+    Returns:
+        Configured PHMGA system
+    """
     
-    # Create tutorial configuration
-    config = PHMGAConfig.for_tutorial()
+    if config_type == "tutorial":
+        config = PHMGAConfig.for_tutorial()
+    elif config_type == "production":
+        config = PHMGAConfig.for_production()
+    else:
+        config = PHMGAConfig()
     
-    print("\\n⚙️ System Configuration:")
-    print(f"   • LLM Provider: {config.llm_provider}")
-    print(f"   • Research Enabled: {config.research_enabled}")
-    print(f"   • Parallel Processing: {config.enable_parallel_processing}")
-    print(f"   • Fault Classes: {config.fault_classes}")
+    return PHMGASystem(config)
+
+
+def demo_real_case_execution():
+    """
+    Demonstrate real case execution using production system data.
+    This mirrors src/cases/case1.py but with educational output.
+    """
     
-    # Initialize PHMGA system
-    print("\\n🚀 Initializing PHMGA System...")
-    phmga = PHMGASystem(config)
+    print("🎓 PHMGA Tutorial System - Real Case Demonstration")
+    print("=" * 60)
     
-    # Show system status
-    status = phmga.get_system_status()
-    print(f"\\n📊 System Status:")
-    print(f"   • Session ID: {status['session_id']}")
-    print(f"   • Component Status: {status['component_status']}")
-    print(f"   • System Status: {status['system_status']}")
+    # Create tutorial system
+    phmga = create_tutorial_system("tutorial")
     
-    # Run case study
-    print("\\n🔬 Running Case Study...")
-    case_results = phmga.run_case_study("tutorial_demonstration")
+    # Show system capabilities
+    summary = phmga.get_processing_summary()
+    print(f"\n📊 System Summary:")
+    print(f"   Session ID: {summary['session_id']}")
+    print(f"   Tutorial mode: {summary['config']['tutorial_mode']}")
+    print(f"   Available operators: {len(OP_REGISTRY)}")
     
-    return case_results
+    print(f"\n💡 This system integrates with the production PHMGA architecture:")
+    print(f"   • Real LangGraph workflows from src/phm_outer_graph.py")
+    print(f"   • Production agents from src/agents/")
+    print(f"   • Real signal processing operators from src/tools/")
+    print(f"   • Actual PHMState management from src/states/")
+    
+    return phmga
 
 
 if __name__ == "__main__":
-    demonstrate_phmga_system()
+    demo_real_case_execution()

@@ -1,136 +1,310 @@
-# Part 5: PHM Case Study - Complete Bearing Fault Diagnosis System
+# Part 5: Complete PHMGA System - Production Integration Tutorial
 
-## Overview
+## 🎯 Overview
 
-This final tutorial integrates **all concepts from Parts 1-4** into a complete **Prognostics and Health Management (PHM)** system using the PHMGA architecture. We demonstrate real-world bearing fault diagnosis combining multi-provider LLMs, multi-agent systems, reflection-based research, and DAG-based signal processing.
+This tutorial demonstrates the **complete production PHMGA system** by integrating real components from the `src/` directory with educational guidance. Unlike previous parts that used simplified implementations, Part 5 shows how to work with the actual production system used for industrial bearing fault diagnosis.
 
-## Learning Objectives
+## 🏭 Production Integration Architecture
+
+### Real System Components Used
+
+```
+📁 Production PHMGA System (src/)
+├── 🌊 LangGraph Workflows
+│   ├── build_builder_graph() - DAG construction workflow
+│   └── build_executor_graph() - Analysis execution workflow
+├── 🤖 Production Agents
+│   ├── plan_agent - Intelligent processing planning
+│   ├── execute_agent - Operator application
+│   ├── reflect_agent - Quality assessment
+│   ├── inquirer_agent - Similarity analysis
+│   ├── dataset_preparer_agent - ML dataset creation
+│   ├── shallow_ml_agent - Model training
+│   └── report_agent - Report generation
+├── 🔧 Signal Processing Operators
+│   ├── OP_REGISTRY - Production operator registry
+│   ├── EXPAND operators - Signal expansion/windowing
+│   ├── TRANSFORM operators - FFT, filtering, etc.
+│   ├── AGGREGATE operators - Feature extraction
+│   ├── DECISION operators - Intelligent decisions
+│   └── MultiVariable operators - Multi-signal analysis
+├── 📊 State Management
+│   ├── PHMState - Complete system state
+│   ├── DAGState - Graph topology management
+│   └── Node types - InputData, ProcessedData, etc.
+└── 🛠️ Utilities
+    ├── initialize_state() - Case initialization
+    ├── save_state/load_state() - State persistence
+    └── generate_final_report() - Reporting
+```
+
+### Tutorial Enhancement Layer
+
+```
+📁 Tutorial Components (modules/)
+├── 🎓 Educational Wrappers
+│   ├── phmga_system.py - Production system integration
+│   ├── educational_wrappers.py - Tutorial-friendly interfaces
+│   └── tutorial_bridge.py - Concept mapping
+├── 🎮 Interactive Learning
+│   ├── operator_playground.py - Hands-on experimentation
+│   ├── visualization_tools.py - DAG and signal visualization
+│   └── demo_configurations.py - Educational scenarios
+├── 📚 Educational Materials
+│   ├── case1_tutorial.py - Guided case study
+│   └── 05_Tutorial.ipynb - Interactive notebook
+└── 🎯 Configuration Management
+    └── Demo configs for different learning levels
+```
+
+## 🎓 Learning Objectives
 
 By completing Part 5, you will understand:
 
-1. **System Integration**: How all tutorial components work together in production
-2. **PHMGA Architecture**: Complete understanding of the PHM Graph Agent system
-3. **Real-World Application**: Bearing fault diagnosis using actual signal processing
-4. **Research-to-Production**: Bridging academic research and industrial deployment
-5. **Performance Evaluation**: Comprehensive system assessment and validation
+1. **Production System Integration**: Working with real PHMGA components from `src/`
+2. **LangGraph Workflows**: Two-phase builder-executor architecture
+3. **Agent Orchestration**: How specialized agents coordinate complex tasks
+4. **Signal Processing Pipeline**: Dynamic DAG construction with real operators
+5. **Industrial Applications**: Complete bearing fault diagnosis system
+6. **Research-to-Production**: Bridging tutorial concepts with real systems
 
-## Case Study: Bearing Fault Diagnosis
+## 🌟 Key Features
 
-**Industrial Scenario**: You're developing an AI system for a **manufacturing facility** that needs to:
-- Monitor rotating machinery health in real-time
-- Detect bearing faults before catastrophic failure
-- Provide actionable maintenance recommendations
-- Generate research reports for continuous improvement
+### 1. **Production System Integration** (`phmga_system.py`)
+- **Real LangGraph Workflows**: Uses actual `build_builder_graph()` and `build_executor_graph()`
+- **Production Agents**: Integrates real agents from `src/agents/`
+- **Operator Registry**: Access to full `OP_REGISTRY` with 40+ operators
+- **PHMState Management**: Real state management from `src/states/`
 
-This system combines:
-- **Research capabilities** (Parts 1-3) for literature analysis and knowledge updates
-- **DAG processing** (Part 4) for efficient signal analysis pipelines
-- **Production deployment** with real-time performance requirements
+### 2. **Tutorial-Production Bridge** (`tutorial_bridge.py`)
+- **Concept Mapping**: Links tutorial concepts to production components
+- **Learning Path**: Structured progression from basics to production
+- **Educational Context**: Explains how tutorial parts integrate in practice
 
-## System Architecture
+### 3. **Educational Wrappers** (`educational_wrappers.py`)
+- **User-Friendly Interfaces**: Simplify complex production components
+- **Step-by-Step Guidance**: Educational logging and explanations
+- **Progress Visualization**: DAG evolution and processing monitoring
+- **Error Handling**: Beginner-friendly error messages with guidance
 
-### Integrated PHMGA Components
+### 4. **Interactive Playground** (`operator_playground.py`)
+- **Hands-On Experimentation**: Interactive operator testing
+- **Real-Time Visualization**: Immediate feedback on signal processing
+- **Operator Chaining**: Build processing pipelines interactively
+- **Jupyter Integration**: Interactive widgets for parameter adjustment
 
+### 5. **Comprehensive Visualization** (`visualization_tools.py`)
+- **DAG Structure Visualization**: NetworkX-based graph rendering
+- **DAG Evolution Tracking**: Animated progression over iterations
+- **Signal Analysis**: Time/frequency domain comparisons
+- **Performance Monitoring**: Processing times and system metrics
+
+### 6. **Educational Case Study** (`case1_tutorial.py`)
+- **Real Case Workflow**: Based on `src/cases/case1.py`
+- **Educational Annotations**: Step-by-step explanations
+- **Progress Tracking**: Detailed iteration monitoring
+- **Results Analysis**: Comprehensive output explanation
+
+## 🚀 Quick Start
+
+### Basic Usage
+```python
+from modules.phmga_system import PHMGASystem, PHMGAConfig
+
+# Create tutorial-friendly configuration
+config = PHMGAConfig.for_tutorial()
+
+# Initialize production-integrated system
+phmga_system = PHMGASystem(config)
+
+# Get system status
+status = phmga_system.get_processing_summary()
+print(f"Available operators: {len(OP_REGISTRY)}")
 ```
-🏭 Production System
-├── 📡 Signal Acquisition (sensors)
-├── 🧠 PHMGA Core Engine
-│   ├── 🤖 Multi-Provider LLMs (Part 1)
-│   ├── 🔀 Multi-Agent Router (Part 2) 
-│   ├── 🔄 Research Agent (Part 3)
-│   └── 🕸️ DAG Processor (Part 4)
-├── 📊 Analysis Pipeline
-├── 🚨 Alert System
-└── 📈 Reporting Dashboard
+
+### Interactive Tutorial
+```python
+from modules.educational_wrappers import create_educational_system
+from modules.operator_playground import create_operator_playground
+from modules.demo_configurations import create_demo_manager
+
+# Create educational environment
+edu_system = create_educational_system()
+edu_system.explain_system_architecture()
+
+# Launch interactive playground
+playground = create_operator_playground('jupyter')
+
+# Explore demo configurations
+demo_manager = create_demo_manager()
+demo_manager.print_configuration_guide()
 ```
 
-### Research Integration Loop
+### Complete Case Study
+```python
+from modules.case1_tutorial import run_case1_tutorial
 
-The system maintains continuous research integration:
-1. **Knowledge Updates**: Automated literature review for new fault detection methods
-2. **Method Evaluation**: Research new signal processing techniques
-3. **Performance Optimization**: DAG structure optimization based on research findings
-4. **Deployment Updates**: Seamless integration of research improvements
+# Run educational version of real case1.py
+result = run_case1_tutorial(
+    config_path="path/to/config.yaml",  # Optional
+    verbose=True
+)
 
-## Key Features
+# Result contains complete PHMState with built DAG
+print(f"DAG nodes: {len(result.dag_state.nodes)}")
+print(f"DAG depth: {get_dag_depth(result.dag_state)}")
+```
 
-### 1. Multi-Modal Fault Detection (`fault_detection_system.py`)
-- Time-domain, frequency-domain, and time-frequency analysis
-- Machine learning classification with uncertainty quantification
-- Multi-sensor data fusion and correlation analysis
-- Real-time processing with configurable latency requirements
+## 📊 Tutorial Structure
 
-### 2. Research-Driven Optimization (`research_integration.py`)
-- Automated literature search for new methodologies
-- Performance benchmarking against state-of-the-art
-- Adaptive algorithm selection based on signal characteristics
-- Continuous learning from production data
+### Core Files
+- **`05_Tutorial.ipynb`**: Main interactive tutorial notebook
+- **`modules/phmga_system.py`**: Production system integration
+- **`modules/case1_tutorial.py`**: Educational case study
 
-### 3. Production Deployment (`production_system.py`)
-- Scalable processing for multiple machines
-- Real-time alerting and notification system
-- Integration with existing maintenance management systems
-- Comprehensive logging and audit trails
+### Educational Tools
+- **`modules/tutorial_bridge.py`**: Concept mapping and learning paths
+- **`modules/educational_wrappers.py`**: User-friendly interfaces
+- **`modules/demo_configurations.py`**: Predefined learning scenarios
 
-### 4. Validation Framework (`validation_system.py`)
-- Cross-validation with historical failure data
-- Performance metrics tracking and reporting
-- Uncertainty quantification and confidence intervals
-- Regulatory compliance documentation
+### Interactive Learning
+- **`modules/operator_playground.py`**: Hands-on operator experimentation
+- **`modules/visualization_tools.py`**: Comprehensive visualization suite
 
-## Tutorial Structure
+### Documentation
+- **`README.md`**: This file - system overview and usage
+- **Architecture diagrams**: Visual system representations
 
-- **05_Tutorial.ipynb**: Complete interactive case study
-- **modules/**: Production-ready implementation components
-- **data/**: Sample bearing vibration datasets
-- **configs/**: System configuration files
-- **tests/**: Comprehensive validation suite
+## 🔄 Two-Phase PHMGA Workflow
 
-## Data Sources
+### Phase 1: DAG Builder Workflow
+```python
+# Real LangGraph workflow from src/phm_outer_graph.py
+builder_graph = build_builder_graph()
 
-The tutorial uses:
-- **Case Western Reserve University Bearing Dataset**: Standard benchmark data
-- **Synthetic fault signals**: Generated using validated fault models
-- **Real production data**: Anonymized industrial sensor data (where available)
+# Iterative construction: plan → execute → reflect
+while depth < max_depth and needs_revision:
+    state = plan_agent(state)      # Generate processing plan
+    state = execute_agent(state)   # Apply operators to DAG
+    state = reflect_agent(state)   # Assess quality and decide continuation
+```
 
-## Prerequisites
+### Phase 2: Analysis Executor Workflow
+```python
+# Real LangGraph workflow from src/phm_outer_graph.py
+executor_graph = build_executor_graph()
 
-- Completed Parts 1-4 of the tutorial series
-- Understanding of signal processing fundamentals
-- Familiarity with machine learning evaluation metrics
-- Basic knowledge of industrial maintenance practices
+# Linear execution: inquire → prepare → train → report
+state = inquirer_agent(state)          # Compute signal similarities
+state = dataset_preparer_agent(state)  # Create ML datasets
+state = shallow_ml_agent(state)        # Train models
+state = report_agent(state)            # Generate reports
+```
 
-## Performance Targets
+## 🎯 Learning Progression
 
-The complete system demonstrates:
-- **Accuracy**: >95% fault classification accuracy
-- **Latency**: <100ms processing time per signal batch
-- **Reliability**: 99.9% uptime in production deployment
-- **Scalability**: Support for 100+ concurrent monitoring points
+### Beginner Path
+1. **System Overview**: Understand architecture and components
+2. **Basic Integration**: Initialize system and explore operators
+3. **Simple Case Study**: Run basic bearing fault analysis
+4. **Interactive Exploration**: Use operator playground
 
-## Next Steps
+### Intermediate Path
+1. **DAG Construction**: Understand builder workflow mechanics
+2. **Agent Coordination**: See how agents work together
+3. **Custom Configurations**: Create specialized analysis setups
+4. **Performance Analysis**: Monitor system metrics
 
-After completing this tutorial, you will have:
-- A complete understanding of the PHMGA architecture
-- Hands-on experience with production AI system deployment
-- Knowledge of research-to-production workflows
-- Skills to adapt the system for other PHM applications
+### Advanced Path
+1. **Production Deployment**: Understand real-world considerations
+2. **System Extension**: Add custom operators and agents
+3. **Research Integration**: Bridge academic findings with practice
+4. **Performance Optimization**: Scale for industrial use
+
+## 🔧 Configuration Options
+
+### Tutorial Configuration
+```python
+config = PHMGAConfig.for_tutorial()
+# - Tutorial mode: True
+# - Verbose output: True  
+# - DAG depth: 2-4 (manageable complexity)
+# - Educational explanations: Enabled
+```
+
+### Production Configuration
+```python
+config = PHMGAConfig.for_production()
+# - Tutorial mode: False
+# - Performance optimization: Enabled
+# - DAG depth: 4-8 (full complexity)
+# - Real-time processing: Enabled
+```
+
+## 📈 Performance Characteristics
+
+### Tutorial Mode
+- **Execution Time**: 10-30 seconds per case
+- **DAG Complexity**: 2-4 levels deep, 5-15 nodes
+- **Educational Focus**: Step-by-step explanations
+- **Resource Usage**: Moderate (educational priority)
+
+### Production Mode
+- **Execution Time**: 1-5 seconds per case
+- **DAG Complexity**: 4-8 levels deep, 20-50 nodes
+- **Performance Focus**: Industrial efficiency
+- **Resource Usage**: Optimized for throughput
+
+## 🎓 Educational Value
+
+### Tutorial-Production Integration
+- **Real Components**: Uses actual production system code
+- **Educational Context**: Provides learning-friendly explanations
+- **Progressive Complexity**: Builds from simple to sophisticated
+- **Practical Application**: Demonstrates real-world usage patterns
+
+### Skills Development
+- **System Architecture**: Understanding complex AI system design
+- **Agent Coordination**: Multi-agent workflow orchestration
+- **Signal Processing**: Industrial-grade DSP techniques
+- **Research Integration**: Academic-to-production knowledge transfer
+
+## 🚀 Beyond the Tutorial
+
+### Industrial Applications
+- **Manufacturing**: Predictive maintenance systems
+- **Energy**: Wind turbine and generator monitoring
+- **Transportation**: Railway and automotive diagnostics
+- **Aerospace**: Aircraft component health monitoring
+
+### Career Pathways
+- **AI/ML Engineer**: Industrial AI system development
+- **Research Scientist**: Academic-industry collaboration
+- **Solutions Architect**: Enterprise AI deployment
+- **Technical Consultant**: AI transformation consulting
+
+### Further Development
+- **Custom Operators**: Extend processing capabilities
+- **New Domains**: Apply to different fault types
+- **Edge Deployment**: Real-time embedded systems
+- **Research Integration**: Continuous knowledge updates
+
+## 📝 Prerequisites
+
+- **Tutorial Series**: Completion of Parts 1-4
+- **Technical Background**: Signal processing fundamentals
+- **Python Skills**: Intermediate Python programming
+- **Industrial Context**: Basic maintenance knowledge
+
+## 🔗 Related Resources
+
+- **Production System**: `/src/` directory documentation
+- **Agent Documentation**: Individual agent specifications
+- **Operator Registry**: Signal processing operator catalog
+- **Case Studies**: Real-world application examples
 
 ---
 
-## Quick Start
+**🎉 Ready to explore the complete PHMGA system?**
 
-```python
-# Import the complete PHMGA system
-from modules.phmga_system import PHMGASystem
-from modules.production_config import ProductionConfig
-
-# Create production-ready configuration
-config = ProductionConfig.for_bearing_diagnosis()
-
-# Initialize complete system
-phmga = PHMGASystem(config)
-
-# Run case study
-results = phmga.run_case_study("case1_bearing_faults")
-```
+Start with the **`05_Tutorial.ipynb`** notebook for an interactive journey through the integrated production system, or dive into specific modules for focused learning on particular aspects of the architecture.
