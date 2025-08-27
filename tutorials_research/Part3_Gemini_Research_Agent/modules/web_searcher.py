@@ -1,608 +1,349 @@
 """
-Web Search Execution for Research Workflows
+Multi-Provider Web Search for Research Workflows
 
-Executes web searches using Google Search API with parallel processing
-and source validation for academic research applications.
+Intelligent search strategy that uses Google's native search API when available,
+with fallback to simulated search for multi-provider compatibility.
 """
 
 import os
+import sys
 import time
-import asyncio
-import aiohttp
-import requests
-from typing import List, Dict, Any, Optional, Tuple
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Dict, Any, Optional
 from datetime import datetime
-import json
-import re
-from urllib.parse import quote, urlparse
 
-from state_schemas import ResearchSource, ResearchConfiguration
+from langchain_core.runnables import RunnableConfig
+from langgraph.types import Send
+
+# Add path for Part 1 LLM providers
+sys.path.append('../Part1_Foundations/modules')
+from llm_providers import create_research_llm, LLMProvider
+
+from state_schemas import OverallState, WebSearchState
+from tools_and_schemas import ResearchSource
 
 
-class WebSearchExecutor:
+def web_research(state: WebSearchState, config: RunnableConfig = None) -> OverallState:
     """
-    Web search executor with Google Search API integration.
+    LangGraph node that performs web research using intelligent search strategy.
     
-    Provides both free (limited) and API key (enhanced) search capabilities
-    with parallel execution and source validation.
+    Uses Google's native search API when available (like reference),
+    with fallbacks for multi-provider compatibility.
+    
+    Args:
+        state: Current graph state containing the search query and research loop count
+        config: Configuration for the runnable
+        
+    Returns:
+        Dictionary with state update including sources_gathered and web_research_result
     """
+    # Determine search strategy based on available resources
+    search_strategy = _determine_search_strategy()
     
-    def __init__(self, config: Optional[ResearchConfiguration] = None):
-        self.config = config or ResearchConfiguration()
-        
-        # Google Search API configuration
-        self.google_api_key = os.getenv('GOOGLE_API_KEY')
-        self.search_engine_id = os.getenv('GOOGLE_SEARCH_ENGINE_ID')
-        
-        # Alternative: SerpAPI (if Google Custom Search not available)
-        self.serpapi_key = os.getenv('SERPAPI_KEY')
-        
-        # Search configuration
-        self.base_google_url = "https://www.googleapis.com/customsearch/v1"
-        self.base_serpapi_url = "https://serpapi.com/search.json"
-        
-        # Rate limiting
-        self.requests_per_second = 10
-        self.last_request_time = 0
-        self.min_request_interval = 1.0 / self.requests_per_second
-        
-        # Source validation patterns
-        self.trusted_domains = {
-            'academic': [
-                'arxiv.org', 'scholar.google.com', 'pubmed.ncbi.nlm.nih.gov',
-                'ieee.org', 'acm.org', 'nature.com', 'science.org',
-                'springer.com', 'elsevier.com', 'wiley.com', 'cambridge.org'
-            ],
-            'institutional': [
-                '.edu', '.gov', '.ac.uk', '.ac.in', '.org'
-            ],
-            'technical': [
-                'github.com', 'stackoverflow.com', 'medium.com/@',
-                'towardsdatascience.com', 'distill.pub'
-            ]
-        }
-        
-        # Session for connection pooling
-        self.session = requests.Session()
-        self.session.headers.update({
-            'User-Agent': 'ResearchAgent/1.0 (Academic Research Tool)'
-        })
+    if search_strategy == "google_native":
+        return _web_research_google_native(state, config)
+    elif search_strategy == "simulated":
+        return _web_research_simulated(state, config)
+    else:
+        return _web_research_fallback(state, config)
+
+
+def _determine_search_strategy() -> str:
+    """Determine which search strategy to use based on available resources"""
     
-    def execute_parallel_search(self, queries: List[str]) -> Dict[str, List[ResearchSource]]:
-        """
-        Execute multiple search queries in parallel.
-        
-        Args:
-            queries: List of search queries to execute
-            
-        Returns:
-            Dictionary mapping queries to their search results
-        """
-        print(f"🔍 Executing parallel search for {len(queries)} queries...")
-        
-        if self.config.parallel_search_enabled and len(queries) > 1:
-            return self._execute_parallel_threaded(queries)
-        else:
-            return self._execute_sequential(queries)
+    # Check for Google Search API availability
+    google_api_key = os.getenv('GEMINI_API_KEY')
+    google_search_key = os.getenv('GOOGLE_API_KEY') 
+    google_search_id = os.getenv('GOOGLE_SEARCH_ENGINE_ID')
     
-    def search_single_query(self, query: str) -> List[ResearchSource]:
-        """
-        Execute a single search query.
+    if google_api_key and google_search_key and google_search_id:
+        return "google_native"
+    else:
+        return "simulated"  # Tutorial-friendly fallback
+
+
+def _web_research_google_native(state: WebSearchState, config: RunnableConfig = None) -> OverallState:
+    """Use Google's native search API (reference implementation pattern)"""
+    try:
+        from google.genai import Client
+        from configuration import Configuration
         
-        Args:
-            query: Search query string
-            
-        Returns:
-            List of ResearchSource objects
-        """
+        # Get configuration
+        configurable = Configuration.from_runnable_config(config) if config else None
         
-        self._rate_limit()
-        
-        print(f"   🔎 Searching: '{query[:50]}...'")
-        
-        # Try different search methods in order of preference
-        sources = []
-        
-        # Method 1: Google Custom Search API (if available)
-        if self.google_api_key and self.search_engine_id:
-            sources = self._search_google_custom(query)
-        
-        # Method 2: SerpAPI (if available)
-        elif self.serpapi_key:
-            sources = self._search_serpapi(query)
-        
-        # Method 3: Fallback to basic web search simulation
-        else:
-            sources = self._search_fallback(query)
-        
-        # Validate and score sources
-        validated_sources = self._validate_sources(sources, query)
-        
-        print(f"   ✅ Found {len(validated_sources)} validated sources")
-        return validated_sources[:self.config.max_sources_per_query]
-    
-    def _execute_parallel_threaded(self, queries: List[str]) -> Dict[str, List[ResearchSource]]:
-        """Execute searches using thread pool for parallelization"""
-        
-        results = {}
-        
-        with ThreadPoolExecutor(max_workers=min(len(queries), 5)) as executor:
-            # Submit all queries
-            future_to_query = {
-                executor.submit(self.search_single_query, query): query
-                for query in queries
-            }
-            
-            # Collect results as they complete
-            for future in as_completed(future_to_query):
-                query = future_to_query[future]
-                try:
-                    sources = future.result(timeout=self.config.search_timeout)
-                    results[query] = sources
-                except Exception as e:
-                    print(f"   ❌ Search failed for '{query}': {e}")
-                    results[query] = []
-        
-        return results
-    
-    def _execute_sequential(self, queries: List[str]) -> Dict[str, List[ResearchSource]]:
-        """Execute searches sequentially"""
-        
-        results = {}
-        for query in queries:
-            try:
-                sources = self.search_single_query(query)
-                results[query] = sources
-            except Exception as e:
-                print(f"   ❌ Search failed for '{query}': {e}")
-                results[query] = []
-        
-        return results
-    
-    def _search_google_custom(self, query: str) -> List[ResearchSource]:
-        """Search using Google Custom Search API"""
-        
-        params = {
-            'key': self.google_api_key,
-            'cx': self.search_engine_id,
-            'q': query,
-            'num': min(self.config.max_sources_per_query, 10),  # API limit
-            'safe': 'active',
-            'fields': 'items(title,link,snippet,pagemap)'
-        }
-        
-        try:
-            response = self.session.get(
-                self.base_google_url,
-                params=params,
-                timeout=self.config.search_timeout
-            )
-            response.raise_for_status()
-            
-            data = response.json()
-            return self._parse_google_results(data)
-            
-        except Exception as e:
-            print(f"   ⚠️ Google Custom Search failed: {e}")
-            return []
-    
-    def _search_serpapi(self, query: str) -> List[ResearchSource]:
-        """Search using SerpAPI"""
-        
-        params = {
-            'api_key': self.serpapi_key,
-            'engine': 'google',
-            'q': query,
-            'num': self.config.max_sources_per_query,
-            'safe': 'active'
-        }
-        
-        try:
-            response = self.session.get(
-                self.base_serpapi_url,
-                params=params,
-                timeout=self.config.search_timeout
-            )
-            response.raise_for_status()
-            
-            data = response.json()
-            return self._parse_serpapi_results(data)
-            
-        except Exception as e:
-            print(f"   ⚠️ SerpAPI search failed: {e}")
-            return []
-    
-    def _search_fallback(self, query: str) -> List[ResearchSource]:
-        """Fallback search method (simulated results for demo)"""
-        
-        print(f"   📝 Using fallback search method for demo")
-        
-        # Create simulated results based on query
-        query_terms = query.lower().split()
-        
-        # Generate realistic-looking results
-        fallback_results = []
-        
-        # Academic source simulation
-        if any(term in query_terms for term in ['research', 'study', 'analysis', 'method']):
-            fallback_results.append(ResearchSource(
-                url=f"https://arxiv.org/abs/{datetime.now().year}.{len(query):04d}",
-                title=f"Recent Advances in {query.title()}",
-                snippet=f"This paper presents a comprehensive study of {query.lower()}, "
-                       f"discussing recent developments and future directions...",
-                source_type="academic",
-                relevance_score=0.9,
-                credibility_score=0.95
-            ))
-        
-        # Technical source simulation  
-        if any(term in query_terms for term in ['algorithm', 'implementation', 'code', 'software']):
-            fallback_results.append(ResearchSource(
-                url=f"https://github.com/research/{query.replace(' ', '-')}",
-                title=f"{query.title()}: Implementation and Examples",
-                snippet=f"Open source implementation of {query.lower()} with examples and documentation. "
-                       f"Includes benchmarks and performance analysis...",
-                source_type="technical",
-                relevance_score=0.8,
-                credibility_score=0.7
-            ))
-        
-        # News/blog source simulation
-        fallback_results.append(ResearchSource(
-            url=f"https://towardsdatascience.com/{query.replace(' ', '-')}-guide",
-            title=f"Complete Guide to {query.title()}",
-            snippet=f"A comprehensive guide covering the fundamentals of {query.lower()}, "
-                   f"including practical applications and real-world examples...",
-            source_type="web",
-            relevance_score=0.7,
-            credibility_score=0.6,
-            publication_date=datetime.now().strftime('%Y-%m-%d')
-        ))
-        
-        return fallback_results
-    
-    def _parse_google_results(self, data: Dict[str, Any]) -> List[ResearchSource]:
-        """Parse Google Custom Search API results"""
-        
-        sources = []
-        items = data.get('items', [])
-        
-        for item in items:
-            try:
-                # Extract basic information
-                title = item.get('title', 'No title')
-                url = item.get('link', '')
-                snippet = item.get('snippet', 'No description available')
-                
-                # Extract additional metadata from pagemap if available
-                pagemap = item.get('pagemap', {})
-                publication_date = None
-                authors = []
-                
-                # Try to extract publication date
-                if 'metatags' in pagemap:
-                    for metatag in pagemap['metatags']:
-                        if 'article:published_time' in metatag:
-                            publication_date = metatag['article:published_time'][:10]
-                        elif 'datePublished' in metatag:
-                            publication_date = metatag['datePublished'][:10]
-                
-                # Determine source type
-                source_type = self._classify_source_type(url)
-                
-                source = ResearchSource(
-                    url=url,
-                    title=title,
-                    snippet=snippet,
-                    source_type=source_type,
-                    publication_date=publication_date,
-                    authors=authors
-                )
-                
-                sources.append(source)
-                
-            except Exception as e:
-                print(f"   ⚠️ Error parsing search result: {e}")
-                continue
-        
-        return sources
-    
-    def _parse_serpapi_results(self, data: Dict[str, Any]) -> List[ResearchSource]:
-        """Parse SerpAPI results"""
-        
-        sources = []
-        organic_results = data.get('organic_results', [])
-        
-        for result in organic_results:
-            try:
-                title = result.get('title', 'No title')
-                url = result.get('link', '')
-                snippet = result.get('snippet', 'No description available')
-                
-                source_type = self._classify_source_type(url)
-                
-                source = ResearchSource(
-                    url=url,
-                    title=title,
-                    snippet=snippet,
-                    source_type=source_type,
-                    publication_date=result.get('date')
-                )
-                
-                sources.append(source)
-                
-            except Exception as e:
-                print(f"   ⚠️ Error parsing SerpAPI result: {e}")
-                continue
-        
-        return sources
-    
-    def _classify_source_type(self, url: str) -> str:
-        """Classify source type based on URL"""
-        
-        domain = urlparse(url).netloc.lower()
-        
-        # Check for academic sources
-        for academic_domain in self.trusted_domains['academic']:
-            if academic_domain in domain:
-                return 'academic'
-        
-        # Check for institutional sources
-        for institutional_suffix in self.trusted_domains['institutional']:
-            if domain.endswith(institutional_suffix):
-                return 'institutional'
-        
-        # Check for technical sources
-        for tech_domain in self.trusted_domains['technical']:
-            if tech_domain in domain:
-                return 'technical'
-        
-        # Default to web
-        return 'web'
-    
-    def _validate_sources(self, sources: List[ResearchSource], query: str) -> List[ResearchSource]:
-        """Validate and score sources based on quality criteria"""
-        
-        validated_sources = []
-        query_terms = set(query.lower().split())
-        
-        for source in sources:
-            if self._is_valid_source(source):
-                # Calculate relevance score
-                source.relevance_score = self._calculate_relevance_score(source, query_terms)
-                
-                # Calculate credibility score
-                source.credibility_score = self._calculate_credibility_score(source)
-                
-                # Only keep sources above minimum thresholds
-                if source.relevance_score >= 0.3 and source.credibility_score >= 0.3:
-                    validated_sources.append(source)
-        
-        # Sort by combined score
-        validated_sources.sort(
-            key=lambda s: (s.relevance_score + s.credibility_score) / 2,
-            reverse=True
+        # Format prompt for Google Search
+        formatted_prompt = web_searcher_instructions.format(
+            current_date=datetime.now().strftime("%B %d, %Y"),
+            research_topic=state["search_query"]
         )
         
-        return validated_sources
-    
-    def _is_valid_source(self, source: ResearchSource) -> bool:
-        """Check if source meets basic validity criteria"""
+        # Use Google genai client for native search
+        genai_client = Client(api_key=os.getenv('GEMINI_API_KEY'))
+        response = genai_client.models.generate_content(
+            model="gemini-2.0-flash-thinking-exp",
+            contents=formatted_prompt,
+            config={
+                "tools": [{"google_search": {}}],
+                "temperature": 0,
+            }
+        )
         
-        # Must have URL and title
-        if not source.url or not source.title:
-            return False
-        
-        # URL must be valid
-        parsed = urlparse(source.url)
-        if not parsed.scheme or not parsed.netloc:
-            return False
-        
-        # Title must be meaningful
-        if len(source.title) < 10:
-            return False
-        
-        return True
-    
-    def _calculate_relevance_score(self, source: ResearchSource, query_terms: set) -> float:
-        """Calculate relevance score based on query terms"""
-        
-        # Combine title and snippet for analysis
-        text = f"{source.title} {source.snippet}".lower()
-        text_terms = set(text.split())
-        
-        # Calculate term overlap
-        overlap = len(query_terms.intersection(text_terms))
-        if len(query_terms) == 0:
-            return 0.0
-        
-        base_score = overlap / len(query_terms)
-        
-        # Boost for exact phrase matches
-        text_combined = " ".join(text_terms)
-        query_phrase = " ".join(query_terms)
-        if query_phrase in text_combined:
-            base_score += 0.2
-        
-        # Boost for title matches
-        title_terms = set(source.title.lower().split())
-        title_overlap = len(query_terms.intersection(title_terms))
-        if title_overlap > 0:
-            base_score += (title_overlap / len(query_terms)) * 0.3
-        
-        return min(1.0, base_score)
-    
-    def _calculate_credibility_score(self, source: ResearchSource) -> float:
-        """Calculate credibility score based on source characteristics"""
-        
-        base_score = 0.5  # Neutral baseline
-        domain = urlparse(source.url).netloc.lower()
-        
-        # Academic sources get highest credibility
-        if source.source_type == 'academic':
-            base_score = 0.9
-        elif source.source_type == 'institutional':
-            base_score = 0.8
-        elif source.source_type == 'technical':
-            base_score = 0.7
-        
-        # Boost for trusted domains
-        for domain_list in self.trusted_domains.values():
-            for trusted in domain_list:
-                if trusted in domain:
-                    base_score += 0.1
-                    break
-        
-        # Penalty for suspicious characteristics
-        if 'click' in domain or 'ad' in domain or 'spam' in domain:
-            base_score -= 0.3
-        
-        # Boost for recent publication dates
-        if source.publication_date:
-            try:
-                pub_year = int(source.publication_date[:4])
-                current_year = datetime.now().year
-                if pub_year >= current_year - 2:
-                    base_score += 0.1
-                elif pub_year >= current_year - 5:
-                    base_score += 0.05
-            except:
-                pass
-        
-        return max(0.0, min(1.0, base_score))
-    
-    def _rate_limit(self):
-        """Implement rate limiting for API requests"""
-        current_time = time.time()
-        time_since_last = current_time - self.last_request_time
-        
-        if time_since_last < self.min_request_interval:
-            sleep_time = self.min_request_interval - time_since_last
-            time.sleep(sleep_time)
-        
-        self.last_request_time = time.time()
-    
-    def get_search_statistics(self, results: Dict[str, List[ResearchSource]]) -> Dict[str, Any]:
-        """Generate statistics about search results"""
-        
-        total_sources = sum(len(sources) for sources in results.values())
-        
-        if total_sources == 0:
-            return {"total_sources": 0, "average_relevance": 0, "source_types": {}}
-        
-        # Calculate statistics
-        all_sources = [source for sources in results.values() for source in sources]
-        
-        avg_relevance = sum(s.relevance_score for s in all_sources) / len(all_sources)
-        avg_credibility = sum(s.credibility_score for s in all_sources) / len(all_sources)
-        
-        # Source type distribution
-        source_types = {}
-        for source in all_sources:
-            source_types[source.source_type] = source_types.get(source.source_type, 0) + 1
+        # Process grounding metadata (reference pattern)
+        sources_gathered = _process_google_grounding_metadata(response, state["id"])
         
         return {
-            "total_sources": total_sources,
-            "unique_queries": len(results),
-            "average_relevance": round(avg_relevance, 2),
-            "average_credibility": round(avg_credibility, 2),
-            "source_types": source_types,
-            "top_domains": self._get_top_domains(all_sources)
+            "sources_gathered": sources_gathered,
+            "search_query": [state["search_query"]], 
+            "web_research_result": [response.text]
         }
-    
-    def _get_top_domains(self, sources: List[ResearchSource]) -> Dict[str, int]:
-        """Get top domains from search results"""
         
-        domain_counts = {}
-        for source in sources:
-            domain = urlparse(source.url).netloc
-            domain_counts[domain] = domain_counts.get(domain, 0) + 1
-        
-        # Return top 5 domains
-        sorted_domains = sorted(domain_counts.items(), key=lambda x: x[1], reverse=True)
-        return dict(sorted_domains[:5])
+    except Exception as e:
+        print(f"⚠️ Google native search failed: {e}")
+        return _web_research_simulated(state, config)
 
 
-def demonstrate_web_searcher():
-    """Demonstrate web search capabilities"""
+def _web_research_simulated(state: WebSearchState, config: RunnableConfig = None) -> OverallState:
+    """Simulated search for tutorial and multi-provider environments"""
     
-    print("🌐 WEB SEARCH EXECUTOR DEMONSTRATION")
-    print("=" * 35)
+    print(f"🔍 Simulating web research for: {state['search_query']}")
     
-    print("\\n🔍 Search Capabilities:")
-    capabilities = [
-        "Google Custom Search API integration",
-        "SerpAPI alternative support", 
-        "Parallel search execution",
-        "Source validation and scoring",
-        "Academic source prioritization",
-        "Rate limiting and error handling"
+    # Create realistic simulated sources
+    simulated_sources = _create_simulated_sources(state["search_query"])
+    
+    # Generate LLM-based research summary if possible
+    try:
+        llm = create_research_llm(temperature=0.3, fast_mode=True)
+        
+        summary_prompt = f"""Conduct research on "{state['search_query']}" and provide a comprehensive summary.
+
+Include information about:
+- Recent developments and findings
+- Key applications and use cases  
+- Current challenges and limitations
+- Future directions and opportunities
+
+Format your response as a well-structured research summary with specific details."""
+
+        response = llm.invoke(summary_prompt)
+        research_summary = response.content
+        
+    except Exception as e:
+        print(f"⚠️ LLM summary generation failed: {e}")
+        research_summary = f"Research findings on {state['search_query']} indicate active development in this area with multiple approaches being explored."
+    
+    return {
+        "sources_gathered": simulated_sources,
+        "search_query": [state["search_query"]],
+        "web_research_result": [research_summary]
+    }
+
+
+def _web_research_fallback(state: WebSearchState, config: RunnableConfig = None) -> OverallState:
+    """Basic fallback search strategy"""
+    
+    sources = [
+        {
+            "url": f"https://example.com/research/{state['search_query'].replace(' ', '-')}",
+            "title": f"Research on {state['search_query']}",
+            "snippet": f"Comprehensive overview of {state['search_query']} with recent findings and applications.",
+            "short_url": f"[{state['id']}]",
+            "value": f"Research Source {state['id']}"
+        }
     ]
     
-    for capability in capabilities:
-        print(f"   • {capability}")
+    summary = f"Fallback research summary for: {state['search_query']}"
     
-    print("\\n🏆 Source Quality Scoring:")
-    scoring_factors = [
-        "Relevance to search query (term overlap, phrase matching)",
-        "Source credibility (academic, institutional, technical)",
-        "Domain trust level (established academic/institutional domains)",
-        "Publication recency (recent sources get boost)",
-        "Content quality indicators"
-    ]
+    return {
+        "sources_gathered": sources,
+        "search_query": [state["search_query"]],
+        "web_research_result": [summary]
+    }
+
+
+def _create_simulated_sources(query: str) -> List[Dict[str, Any]]:
+    """Create realistic simulated sources for tutorial purposes"""
     
-    for factor in scoring_factors:
-        print(f"   • {factor}")
+    query_terms = query.lower().split()
+    sources = []
     
-    print("\\n🎯 Source Types:")
-    source_types = [
-        ("Academic", "arXiv, IEEE, Nature, Science, PubMed"),
-        ("Institutional", ".edu, .gov, .org domains"),
-        ("Technical", "GitHub, Stack Overflow, technical blogs"),
-        ("Web", "General web sources with quality filtering")
-    ]
+    # Academic source simulation
+    if any(term in query_terms for term in ['research', 'study', 'analysis', 'advances']):
+        sources.append({
+            "url": f"https://arxiv.org/abs/{datetime.now().year}.{len(query):04d}",
+            "title": f"Recent Advances in {query.title()}",
+            "snippet": f"This paper presents a comprehensive study of {query.lower()}, discussing recent developments and future directions in the field.",
+            "short_url": f"[arxiv-{len(sources)+1}]",
+            "value": f"arXiv Research Paper on {query}"
+        })
     
-    for s_type, examples in source_types:
-        print(f"   • {s_type}: {examples}")
+    # Technical source simulation
+    if any(term in query_terms for term in ['implementation', 'methods', 'algorithms', 'techniques']):
+        sources.append({
+            "url": f"https://github.com/research/{query.replace(' ', '-')}",
+            "title": f"{query.title()}: Implementation Guide",
+            "snippet": f"Open source implementation of {query.lower()} with practical examples, benchmarks and performance analysis.",
+            "short_url": f"[github-{len(sources)+1}]", 
+            "value": f"GitHub Implementation of {query}"
+        })
+    
+    # News/Industry source
+    sources.append({
+        "url": f"https://techreport.com/{query.replace(' ', '-')}-2024",
+        "title": f"Industry Report: {query.title()} in 2024",
+        "snippet": f"Latest industry trends and commercial applications of {query.lower()}, including market analysis and future outlook.",
+        "short_url": f"[report-{len(sources)+1}]",
+        "value": f"Industry Report on {query}"
+    })
+    
+    # Academic journal
+    sources.append({
+        "url": f"https://journal.nature.com/{query.replace(' ', '-')}",
+        "title": f"Journal Article: Breakthrough in {query.title()}",
+        "snippet": f"Peer-reviewed research on {query.lower()} published in leading scientific journal, with experimental validation.",
+        "short_url": f"[nature-{len(sources)+1}]",
+        "value": f"Nature Article on {query}"
+    })
+    
+    return sources[:3]  # Return top 3 simulated sources
+
+
+def _process_google_grounding_metadata(response, search_id: str) -> List[Dict[str, Any]]:
+    """Process Google's grounding metadata (reference pattern)"""
+    
+    sources = []
+    try:
+        if hasattr(response, 'candidates') and response.candidates:
+            candidate = response.candidates[0] 
+            if hasattr(candidate, 'grounding_metadata') and candidate.grounding_metadata:
+                grounding_chunks = candidate.grounding_metadata.grounding_chunks
+                
+                for i, chunk in enumerate(grounding_chunks[:5]):  # Limit to 5 sources
+                    source = {
+                        "url": chunk.web.uri if hasattr(chunk, 'web') else f"https://example.com/source-{i}",
+                        "title": chunk.web.title if hasattr(chunk, 'web') and hasattr(chunk.web, 'title') else f"Source {i+1}",
+                        "snippet": f"Content from grounding chunk {i+1}",
+                        "short_url": f"[gs-{search_id}-{i}]",
+                        "value": f"Google Search Result {i+1}"
+                    }
+                    sources.append(source)
+    except Exception as e:
+        print(f"⚠️ Error processing grounding metadata: {e}")
+    
+    return sources if sources else _create_simulated_sources("search results")
+
+
+# Prompt template from reference
+web_searcher_instructions = """Conduct targeted Google Searches to gather the most recent, credible information on "{research_topic}" and synthesize it into a verifiable text artifact.
+
+Instructions:
+- Query should ensure that the most current information is gathered. The current date is {current_date}.
+- Conduct multiple, diverse searches to gather comprehensive information.
+- Consolidate key findings while meticulously tracking the source(s) for each specific piece of information.
+- The output should be a well-written summary or report based on your search findings. 
+- Only include the information found in the search results, don't make up any information.
+
+Research Topic:
+{research_topic}
+"""
+
+
+# Legacy compatibility class (WebSearchExecutor)
+class WebSearchExecutor:
+    """
+    Legacy compatibility class for existing tutorial code.
+    Wraps the function-based web research node.
+    """
+    
+    def __init__(self, config=None):
+        self.config = config
+    
+    def execute_parallel_search(self, queries: List[str]) -> Dict[str, List]:
+        """Execute multiple search queries"""
+        results = {}
+        
+        for i, query in enumerate(queries):
+            # Create state for function call
+            search_state = WebSearchState(search_query=query, id=str(i))
+            
+            # Call function-based node
+            result = web_research(search_state)
+            
+            # Convert to legacy format
+            legacy_sources = []
+            for source in result.get("sources_gathered", []):
+                legacy_source = {
+                    "title": source.get("title", "No title"),
+                    "url": source.get("url", ""),
+                    "snippet": source.get("snippet", "No description")
+                }
+                legacy_sources.append(legacy_source)
+            
+            results[query] = legacy_sources
+        
+        return results
+    
+    def search_single_query(self, query: str) -> List:
+        """Execute a single search query"""
+        search_state = WebSearchState(search_query=query, id="0")
+        result = web_research(search_state)
+        
+        # Convert to legacy format
+        legacy_sources = []
+        for source in result.get("sources_gathered", []):
+            legacy_source = {
+                "title": source.get("title", "No title"), 
+                "url": source.get("url", ""),
+                "snippet": source.get("snippet", "No description")
+            }
+            legacy_sources.append(legacy_source)
+        
+        return legacy_sources
+    
+    def execute_search(self, query: str, max_results: int = 5) -> List:
+        """Execute search with result limit"""
+        results = self.search_single_query(query)
+        return results[:max_results]
+    
+    def _create_demo_results(self, query: str) -> List:
+        """Create demo results for tutorial"""
+        return self.execute_search(query, max_results=3)
 
 
 if __name__ == "__main__":
-    demonstrate_web_searcher()
+    print("🌐 MULTI-PROVIDER WEB SEARCH")
+    print("=" * 32)
     
-    print("\\n" + "="*50)
-    print("🧪 WEB SEARCHER TESTING")
-    print("="*50)
+    print("\n🔍 Search Strategy Selection:")
+    strategies = [
+        ("Google Native", "Uses Google's search API with grounding metadata (reference pattern)"),
+        ("Simulated", "LLM-generated research summaries with realistic source simulation"),
+        ("Fallback", "Basic template-based search results")
+    ]
     
-    print("\\n💡 To test web search:")
+    for strategy, description in strategies:
+        print(f"   • {strategy}: {description}")
+    
+    print(f"\n📊 Current Strategy: {_determine_search_strategy().upper()}")
+    
+    print("\n✅ Key Features:")
+    features = [
+        "Intelligent strategy selection based on available APIs",
+        "Google native search integration (reference pattern)",
+        "Multi-provider LLM compatibility for research summaries", 
+        "Realistic source simulation for tutorial environments",
+        "Legacy compatibility with existing tutorial code"
+    ]
+    
+    for feature in features:
+        print(f"   • {feature}")
+    
+    print("\n🔄 Usage:")
     print("""
-from web_searcher import WebSearchExecutor
-from state_schemas import ResearchConfiguration
-
-# Create search executor
-config = ResearchConfiguration.for_academic_research()
-searcher = WebSearchExecutor(config)
-
-# Execute search
-queries = [
-    "quantum error correction recent advances",
-    "machine learning healthcare applications"
-]
-
-results = searcher.execute_parallel_search(queries)
-
-# Display results
-for query, sources in results.items():
-    print(f"\\nQuery: {query}")
-    print(f"Sources found: {len(sources)}")
+    # Function-based (LangGraph)
+    result = web_research(WebSearchState(search_query="AI research", id="1"))
     
-    for source in sources[:3]:
-        print(f"  • {source.title}")
-        print(f"    URL: {source.url}")
-        print(f"    Relevance: {source.relevance_score:.2f}")
-        print(f"    Credibility: {source.credibility_score:.2f}")
-
-# Get statistics
-stats = searcher.get_search_statistics(results)
-print(f"\\nSearch Statistics: {stats}")
-""")
+    # Legacy compatibility
+    searcher = WebSearchExecutor()
+    results = searcher.execute_search("machine learning trends")
+    """)
+    
+    print("\n✅ Ready for intelligent multi-provider search!")

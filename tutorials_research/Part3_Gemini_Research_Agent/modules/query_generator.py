@@ -1,473 +1,349 @@
 """
-Query Generator for Research Workflows
+Query Generator for Research Workflows - Function-Based Node
 
-Intelligent query generation that transforms research questions into
-optimal search strategies using multi-provider LLM support.
+LangGraph node function for generating search queries from research questions.
+Adapted from Google's reference architecture for multi-provider LLM support.
 """
 
+import sys
 import re
+from datetime import datetime
 from typing import List, Dict, Any, Optional
-from datetime import datetime, timedelta
 
-from state_schemas import SearchQueryList, SearchQuery, ResearchConfiguration
+from langchain_core.runnables import RunnableConfig
+
+# Add path for Part 1 LLM providers
+sys.path.append('../Part1_Foundations/modules')
+from llm_providers import create_research_llm, LLMProvider
+
+from state_schemas import OverallState, QueryGenerationState
+from tools_and_schemas import SearchQueryList
 
 
-class ResearchQueryGenerator:
+def generate_query(state: OverallState, config: RunnableConfig = None) -> QueryGenerationState:
     """
-    Intelligent query generator for research workflows.
+    LangGraph node that generates search queries based on the user's question.
     
-    Transforms research questions into optimal search strategies
-    using configurable LLM providers from Part 1.
+    Adapted from Google's Gemini reference to work with multi-provider LLM system.
+    Uses structured output for reliable query generation.
+    
+    Args:
+        state: Current graph state containing the user's question
+        config: Configuration for the runnable (optional for tutorial)
+        
+    Returns:
+        Dictionary with state update, including search_query key containing generated queries
     """
+    from configuration import Configuration
     
-    def __init__(self, llm, config: Optional[ResearchConfiguration] = None):
-        self.llm = llm
-        self.config = config or ResearchConfiguration()
-        
-        # Query generation templates
-        self.query_templates = {
-            "academic": [
-                "{topic} recent research {year}",
-                "{topic} systematic review",
-                "{topic} methodology advances",
-                "{topic} applications and limitations"
-            ],
-            "technical": [
-                "{topic} implementation approaches",
-                "{topic} performance evaluation",
-                "{topic} comparison study",
-                "{topic} best practices"
-            ],
-            "trends": [
-                "{topic} trends {year}",
-                "{topic} emerging directions",
-                "{topic} future research",
-                "{topic} state of the art"
-            ],
-            "comprehensive": [
-                "{topic} overview",
-                "{topic} recent advances",
-                "{topic} challenges and solutions",
-                "{topic} practical applications"
-            ]
-        }
-        
-        # Domain-specific query patterns
-        self.domain_patterns = {
-            "machine_learning": [
-                "deep learning", "neural networks", "training methods", "architectures",
-                "optimization", "regularization", "performance metrics"
-            ],
-            "quantum_computing": [
-                "quantum algorithms", "quantum hardware", "error correction", "NISQ devices",
-                "quantum supremacy", "quantum software", "applications"
-            ],
-            "biotechnology": [
-                "genomics", "proteomics", "drug discovery", "biomarkers",
-                "clinical trials", "regulatory approval", "therapeutic targets"
-            ],
-            "climate_science": [
-                "climate modeling", "greenhouse gases", "carbon capture", "renewable energy",
-                "climate adaptation", "extreme weather", "environmental policy"
-            ]
-        }
-        
-        # Time-based modifiers
-        self.temporal_modifiers = {
-            "recent": ["2024", "2023", "recent", "latest", "new"],
-            "emerging": ["emerging", "novel", "innovative", "cutting-edge"],
-            "established": ["established", "traditional", "proven", "standard"]
-        }
+    # Get configuration (with defaults for tutorial)
+    if config:
+        try:
+            configurable = Configuration.from_runnable_config(config)
+        except:
+            configurable = Configuration()  # Use defaults
+    else:
+        configurable = Configuration()  # Use defaults for tutorial
     
-    def generate_initial_queries(self, research_question: str) -> SearchQueryList:
-        """
-        Generate initial search queries from a research question.
-        
-        Args:
-            research_question: The research question to analyze
-            
-        Returns:
-            SearchQueryList with generated queries and strategy
-        """
-        
-        # Analyze the research question
-        question_analysis = self._analyze_research_question(research_question)
-        
-        # Generate queries using LLM
-        llm_queries = self._generate_llm_queries(research_question, question_analysis)
-        
-        # Enhance with template-based queries
-        template_queries = self._generate_template_queries(research_question, question_analysis)
-        
-        # Combine and optimize
-        all_queries = llm_queries + template_queries
-        optimized_queries = self._optimize_query_list(all_queries)
-        
-        # Create rationale and strategy
-        rationale = self._create_query_rationale(research_question, optimized_queries)
-        strategy = self._determine_research_strategy(question_analysis)
-        
-        return SearchQueryList(
-            queries=optimized_queries,
-            rationale=rationale,
-            research_strategy=strategy
+    # Check for custom initial search query count
+    if state.get("initial_search_query_count") is None:
+        state["initial_search_query_count"] = configurable.number_of_initial_queries
+    
+    # Create LLM using Part 1's multi-provider system
+    try:
+        llm = create_research_llm(
+            provider_name="auto",  # Auto-select best available
+            temperature=1.0,
+            fast_mode=False
         )
+    except Exception as e:
+        print(f"⚠️ Failed to create LLM: {e}")
+        # Fallback to template-based queries
+        return _generate_template_queries(state)
     
-    def generate_follow_up_queries(self,
-                                 original_question: str,
-                                 current_findings: List[str],
-                                 knowledge_gaps: List[str]) -> List[str]:
-        """
-        Generate follow-up queries to address identified knowledge gaps.
+    # Use structured output for reliable JSON parsing
+    structured_llm = llm.with_structured_output(SearchQueryList)
+    
+    # Format the prompt (adapted from reference)
+    current_date = get_current_date()
+    research_topic = get_research_topic(state["messages"])
+    
+    formatted_prompt = query_writer_instructions.format(
+        current_date=current_date,
+        research_topic=research_topic,
+        number_queries=state["initial_search_query_count"]
+    )
+    
+    try:
+        # Generate the search queries
+        result = structured_llm.invoke(formatted_prompt)
         
-        Args:
-            original_question: Original research question
-            current_findings: Current research findings
-            knowledge_gaps: Identified gaps in knowledge
-            
-        Returns:
-            List of follow-up search queries
-        """
+        # Convert to Query format for compatibility
+        queries = [{"query": q, "rationale": result.rationale} for q in result.query]
         
-        # Use LLM to generate targeted follow-up queries
+        return {"search_query": queries}
+        
+    except Exception as e:
+        print(f"⚠️ LLM query generation failed: {e}")
+        # Fallback to template-based queries
+        return _generate_template_queries(state)
+
+
+def generate_follow_up_queries(
+    original_question: str,
+    current_findings: List[str], 
+    knowledge_gaps: List[str]
+) -> List[str]:
+    """
+    Generate follow-up queries to address identified knowledge gaps.
+    
+    Args:
+        original_question: Original research question
+        current_findings: Current research findings
+        knowledge_gaps: Identified gaps in knowledge
+        
+    Returns:
+        List of follow-up search queries
+    """
+    try:
+        # Create LLM for follow-up generation
+        llm = create_research_llm(temperature=0.7, fast_mode=True)
+        
+        # Create follow-up prompt
         follow_up_prompt = f"""Based on this research question: "{original_question}"
 
 Current findings include:
-{self._format_findings(current_findings[:5])}
+{_format_findings(current_findings[:5])}
 
 The following knowledge gaps have been identified:
-{self._format_gaps(knowledge_gaps)}
+{_format_gaps(knowledge_gaps)}
 
-Generate 2-4 specific search queries that would help fill these knowledge gaps. 
+Generate 2-4 specific search queries that would help fill these knowledge gaps.
 Focus on the missing aspects and provide queries that would find complementary information.
 
 Format your response as a simple list of queries, one per line."""
 
-        try:
-            response = self.llm.invoke(follow_up_prompt)
-            follow_up_queries = self._parse_llm_queries(response.content)
-            
-            # Add template-based follow-ups for gaps
-            template_follow_ups = self._generate_gap_specific_queries(knowledge_gaps)
-            
-            # Combine and optimize
-            all_follow_ups = follow_up_queries + template_follow_ups
-            optimized_follow_ups = self._optimize_query_list(all_follow_ups)
-            
-            return optimized_follow_ups[:4]  # Limit to 4 follow-ups
-            
-        except Exception as e:
-            print(f"⚠️ LLM follow-up generation failed: {e}")
-            return self._generate_gap_specific_queries(knowledge_gaps)
-    
-    def _analyze_research_question(self, question: str) -> Dict[str, Any]:
-        """Analyze research question to determine optimal query strategy"""
+        response = llm.invoke(follow_up_prompt)
+        follow_up_queries = _parse_llm_queries(response.content)
         
-        question_lower = question.lower()
+        # Add template-based follow-ups for gaps
+        template_follow_ups = _generate_gap_specific_queries(knowledge_gaps)
         
-        analysis = {
-            "type": "general",
-            "domain": "general",
-            "temporal_focus": "recent",
-            "complexity": "moderate",
-            "scope": "comprehensive"
-        }
+        # Combine and optimize
+        all_follow_ups = follow_up_queries + template_follow_ups
+        optimized_follow_ups = _optimize_query_list(all_follow_ups)
         
-        # Determine question type
-        if any(word in question_lower for word in ["recent", "latest", "new", "current"]):
-            analysis["type"] = "trends"
-            analysis["temporal_focus"] = "recent"
-        elif any(word in question_lower for word in ["compare", "difference", "versus", "vs"]):
-            analysis["type"] = "comparison"
-        elif any(word in question_lower for word in ["how", "method", "approach", "technique"]):
-            analysis["type"] = "technical"
-        elif any(word in question_lower for word in ["review", "overview", "survey", "state"]):
-            analysis["type"] = "academic"
-            analysis["scope"] = "broad"
+        return optimized_follow_ups[:4]  # Limit to 4 follow-ups
         
-        # Identify domain
-        for domain, keywords in self.domain_patterns.items():
-            if any(keyword in question_lower for keyword in keywords):
-                analysis["domain"] = domain
-                break
-        
-        # Assess complexity
-        if len(question.split()) > 15 or "and" in question_lower or "," in question:
-            analysis["complexity"] = "complex"
-        elif len(question.split()) < 8:
-            analysis["complexity"] = "simple"
-        
-        return analysis
-    
-    def _generate_llm_queries(self, question: str, analysis: Dict[str, Any]) -> List[str]:
-        """Generate queries using LLM reasoning"""
-        
-        # Customize prompt based on analysis
-        domain_context = ""
-        if analysis["domain"] != "general":
-            domain_context = f" in the {analysis['domain'].replace('_', ' ')} domain"
-        
-        temporal_context = ""
-        if analysis["temporal_focus"] == "recent":
-            temporal_context = f" Focus on recent work from {datetime.now().year-1}-{datetime.now().year}."
-        
-        llm_prompt = f"""You are a research assistant helping to create search queries for comprehensive research{domain_context}.
+    except Exception as e:
+        print(f"⚠️ Follow-up query generation failed: {e}")
+        return _generate_gap_specific_queries(knowledge_gaps)
 
-Research Question: "{question}"
 
-Generate {self.config.initial_query_count} diverse search queries that would help answer this research question comprehensively. Each query should:
-1. Target different aspects of the topic
-2. Use varied terminology and synonyms
-3. Be specific enough to find relevant results
-4. Cover both theoretical and practical perspectives{temporal_context}
+# Helper functions (adapted from reference and original)
+def get_current_date():
+    """Get current date in readable format"""
+    return datetime.now().strftime("%B %d, %Y")
 
-Provide only the search queries, one per line, without numbers or bullets."""
 
-        try:
-            response = self.llm.invoke(llm_prompt)
-            return self._parse_llm_queries(response.content)
-        except Exception as e:
-            print(f"⚠️ LLM query generation failed: {e}")
-            return []
+def get_research_topic(messages) -> str:
+    """Extract research topic from messages"""
+    if messages and len(messages) > 0:
+        # Handle both dict and Message object formats
+        if hasattr(messages[0], 'content'):
+            return messages[0].content
+        elif isinstance(messages[0], dict):
+            return messages[0].get('content', 'Unknown topic')
+    return "Unknown research topic"
+
+
+# Prompt template adapted from reference
+query_writer_instructions = """Your goal is to generate sophisticated and diverse web search queries. These queries are intended for an advanced automated web research tool capable of analyzing complex results, following links, and synthesizing information.
+
+Instructions:
+- Always prefer a single search query, only add another query if the original question requests multiple aspects or elements and one query is not enough.
+- Each query should focus on one specific aspect of the original question.
+- Don't produce more than {number_queries} queries.
+- Queries should be diverse, if the topic is broad, generate more than 1 query.
+- Don't generate multiple similar queries, 1 is enough.
+- Query should ensure that the most current information is gathered. The current date is {current_date}.
+
+Format: 
+- Format your response as a JSON object with ALL two of these exact keys:
+   - "rationale": Brief explanation of why these queries are relevant
+   - "query": A list of search queries
+
+Example:
+
+Topic: What revenue grew more last year apple stock or the number of people buying an iphone
+```json
+{{
+    "rationale": "To answer this comparative growth question accurately, we need specific data points on Apple's stock performance and iPhone sales metrics. These queries target the precise financial information needed: company revenue trends, product-specific unit sales figures, and stock price movement over the same fiscal period for direct comparison.",
+    "query": ["Apple total revenue growth fiscal year 2024", "iPhone unit sales growth fiscal year 2024", "Apple stock price growth fiscal year 2024"],
+}}
+```
+
+Context: {research_topic}"""
+
+
+def _generate_template_queries(state: OverallState) -> QueryGenerationState:
+    """Fallback template-based query generation"""
     
-    def _generate_template_queries(self, question: str, analysis: Dict[str, Any]) -> List[str]:
-        """Generate queries using template-based approach"""
-        
-        # Extract main topic from question
-        topic = self._extract_topic(question)
-        current_year = str(datetime.now().year)
-        
-        # Select appropriate template set
-        template_set = self.query_templates.get(analysis["type"], self.query_templates["comprehensive"])
-        
-        # Generate queries from templates
-        template_queries = []
-        for template in template_set:
-            query = template.format(topic=topic, year=current_year)
-            template_queries.append(query)
-        
-        # Add domain-specific queries if applicable
-        if analysis["domain"] in self.domain_patterns:
-            domain_keywords = self.domain_patterns[analysis["domain"]][:2]  # Use top 2
-            for keyword in domain_keywords:
-                template_queries.append(f"{topic} {keyword}")
-        
-        return template_queries[:3]  # Limit template queries
+    research_topic = get_research_topic(state["messages"])
+    current_year = str(datetime.now().year)
     
-    def _extract_topic(self, question: str) -> str:
-        """Extract main topic from research question"""
-        
-        # Remove question words
-        question_words = ["what", "how", "why", "when", "where", "which", "who", 
-                         "are", "is", "can", "does", "do", "will", "would", "should"]
-        
-        words = question.lower().split()
-        topic_words = [w for w in words if w not in question_words and len(w) > 2]
-        
-        # Take key terms (remove common words)
-        common_words = ["the", "and", "or", "but", "for", "with", "from", "about", "into", "through"]
-        key_words = [w for w in topic_words if w not in common_words]
-        
-        # Return first few key words as topic
-        return " ".join(key_words[:4])
+    # Basic template queries
+    template_queries = [
+        f"{research_topic} recent advances {current_year}",
+        f"{research_topic} applications and methods",
+        f"{research_topic} research overview"
+    ]
     
-    def _optimize_query_list(self, queries: List[str]) -> List[str]:
-        """Optimize query list by removing duplicates and poor queries"""
-        
-        if not queries:
-            return []
-        
-        # Remove duplicates and very similar queries
-        unique_queries = []
-        for query in queries:
-            query_clean = query.strip().lower()
-            if query_clean and len(query_clean) > 5:  # Minimum length check
-                # Check for similarity with existing queries
-                is_duplicate = False
-                for existing in unique_queries:
-                    if self._queries_too_similar(query_clean, existing.lower()):
-                        is_duplicate = True
-                        break
-                
-                if not is_duplicate:
-                    unique_queries.append(query.strip())
-        
-        # Limit to configured number
-        max_queries = min(self.config.initial_query_count, 6)  # Max 6 queries
-        return unique_queries[:max_queries]
+    # Convert to Query format
+    queries = [
+        {"query": q, "rationale": "Template-based fallback query"} 
+        for q in template_queries[:state.get("initial_search_query_count", 3)]
+    ]
     
-    def _queries_too_similar(self, query1: str, query2: str, threshold: float = 0.7) -> bool:
-        """Check if two queries are too similar"""
-        
-        words1 = set(query1.split())
-        words2 = set(query2.split())
-        
-        if not words1 or not words2:
-            return False
-        
-        intersection = len(words1.intersection(words2))
-        union = len(words1.union(words2))
-        
-        similarity = intersection / union if union > 0 else 0
-        return similarity > threshold
+    return {"search_query": queries}
+
+
+def _format_findings(findings: List[str]) -> str:
+    """Format findings for LLM prompts"""
+    if not findings:
+        return "No specific findings available yet."
     
-    def _parse_llm_queries(self, llm_response: str) -> List[str]:
-        """Parse LLM response into query list"""
-        
-        queries = []
-        lines = llm_response.strip().split('\\n')
-        
-        for line in lines:
-            # Remove common prefixes and clean up
-            clean_line = re.sub(r'^[\\d\\.\\-\\*\\+]\\s*', '', line.strip())
-            clean_line = re.sub(r'^["""]', '', clean_line)
-            clean_line = re.sub(r'["""]$', '', clean_line)
-            
-            if clean_line and len(clean_line) > 5:
-                queries.append(clean_line)
-        
-        return queries
+    formatted = []
+    for i, finding in enumerate(findings[:5], 1):
+        formatted.append(f"{i}. {finding[:100]}...")
+    return "\n".join(formatted)
+
+
+def _format_gaps(gaps: List[str]) -> str:
+    """Format knowledge gaps for LLM prompts"""
+    if not gaps:
+        return "No specific gaps identified."
     
-    def _create_query_rationale(self, question: str, queries: List[str]) -> str:
-        """Create rationale for the generated queries"""
-        
-        return f"""These {len(queries)} queries are designed to comprehensively research "{question[:50]}..." by:
-1. Covering different aspects and perspectives of the topic
-2. Using varied terminology to capture diverse sources
-3. Balancing broad overview with specific technical details
-4. Including recent developments and established knowledge
-5. Targeting both academic and practical applications"""
+    formatted = []
+    for i, gap in enumerate(gaps[:3], 1):
+        formatted.append(f"{i}. {gap}")
+    return "\n".join(formatted)
+
+
+def _parse_llm_queries(llm_response: str) -> List[str]:
+    """Parse LLM response into query list"""
     
-    def _determine_research_strategy(self, analysis: Dict[str, Any]) -> str:
-        """Determine research strategy based on question analysis"""
-        
-        strategies = {
-            "academic": "Systematic academic literature review approach",
-            "technical": "Technical implementation and methodology focus",
-            "trends": "Current trends and emerging developments analysis", 
-            "comparison": "Comparative analysis of different approaches",
-            "general": "Comprehensive multi-perspective research strategy"
-        }
-        
-        base_strategy = strategies.get(analysis["type"], strategies["general"])
-        
-        if analysis["complexity"] == "complex":
-            base_strategy += " with iterative refinement for complex topic coverage"
-        elif analysis["scope"] == "broad":
-            base_strategy += " emphasizing breadth of coverage across subdomains"
-        
-        return base_strategy
+    queries = []
+    lines = llm_response.strip().split('\n')
     
-    def _generate_gap_specific_queries(self, knowledge_gaps: List[str]) -> List[str]:
-        """Generate queries specifically targeting knowledge gaps"""
+    for line in lines:
+        # Remove common prefixes and clean up
+        clean_line = re.sub(r'^[\d\.\-\*\+]\s*', '', line.strip())
+        clean_line = re.sub(r'^["""]', '', clean_line)
+        clean_line = re.sub(r'["""]$', '', clean_line)
         
-        gap_queries = []
-        for gap in knowledge_gaps[:3]:  # Limit to 3 gaps
-            # Extract key terms from gap description
-            gap_terms = self._extract_key_terms(gap)
-            if gap_terms:
-                gap_queries.append(" ".join(gap_terms))
-        
-        return gap_queries
+        if clean_line and len(clean_line) > 5:
+            queries.append(clean_line)
     
-    def _extract_key_terms(self, text: str) -> List[str]:
-        """Extract key terms from gap description"""
-        
-        # Simple keyword extraction
-        words = text.lower().split()
+    return queries
+
+
+def _optimize_query_list(queries: List[str]) -> List[str]:
+    """Optimize query list by removing duplicates"""
+    
+    if not queries:
+        return []
+    
+    unique_queries = []
+    for query in queries:
+        query_clean = query.strip()
+        if query_clean and len(query_clean) > 5 and query_clean not in unique_queries:
+            unique_queries.append(query_clean)
+    
+    return unique_queries[:6]  # Max 6 queries
+
+
+def _generate_gap_specific_queries(knowledge_gaps: List[str]) -> List[str]:
+    """Generate queries specifically targeting knowledge gaps"""
+    
+    gap_queries = []
+    for gap in knowledge_gaps[:3]:
+        # Simple keyword extraction from gap
+        words = gap.lower().split()
         key_terms = [w for w in words if len(w) > 3 and w.isalpha()]
-        return key_terms[:3]  # Top 3 terms
+        if key_terms:
+            gap_queries.append(" ".join(key_terms[:3]))
     
-    def _format_findings(self, findings: List[str]) -> str:
-        """Format findings for LLM prompts"""
-        if not findings:
-            return "No specific findings available yet."
-        
-        formatted = []
-        for i, finding in enumerate(findings[:5], 1):
-            formatted.append(f"{i}. {finding[:100]}...")
-        return "\\n".join(formatted)
-    
-    def _format_gaps(self, gaps: List[str]) -> str:
-        """Format knowledge gaps for LLM prompts"""
-        if not gaps:
-            return "No specific gaps identified."
-        
-        formatted = []
-        for i, gap in enumerate(gaps[:3], 1):
-            formatted.append(f"{i}. {gap}")
-        return "\\n".join(formatted)
+    return gap_queries
 
 
-def demonstrate_query_generator():
-    """Demonstrate query generation capabilities"""
+# Legacy compatibility class for existing tutorial code
+class ResearchQueryGenerator:
+    """Legacy compatibility wrapper for the class-based interface"""
     
-    print("🔍 QUERY GENERATOR DEMONSTRATION")
-    print("=" * 32)
+    def __init__(self, llm, config=None):
+        self.llm = llm
+        self.config = config
     
-    print("\\n🎯 Query Generation Capabilities:")
-    capabilities = [
-        "Multi-perspective query generation from research questions",
-        "Domain-specific query optimization",
-        "Temporal focus adaptation (recent vs established work)",
-        "Follow-up query generation for knowledge gaps",
-        "Template-based and LLM-based query synthesis",
-        "Query deduplication and optimization"
-    ]
+    def generate_initial_queries(self, research_question: str):
+        """Legacy compatibility method"""
+        from langchain_core.messages import HumanMessage
+        from state_schemas import OverallState
+        
+        # Create state for function call
+        state = OverallState(
+            messages=[HumanMessage(content=research_question)],
+            search_query=[],
+            web_research_result=[],
+            sources_gathered=[],
+            initial_search_query_count=3,
+            max_research_loops=2,
+            research_loop_count=0,
+            reasoning_model="default"
+        )
+        
+        # Call function-based node
+        result = generate_query(state)
+        
+        # Convert back to legacy format
+        class LegacyResult:
+            def __init__(self, queries_data):
+                self.queries = [q["query"] for q in queries_data]
+                self.rationale = queries_data[0]["rationale"] if queries_data else "Generated queries"
+                self.research_strategy = "Multi-provider research approach"
+        
+        return LegacyResult(result["search_query"])
     
-    for capability in capabilities:
-        print(f"   • {capability}")
-    
-    print("\\n📋 Supported Question Types:")
-    question_types = [
-        ("Trends", "What are recent advances in quantum computing?"),
-        ("Technical", "How do transformer attention mechanisms work?"),
-        ("Academic", "Review of deep learning in medical imaging"),
-        ("Comparison", "Compare CNN vs Transformer architectures"),
-        ("Comprehensive", "Overview of climate change modeling approaches")
-    ]
-    
-    for q_type, example in question_types:
-        print(f"   • {q_type}: '{example}'")
-    
-    print("\\n🔄 Query Generation Process:")
-    process_steps = [
-        "1. Analyze research question (type, domain, complexity)",
-        "2. Generate LLM-based queries using reasoning",
-        "3. Create template-based queries for coverage",
-        "4. Optimize and deduplicate query list",
-        "5. Create rationale and research strategy"
-    ]
-    
-    for step in process_steps:
-        print(f"   {step}")
+    def generate_follow_up_queries(self, original_question: str, current_findings: List[str], knowledge_gaps: List[str]):
+        """Legacy compatibility method"""
+        return generate_follow_up_queries(original_question, current_findings, knowledge_gaps)
 
 
 if __name__ == "__main__":
-    demonstrate_query_generator()
+    print("🔍 FUNCTION-BASED QUERY GENERATOR")
+    print("=" * 35)
     
-    print("\\n" + "="*50)
-    print("🧪 QUERY GENERATOR TESTING")
-    print("="*50)
+    print("\n✅ Key Features:")
+    features = [
+        "Function-based LangGraph node architecture",
+        "Multi-provider LLM support via Part 1 integration", 
+        "Structured output with Pydantic models",
+        "Fallback template-based query generation",
+        "Legacy compatibility wrapper for existing code"
+    ]
     
-    print("\\n💡 To test with LLM:")
+    for feature in features:
+        print(f"   • {feature}")
+    
+    print("\n🔄 Usage in LangGraph:")
     print("""
-# Import from Part 1
-sys.path.append('../Part1_Foundations/modules')
-from llm_providers import create_research_llm
-
-# Create LLM and query generator
-llm = create_research_llm()
-config = ResearchConfiguration.for_academic_research()
-generator = ResearchQueryGenerator(llm, config)
-
-# Generate queries
-research_question = "What are recent advances in quantum error correction?"
-queries = generator.generate_initial_queries(research_question)
-
-print(f"Generated {len(queries.queries)} queries:")
-for i, query in enumerate(queries.queries, 1):
-    print(f"{i}. {query}")
-
-print(f"Strategy: {queries.research_strategy}")
-""")
+    # Add as node to LangGraph workflow
+    builder.add_node("generate_query", generate_query)
+    
+    # Or use legacy wrapper for existing code
+    llm = create_research_llm()
+    generator = ResearchQueryGenerator(llm)
+    result = generator.generate_initial_queries("Your research question")
+    """)
+    
+    print("\n✅ Ready for LangGraph integration!")

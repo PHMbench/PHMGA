@@ -1,625 +1,454 @@
 """
-Research Graph Workflow
+Multi-Provider Research Graph - Reference Architecture
 
-Complete LangGraph workflow for reflective research using multi-provider LLM support.
-Adapted from Gemini example to work with any LLM provider from Part 1.
+Complete LangGraph workflow adapted from Google's reference implementation
+for multi-provider LLM compatibility while maintaining production patterns.
 """
 
 import os
-import time
+import sys
 import uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
+from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
-from langchain_core.runnables import RunnableConfig
-from langchain_core.messages import AIMessage
 
-from state_schemas import (
-    OverallResearchState, 
-    ResearchConfiguration,
-    create_initial_research_state,
-    validate_research_state
-)
-from query_generator import ResearchQueryGenerator
-from web_searcher import WebSearchExecutor
-from reflection_agent import ResearchReflectionAgent
+# Add path for Part 1 LLM providers
+sys.path.append('../Part1_Foundations/modules')
+from llm_providers import create_research_llm, LLMProvider
+
+from state_schemas import OverallState, QueryGenerationState, WebSearchState, ReflectionState
+from configuration import Configuration
+from tools_and_schemas import SearchQueryList, Reflection
+
+# Import function-based nodes
+from query_generator import generate_query, get_research_topic
+from web_searcher import web_research
+from reflection_agent import reflection
+from prompts import get_current_date, format_answer_prompt
 
 
-class ResearchWorkflowGraph:
+# Core LangGraph nodes (reference pattern)
+def continue_to_web_research(state: QueryGenerationState):
     """
-    Complete research workflow using reflection-based iterative improvement.
+    Send the search queries to web research nodes (reference pattern).
     
-    Integrates query generation, web search, reflection, and synthesis
-    into a comprehensive research system.
+    Creates Send operations to spawn multiple parallel web research nodes,
+    one for each generated query.
     """
-    
-    def __init__(self, llm, config: Optional[ResearchConfiguration] = None):
-        self.llm = llm
-        self.config = config or ResearchConfiguration()
-        
-        # Initialize specialized components
-        self.query_generator = ResearchQueryGenerator(llm, config)
-        self.web_searcher = WebSearchExecutor(config)
-        self.reflection_agent = ResearchReflectionAgent(llm, config)
-        
-        # Build the graph
-        self.graph = self._build_research_graph()
-    
-    def _build_research_graph(self) -> StateGraph:
-        """Build the complete research workflow graph"""
-        
-        # Create the graph
-        builder = StateGraph(OverallResearchState)
-        
-        # Add nodes
-        builder.add_node("generate_queries", self._generate_initial_queries)
-        builder.add_node("execute_search", self._execute_web_search)
-        builder.add_node("reflect_on_research", self._reflect_on_completeness)
-        builder.add_node("generate_follow_ups", self._generate_follow_up_queries)
-        builder.add_node("execute_follow_up_search", self._execute_follow_up_search)
-        builder.add_node("synthesize_answer", self._synthesize_final_answer)
-        
-        # Define workflow
-        builder.add_edge(START, "generate_queries")
-        builder.add_edge("generate_queries", "execute_search")
-        builder.add_edge("execute_search", "reflect_on_research")
-        
-        # Conditional edge for research loops
-        builder.add_conditional_edges(
-            "reflect_on_research",
-            self._decide_next_step,
-            {
-                "continue_research": "generate_follow_ups",
-                "synthesize": "synthesize_answer"
-            }
-        )
-        
-        builder.add_edge("generate_follow_ups", "execute_follow_up_search")
-        builder.add_edge("execute_follow_up_search", "reflect_on_research")
-        builder.add_edge("synthesize_answer", END)
-        
-        return builder.compile()
-    
-    def conduct_research(self, research_question: str, session_id: Optional[str] = None) -> Dict[str, Any]:
-        """
-        Conduct complete research workflow for a given question.
-        
-        Args:
-            research_question: The research question to investigate
-            session_id: Optional session identifier
-            
-        Returns:
-            Complete research results with final answer and metadata
-        """
-        
-        print(f"🔬 Starting comprehensive research workflow")
-        print(f"Question: '{research_question}'")
-        
-        # Initialize state
-        if session_id is None:
-            session_id = f"research_{uuid.uuid4().hex[:8]}"
-        
-        initial_state = create_initial_research_state(
-            research_question=research_question,
-            config=self.config,
-            session_id=session_id
-        )
-        
-        # Validate initial state
-        validation_errors = validate_research_state(initial_state)
-        if validation_errors:
-            print(f"⚠️ State validation errors: {validation_errors}")
-        
-        # Execute research workflow
-        start_time = time.time()
-        try:
-            final_state = self.graph.invoke(initial_state)
-            execution_time = time.time() - start_time
-            
-            # Update final execution time
-            final_state["total_execution_time"] = execution_time
-            
-            # Prepare results
-            results = self._prepare_final_results(final_state)
-            
-            print(f"✅ Research completed in {execution_time:.1f}s")
-            print(f"📊 Total iterations: {final_state['research_loop_count']}")
-            print(f"📚 Total sources: {len(final_state['sources_gathered'])}")
-            
-            return results
-            
-        except Exception as e:
-            execution_time = time.time() - start_time
-            print(f"❌ Research workflow failed: {e}")
-            
-            return {
-                "success": False,
-                "error": str(e),
-                "execution_time": execution_time,
-                "session_id": session_id
-            }
-    
-    def _generate_initial_queries(self, state: OverallResearchState) -> Dict[str, Any]:
-        """Generate initial search queries from research question"""
-        
-        print("🎯 Generating initial search queries...")
-        
-        try:
-            query_result = self.query_generator.generate_initial_queries(
-                state["research_question"]
-            )
-            
-            print(f"   Generated {len(query_result.queries)} queries")
-            for i, query in enumerate(query_result.queries, 1):
-                print(f"   {i}. {query}")
-            
-            return {
-                "search_queries": query_result.queries,
-                "current_query_batch": query_result.queries.copy(),
-                "messages": [AIMessage(content=f"Generated {len(query_result.queries)} initial search queries")]
-            }
-            
-        except Exception as e:
-            print(f"   ❌ Query generation failed: {e}")
-            fallback_queries = [state["research_question"]]
-            
-            return {
-                "search_queries": fallback_queries,
-                "current_query_batch": fallback_queries,
-                "messages": [AIMessage(content=f"Using fallback query due to error: {e}")]
-            }
-    
-    def _execute_web_search(self, state: OverallResearchState) -> Dict[str, Any]:
-        """Execute web search for current query batch"""
-        
-        queries = state.get("current_query_batch", [])
-        print(f"🔍 Executing web search for {len(queries)} queries...")
-        
-        try:
-            search_results = self.web_searcher.execute_parallel_search(queries)
-            
-            # Extract findings and sources
-            all_findings = []
-            all_sources = []
-            
-            for query, sources in search_results.items():
-                for source in sources:
-                    # Create finding from source
-                    finding = f"From {source.source_type} source: {source.title} - {source.snippet[:200]}..."
-                    all_findings.append(finding)
-                    all_sources.append(source)
-            
-            print(f"   Found {len(all_sources)} sources across all queries")
-            
-            # Get search statistics
-            search_stats = self.web_searcher.get_search_statistics(search_results)
-            print(f"   Average relevance: {search_stats['average_relevance']}")
-            print(f"   Source types: {search_stats['source_types']}")
-            
-            return {
-                "web_research_results": all_findings,
-                "sources_gathered": all_sources,
-                "all_findings": all_findings
-            }
-            
-        except Exception as e:
-            print(f"   ❌ Web search failed: {e}")
-            return {
-                "web_research_results": [f"Search failed: {e}"],
-                "sources_gathered": [],
-                "all_findings": [f"Search error: {e}"]
-            }
-    
-    def _reflect_on_completeness(self, state: OverallResearchState) -> Dict[str, Any]:
-        """Reflect on research completeness and identify gaps"""
-        
-        current_iteration = state.get("research_loop_count", 0)
-        print(f"🤔 Reflecting on research completeness (iteration {current_iteration + 1})...")
-        
-        try:
-            reflection_result = self.reflection_agent.analyze_research_completeness(
-                original_question=state["research_question"],
-                research_findings=state.get("all_findings", []),
-                sources=state.get("sources_gathered", []),
-                current_iteration=current_iteration + 1
-            )
-            
-            print(f"   Sufficient: {reflection_result.is_sufficient}")
-            print(f"   Confidence: {reflection_result.confidence_score:.2f}")
-            if not reflection_result.is_sufficient:
-                print(f"   Gaps identified: {len(reflection_result.missing_aspects)}")
-            
-            return {
-                "research_loop_count": current_iteration + 1,
-                "reflection_history": [reflection_result],
-                "knowledge_coverage_score": reflection_result.confidence_score
-            }
-            
-        except Exception as e:
-            print(f"   ❌ Reflection failed: {e}")
-            
-            # Fallback reflection
-            from state_schemas import ReflectionResult
-            fallback_reflection = ReflectionResult(
-                is_sufficient=True,  # Assume sufficient to avoid infinite loops
-                knowledge_gap=f"Reflection failed: {e}",
-                follow_up_queries=[],
-                confidence_score=0.5,
-                missing_aspects=[]
-            )
-            
-            return {
-                "research_loop_count": current_iteration + 1,
-                "reflection_history": [fallback_reflection],
-                "knowledge_coverage_score": 0.5
-            }
-    
-    def _decide_next_step(self, state: OverallResearchState) -> str:
-        """Decide whether to continue research or synthesize answer"""
-        
-        # Get latest reflection
-        reflection_history = state.get("reflection_history", [])
-        if not reflection_history:
-            return "synthesize"
-        
-        latest_reflection = reflection_history[-1]
-        current_iteration = state.get("research_loop_count", 0)
-        max_iterations = state.get("max_research_loops", self.config.max_research_loops)
-        
-        # Continue if not sufficient and within iteration limits
-        if not latest_reflection.is_sufficient and current_iteration < max_iterations:
-            print(f"   📋 Continuing research (iteration {current_iteration}/{max_iterations})")
-            return "continue_research"
-        else:
-            if current_iteration >= max_iterations:
-                print(f"   🏁 Max iterations reached ({max_iterations})")
-            else:
-                print(f"   ✅ Research deemed sufficient")
-            return "synthesize"
-    
-    def _generate_follow_up_queries(self, state: OverallResearchState) -> Dict[str, Any]:
-        """Generate follow-up queries based on reflection"""
-        
-        print("🎯 Generating follow-up queries...")
-        
-        try:
-            # Get latest reflection
-            reflection_history = state.get("reflection_history", [])
-            if not reflection_history:
-                return {"current_query_batch": []}
-            
-            latest_reflection = reflection_history[-1]
-            
-            # Generate follow-up queries
-            follow_up_queries = self.query_generator.generate_follow_up_queries(
-                original_question=state["research_question"],
-                current_findings=state.get("all_findings", []),
-                knowledge_gaps=latest_reflection.missing_aspects
-            )
-            
-            print(f"   Generated {len(follow_up_queries)} follow-up queries:")
-            for i, query in enumerate(follow_up_queries, 1):
-                print(f"   {i}. {query}")
-            
-            return {
-                "current_query_batch": follow_up_queries,
-                "search_queries": follow_up_queries  # Add to overall query list
-            }
-            
-        except Exception as e:
-            print(f"   ❌ Follow-up generation failed: {e}")
-            return {"current_query_batch": []}
-    
-    def _execute_follow_up_search(self, state: OverallResearchState) -> Dict[str, Any]:
-        """Execute follow-up search queries"""
-        
-        # Reuse the main search function
-        return self._execute_web_search(state)
-    
-    def _synthesize_final_answer(self, state: OverallResearchState) -> Dict[str, Any]:
-        """Synthesize final comprehensive answer"""
-        
-        print("📝 Synthesizing final answer...")
-        
-        try:
-            # Prepare research summary
-            research_summary = self._prepare_research_summary(state)
-            
-            # Generate final answer using LLM
-            synthesis_prompt = f"""Based on comprehensive research, provide a detailed answer to this question:
-
-RESEARCH QUESTION: "{state['research_question']}"
-
-RESEARCH FINDINGS:
-{research_summary}
-
-Please provide a comprehensive answer that:
-1. Directly addresses the research question
-2. Synthesizes information from multiple sources
-3. Highlights key findings and insights
-4. Mentions any limitations or areas needing further research
-5. Is well-structured and academic in tone
-
-Format your response as a clear, comprehensive answer suitable for academic or professional use."""
-
-            response = self.llm.invoke(synthesis_prompt)
-            final_answer = response.content
-            
-            print(f"   ✅ Generated final answer ({len(final_answer)} characters)")
-            
-            # Prepare citation information
-            citations = self._prepare_citations(state)
-            
-            return {
-                "messages": [AIMessage(content=final_answer)],
-                "research_depth_score": self._calculate_research_depth(state),
-                "source_diversity_score": self._calculate_source_diversity(state)
-            }
-            
-        except Exception as e:
-            print(f"   ❌ Synthesis failed: {e}")
-            
-            # Fallback synthesis
-            findings = state.get("all_findings", [])
-            fallback_answer = f"Research on '{state['research_question']}' found {len(findings)} key findings. However, synthesis failed due to: {e}"
-            
-            return {
-                "messages": [AIMessage(content=fallback_answer)],
-                "research_depth_score": 0.5,
-                "source_diversity_score": 0.5
-            }
-    
-    def _prepare_research_summary(self, state: OverallResearchState) -> str:
-        """Prepare research summary for final synthesis"""
-        
-        findings = state.get("all_findings", [])
-        sources = state.get("sources_gathered", [])
-        
-        if not findings:
-            return "No research findings available."
-        
-        # Group findings by source type
-        academic_findings = []
-        technical_findings = []
-        other_findings = []
-        
-        source_map = {source.url: source for source in sources}
-        
-        for finding in findings[:15]:  # Limit for LLM context
-            # Try to determine source type from finding
-            if "academic" in finding.lower():
-                academic_findings.append(finding)
-            elif "technical" in finding.lower() or "github" in finding.lower():
-                technical_findings.append(finding)
-            else:
-                other_findings.append(finding)
-        
-        # Format summary
-        summary_parts = []
-        
-        if academic_findings:
-            summary_parts.append("ACADEMIC SOURCES:")
-            for i, finding in enumerate(academic_findings[:5], 1):
-                summary_parts.append(f"{i}. {finding[:300]}...")
-        
-        if technical_findings:
-            summary_parts.append("\\nTECHNICAL SOURCES:")
-            for i, finding in enumerate(technical_findings[:3], 1):
-                summary_parts.append(f"{i}. {finding[:300]}...")
-        
-        if other_findings:
-            summary_parts.append("\\nOTHER SOURCES:")
-            for i, finding in enumerate(other_findings[:5], 1):
-                summary_parts.append(f"{i}. {finding[:300]}...")
-        
-        return "\\n".join(summary_parts)
-    
-    def _prepare_citations(self, state: OverallResearchState) -> List[str]:
-        """Prepare citation list from sources"""
-        
-        sources = state.get("sources_gathered", [])
-        citations = []
-        
-        for source in sources[:10]:  # Limit citations
-            if source.title and source.url:
-                citation = f"{source.title}. Retrieved from {source.url}"
-                if source.publication_date:
-                    citation += f" ({source.publication_date[:4]})"
-                citations.append(citation)
-        
-        return citations
-    
-    def _calculate_research_depth(self, state: OverallResearchState) -> float:
-        """Calculate research depth score"""
-        
-        findings = state.get("all_findings", [])
-        iterations = state.get("research_loop_count", 0)
-        
-        if not findings:
-            return 0.0
-        
-        # Base score from number of findings
-        finding_score = min(len(findings) / 20, 1.0)  # Normalize to 20 findings
-        
-        # Iteration score (more iterations = deeper research)
-        iteration_score = min(iterations / 3, 1.0)  # Normalize to 3 iterations
-        
-        # Average scores
-        return (finding_score + iteration_score) / 2
-    
-    def _calculate_source_diversity(self, state: OverallResearchState) -> float:
-        """Calculate source diversity score"""
-        
-        sources = state.get("sources_gathered", [])
-        
-        if not sources:
-            return 0.0
-        
-        # Count unique source types
-        source_types = set(source.source_type for source in sources)
-        max_types = 4  # academic, technical, institutional, web
-        
-        return len(source_types) / max_types
-    
-    def _prepare_final_results(self, state: OverallResearchState) -> Dict[str, Any]:
-        """Prepare final results dictionary"""
-        
-        # Extract final answer from messages
-        messages = state.get("messages", [])
-        final_answer = messages[-1].content if messages else "No answer generated"
-        
-        # Get reflection history
-        reflections = state.get("reflection_history", [])
-        
-        # Get sources
-        sources = state.get("sources_gathered", [])
-        
-        return {
-            "success": True,
-            "session_id": state.get("session_id"),
-            "research_question": state.get("research_question"),
-            "final_answer": final_answer,
-            "research_summary": {
-                "total_iterations": state.get("research_loop_count", 0),
-                "total_queries": len(state.get("search_queries", [])),
-                "total_sources": len(sources),
-                "total_findings": len(state.get("all_findings", [])),
-                "execution_time": state.get("total_execution_time", 0)
-            },
-            "quality_metrics": {
-                "knowledge_coverage": state.get("knowledge_coverage_score", 0),
-                "research_depth": state.get("research_depth_score", 0),
-                "source_diversity": state.get("source_diversity_score", 0)
-            },
-            "research_process": {
-                "initial_queries": state.get("search_queries", []),
-                "reflections": [
-                    {
-                        "iteration": i + 1,
-                        "is_sufficient": r.is_sufficient,
-                        "knowledge_gap": r.knowledge_gap,
-                        "confidence": r.confidence_score
-                    }
-                    for i, r in enumerate(reflections)
-                ],
-                "sources_by_type": self._group_sources_by_type(sources)
-            },
-            "sources": [
-                {
-                    "title": source.title,
-                    "url": source.url,
-                    "type": source.source_type,
-                    "relevance": source.relevance_score,
-                    "credibility": source.credibility_score
-                }
-                for source in sources[:20]  # Limit for output size
-            ]
-        }
-    
-    def _group_sources_by_type(self, sources) -> Dict[str, int]:
-        """Group sources by type for summary"""
-        
-        type_counts = {}
-        for source in sources:
-            type_counts[source.source_type] = type_counts.get(source.source_type, 0) + 1
-        
-        return type_counts
+    return [
+        Send("web_research", {"search_query": search_query["query"], "id": str(idx)})
+        for idx, search_query in enumerate(state["search_query"])
+    ]
 
 
-def create_research_workflow(llm, config: Optional[ResearchConfiguration] = None) -> ResearchWorkflowGraph:
+def evaluate_research(state: ReflectionState, config: RunnableConfig = None) -> str:
     """
-    Factory function to create a research workflow graph.
+    Route research flow based on reflection results (reference pattern).
+    
+    Controls the research loop by deciding whether to continue gathering information
+    or finalize the summary based on reflection analysis and iteration limits.
     
     Args:
-        llm: LLM instance from Part 1's multi-provider system
+        state: Current reflection state with sufficiency analysis
+        config: Configuration for runnable, including max_research_loops
+        
+    Returns:
+        String indicating next node ("web_research" or "finalize_answer")
+        or Send list for follow-up queries
+    """
+    from configuration import Configuration
+    
+    # Get configuration (with defaults for tutorial)
+    if config:
+        try:
+            configurable = Configuration.from_runnable_config(config)
+        except:
+            configurable = Configuration()
+    else:
+        configurable = Configuration()
+    
+    max_research_loops = configurable.max_research_loops
+    
+    # Check if research is sufficient or max loops reached
+    if state["is_sufficient"] or state["research_loop_count"] >= max_research_loops:
+        return "finalize_answer"
+    else:
+        # Generate Send operations for follow-up queries
+        return [
+            Send(
+                "web_research",
+                {
+                    "search_query": follow_up_query,
+                    "id": str(state["number_of_ran_queries"] + int(idx)),
+                },
+            )
+            for idx, follow_up_query in enumerate(state["follow_up_queries"])
+        ]
+
+
+def finalize_answer(state: OverallState, config: RunnableConfig = None) -> OverallState:
+    """
+    Finalize the research summary with comprehensive answer synthesis.
+    
+    Creates the final output by synthesizing all research findings into a
+    well-structured answer with proper citations and source references.
+    
+    Args:
+        state: Current graph state with all research results
+        config: Configuration for the runnable
+        
+    Returns:
+        Dictionary with final answer and processed sources
+    """
+    from configuration import Configuration
+    
+    # Get configuration
+    if config:
+        try:
+            configurable = Configuration.from_runnable_config(config)
+        except:
+            configurable = Configuration()
+    else:
+        configurable = Configuration()
+    
+    # Create LLM for final synthesis
+    try:
+        llm = create_research_llm(
+            provider_name="auto",
+            temperature=0.0,  # Low temperature for consistent synthesis
+            fast_mode=False
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to create LLM for synthesis: {e}")
+        # Create fallback answer
+        research_topic = get_research_topic(state["messages"])
+        fallback_content = f"Research completed for: {research_topic}\n\nTotal sources gathered: {len(state.get('sources_gathered', []))}"
+        
+        return {
+            "messages": [AIMessage(content=fallback_content)],
+            "sources_gathered": _process_unique_sources(state)
+        }
+    
+    # Format the synthesis prompt
+    research_topic = get_research_topic(state["messages"])
+    summaries = state.get("web_research_result", [])
+    
+    formatted_prompt = format_answer_prompt(
+        research_topic=research_topic,
+        summaries=summaries,
+        style="comprehensive"
+    )
+    
+    try:
+        # Generate final comprehensive answer
+        result = llm.invoke(formatted_prompt)
+        
+        # Process and deduplicate sources
+        unique_sources = _process_unique_sources(state)
+        
+        # Replace short URLs with original URLs in the answer
+        processed_content = _process_source_urls(result.content, unique_sources)
+        
+        return {
+            "messages": [AIMessage(content=processed_content)],
+            "sources_gathered": unique_sources
+        }
+        
+    except Exception as e:
+        print(f"⚠️ Answer synthesis failed: {e}")
+        
+        # Fallback synthesis
+        research_topic = get_research_topic(state["messages"])
+        summaries = state.get("web_research_result", [])
+        
+        fallback_content = f"# Research Summary: {research_topic}\n\n"
+        if summaries:
+            for i, summary in enumerate(summaries[:3], 1):
+                fallback_content += f"## Finding {i}\n{summary[:300]}...\n\n"
+        else:
+            fallback_content += "Research completed but synthesis failed."
+        
+        return {
+            "messages": [AIMessage(content=fallback_content)],
+            "sources_gathered": _process_unique_sources(state)
+        }
+
+
+# Helper functions for research workflow
+def _process_unique_sources(state: OverallState) -> List[Dict[str, Any]]:
+    """Process and deduplicate sources from research state"""
+    
+    sources = state.get("sources_gathered", [])
+    unique_sources = []
+    seen_urls = set()
+    
+    for source in sources:
+        url = source.get("url", "")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            unique_sources.append(source)
+    
+    return unique_sources[:20]  # Limit to top 20 sources
+
+
+def _process_source_urls(content: str, sources: List[Dict[str, Any]]) -> str:
+    """Replace short URLs with original URLs in content"""
+    
+    processed_content = content
+    
+    for source in sources:
+        short_url = source.get("short_url", "")
+        original_url = source.get("url", "")
+        
+        if short_url and original_url and short_url in processed_content:
+            processed_content = processed_content.replace(short_url, original_url)
+    
+    return processed_content
+
+
+# Create the research graph (reference pattern)
+def create_research_graph() -> StateGraph:
+    """
+    Create the complete research workflow graph.
+    
+    Follows Google's reference architecture patterns with multi-provider support.
+    Uses function-based nodes and proper Send/conditional routing.
+    
+    Returns:
+        Compiled StateGraph ready for research execution
+    """
+    
+    # Create graph builder
+    builder = StateGraph(OverallState, config_schema=Configuration)
+    
+    # Add all nodes (function-based, reference pattern)
+    builder.add_node("generate_query", generate_query)
+    builder.add_node("web_research", web_research)
+    builder.add_node("reflection", reflection)
+    builder.add_node("finalize_answer", finalize_answer)
+    
+    # Set entry point
+    builder.add_edge(START, "generate_query")
+    
+    # Add conditional edge for parallel web research
+    builder.add_conditional_edges(
+        "generate_query", continue_to_web_research, ["web_research"]
+    )
+    
+    # Web research flows to reflection
+    builder.add_edge("web_research", "reflection")
+    
+    # Conditional routing based on reflection results
+    builder.add_conditional_edges(
+        "reflection", evaluate_research, ["web_research", "finalize_answer"]
+    )
+    
+    # Final answer ends the workflow
+    builder.add_edge("finalize_answer", END)
+    
+    # Compile the graph
+    return builder.compile(name="multi-provider-research-agent")
+
+
+# Research execution functions
+def conduct_research(research_question: str, config: Optional[Configuration] = None) -> Dict[str, Any]:
+    """
+    Conduct complete research workflow for a given question.
+    
+    Args:
+        research_question: The research question to investigate
         config: Optional research configuration
         
     Returns:
-        Configured ResearchWorkflowGraph
+        Complete research results with final answer and metadata
     """
+    
+    print(f"🔬 Starting multi-provider research workflow")
+    print(f"Question: '{research_question}'")
+    
+    # Create or use provided configuration
+    if config is None:
+        config = Configuration()
+    
+    # Create the graph
+    graph = create_research_graph()
+    
+    # Initialize state
+    initial_state = OverallState(
+        messages=[HumanMessage(content=research_question)],
+        search_query=[],
+        web_research_result=[],
+        sources_gathered=[],
+        initial_search_query_count=config.number_of_initial_queries,
+        max_research_loops=config.max_research_loops,
+        research_loop_count=0,
+        reasoning_model=config.answer_model
+    )
+    
+    # Execute research workflow
+    try:
+        print("🚀 Executing research workflow...")
+        
+        # Run the graph with configuration
+        final_state = graph.invoke(
+            initial_state,
+            config={"configurable": config.model_dump()}
+        )
+        
+        # Extract results
+        messages = final_state.get("messages", [])
+        final_answer = messages[-1].content if messages else "No answer generated"
+        sources = final_state.get("sources_gathered", [])
+        
+        print(f"✅ Research completed successfully")
+        print(f"📊 Total sources: {len(sources)}")
+        print(f"📝 Answer length: {len(final_answer)} characters")
+        
+        return {
+            "success": True,
+            "research_question": research_question,
+            "final_answer": final_answer,
+            "sources": sources,
+            "total_sources": len(sources),
+            "research_loops": final_state.get("research_loop_count", 0),
+            "configuration": config.get_summary()
+        }
+        
+    except Exception as e:
+        print(f"❌ Research workflow failed: {e}")
+        
+        return {
+            "success": False,
+            "research_question": research_question,
+            "error": str(e),
+            "configuration": config.get_summary()
+        }
+
+
+# Legacy compatibility class
+class ResearchWorkflowGraph:
+    """
+    Legacy compatibility wrapper for existing tutorial code.
+    Wraps the function-based graph architecture.
+    """
+    
+    def __init__(self, llm, config=None):
+        self.llm = llm  # Keep for compatibility but not used
+        self.config = config if isinstance(config, Configuration) else Configuration()
+        self.graph = create_research_graph()
+    
+    def conduct_research(self, research_question: str, session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Legacy compatibility method"""
+        
+        # Use the function-based approach
+        result = conduct_research(research_question, self.config)
+        
+        # Add session_id if provided
+        if session_id:
+            result["session_id"] = session_id
+        
+        # Convert to legacy format
+        if result["success"]:
+            legacy_result = {
+                "success": True,
+                "final_answer": result["final_answer"],
+                "research_question": result["research_question"],
+                "iterations_completed": result["research_loops"],
+                "total_sources_found": result["total_sources"],
+                "confidence_score": 0.8,  # Default confidence
+                "research_summary": {
+                    "total_iterations": result["research_loops"],
+                    "total_sources": result["total_sources"],
+                    "execution_time": 0.0
+                },
+                "sources": result["sources"]
+            }
+        else:
+            legacy_result = {
+                "success": False,
+                "error": result["error"],
+                "research_question": result["research_question"]
+            }
+        
+        return legacy_result
+
+
+# Factory function for workflow creation
+def create_research_workflow(llm=None, config: Optional[Configuration] = None) -> ResearchWorkflowGraph:
+    """
+    Factory function for creating research workflow (legacy compatibility).
+    
+    Args:
+        llm: LLM instance (kept for compatibility, auto-created internally)
+        config: Optional research configuration
+        
+    Returns:
+        ResearchWorkflowGraph instance
+    """
+    
+    if config is None:
+        config = Configuration()
     
     return ResearchWorkflowGraph(llm, config)
 
 
-def demonstrate_research_workflow():
-    """Demonstrate the research workflow capabilities"""
+if __name__ == "__main__":
+    print("🔬 MULTI-PROVIDER RESEARCH GRAPH")
+    print("=" * 35)
     
-    print("🔬 RESEARCH WORKFLOW DEMONSTRATION")
-    print("=" * 34)
-    
-    print("\\n🔄 Workflow Steps:")
-    workflow_steps = [
-        "1. Generate Initial Queries - Transform question into search strategies",
-        "2. Execute Web Search - Parallel search across multiple queries",
-        "3. Reflect on Completeness - Identify knowledge gaps using LLM analysis",
-        "4. Generate Follow-ups - Create targeted queries for missing information",
-        "5. Execute Follow-up Search - Search for gap-filling information", 
-        "6. Synthesize Answer - Combine all findings into comprehensive response"
-    ]
-    
-    for step in workflow_steps:
-        print(f"   {step}")
-    
-    print("\\n🎯 Key Features:")
+    print("\n✅ Reference Architecture Features:")
     features = [
-        "Multi-provider LLM support (any provider from Part 1)",
-        "Reflection-based iterative improvement",
-        "Parallel search execution for efficiency",
-        "Comprehensive source validation and scoring",
-        "Academic research optimization",
-        "Quality metrics and assessment"
+        "Function-based LangGraph nodes (Google reference pattern)",
+        "Multi-provider LLM support via Part 1 integration",
+        "Parallel web research with Send operations",
+        "Conditional routing based on reflection analysis",
+        "Production-tested workflow patterns",
+        "Legacy compatibility for existing tutorial code"
     ]
     
     for feature in features:
         print(f"   • {feature}")
     
-    print("\\n📊 Output Quality Metrics:")
-    metrics = [
-        "Knowledge Coverage Score - How comprehensively the topic is covered",
-        "Research Depth Score - How thoroughly each aspect is explored", 
-        "Source Diversity Score - Variety of source types and perspectives",
-        "Confidence Score - Reliability of the research completeness assessment"
+    print("\n🔄 Workflow Architecture:")
+    workflow_steps = [
+        "START → generate_query: Create diverse search queries",
+        "generate_query → web_research: Parallel search execution",
+        "web_research → reflection: Analyze research completeness",
+        "reflection → [continue|finalize]: Route based on sufficiency",
+        "finalize_answer → END: Synthesize comprehensive answer"
     ]
     
-    for metric in metrics:
-        print(f"   • {metric}")
-
-
-if __name__ == "__main__":
-    demonstrate_research_workflow()
+    for step in workflow_steps:
+        print(f"   {step}")
     
-    print("\\n" + "="*60)
-    print("🧪 RESEARCH WORKFLOW TESTING")
-    print("="*60)
+    print("\n📊 Multi-Provider Benefits:")
+    benefits = [
+        "Works with any LLM provider from Part 1 (Google, OpenAI, etc.)",
+        "Intelligent search strategy selection (native vs simulated)",
+        "Graceful fallbacks when APIs unavailable",
+        "Provider-specific prompt optimizations",
+        "Cost-effective with fast/slow model selection"
+    ]
     
-    print("\\n💡 To test the complete workflow:")
+    for benefit in benefits:
+        print(f"   • {benefit}")
+    
+    print("\n🔧 Usage Examples:")
     print("""
-# Import from Part 1 for LLM
-import sys
-sys.path.append('../Part1_Foundations/modules')
-from llm_providers import create_research_llm
-
-from research_graph import create_research_workflow
-from state_schemas import ResearchConfiguration
-
-# Create LLM and workflow
-llm = create_research_llm()  # Auto-selects available provider
-config = ResearchConfiguration.for_academic_research()
-workflow = create_research_workflow(llm, config)
-
-# Conduct research
-results = workflow.conduct_research(
-    "What are recent advances in quantum error correction?"
-)
-
-# Display results
-if results["success"]:
-    print(f"Research Question: {results['research_question']}")
-    print(f"\\nFinal Answer:\\n{results['final_answer']}")
-    print(f"\\nSummary: {results['research_summary']}")
-    print(f"Quality Metrics: {results['quality_metrics']}")
-else:
-    print(f"Research failed: {results['error']}")
-""")
+    # Function-based (recommended)
+    result = conduct_research("What are recent advances in AI?")
+    
+    # With custom configuration
+    config = Configuration.for_academic_research()
+    result = conduct_research("Research question", config)
+    
+    # Legacy compatibility
+    workflow = create_research_workflow()
+    result = workflow.conduct_research("Research question")
+    """)
+    
+    print("\n✅ Production-ready multi-provider research system loaded!")
