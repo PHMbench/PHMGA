@@ -13,7 +13,7 @@ from .providers import (
 
 # Import functions from root model.py file
 try:
-    from model import (
+    from .model import (
         get_llm,
         get_default_llm,
         get_llm_by_provider,

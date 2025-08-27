@@ -17,13 +17,14 @@ By the end of this tutorial, you will understand:
 
 ## 📚 What You'll Build
 
+
 ### Main System: Reflective Web Research Agent
 - **Query Generator**: Transforms research questions into optimal search queries
 - **Web Searcher**: Executes parallel searches with Google Search API
 - **Reflection Agent**: Identifies knowledge gaps and generates follow-up queries
 - **Answer Synthesizer**: Combines all findings into comprehensive responses
 
-### Example Workflow
+<!-- ### Example Workflow
 ```
 Research Question: "What are recent advances in quantum error correction?"
 
@@ -32,7 +33,7 @@ Research Question: "What are recent advances in quantum error correction?"
 3. Reflection: "Missing information about specific error correction codes"
 4. Follow-up Queries: ["surface code quantum error correction", "color code quantum computing"]
 5. Final Synthesis: Comprehensive research summary with all findings
-```
+``` -->
 
 ## 🛠 Technical Concepts
 

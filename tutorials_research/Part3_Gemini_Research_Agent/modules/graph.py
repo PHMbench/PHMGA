@@ -86,6 +86,97 @@ if GENAI_CLIENT_AVAILABLE and os.getenv("GEMINI_API_KEY"):
         print(f"⚠️ Could not initialize Google genai client: {e}")
 
 
+# Structured output utilities (Fix DashScope compatibility)
+def parse_queries_from_text(text: str, fallback: list) -> list:
+    """Extract queries from LLM response text when structured output fails"""
+    import json
+    import re
+    
+    # Try to find JSON in the response
+    json_patterns = [
+        r'```json\s*(\{.*?\})\s*```',  # JSON in code blocks
+        r'\{[^{}]*"query"[^{}]*\}',    # JSON objects with query field
+        r'(\{.*?\})'                   # Any JSON-like structure
+    ]
+    
+    for pattern in json_patterns:
+        matches = re.search(pattern, text, re.DOTALL)
+        if matches:
+            try:
+                parsed = json.loads(matches.group(1))
+                if 'query' in parsed and isinstance(parsed['query'], list):
+                    print(f"✅ Parsed queries from JSON: {len(parsed['query'])}")
+                    return parsed['query']
+            except json.JSONDecodeError:
+                continue
+    
+    # If no JSON found, try to extract queries from text lines
+    lines = text.strip().split('\n')
+    queries = []
+    for line in lines:
+        line = line.strip()
+        # Skip empty lines, comments, and headers
+        if line and not line.startswith(('#', '##', '###', '*', '-')) and len(line) > 10:
+            # Clean up the line
+            clean_line = line.strip('- ').strip('"').strip("'")
+            if clean_line and len(clean_line) > 5:
+                queries.append(clean_line)
+    
+    result_queries = queries[:3] if queries else fallback
+    if queries:
+        print(f"✅ Extracted queries from text: {len(result_queries)}")
+    else:
+        print(f"⚠️ Using fallback queries: {len(fallback)}")
+    
+    return result_queries
+
+
+def handle_structured_output(result, provider_type: str, schema_type: str, fallback_data):
+    """Handle structured output across different providers with validation"""
+    
+    print(f"🔧 Handling structured output - Provider: {provider_type}, Schema: {schema_type}")
+    print(f"🔧 Result type: {type(result).__name__}")
+    
+    # Check if result has expected attributes
+    if schema_type == "SearchQueryList":
+        if hasattr(result, 'query') and result.query:
+            print(f"✅ Direct structured output successful: {len(result.query)} queries")
+            return result.query
+        elif hasattr(result, 'content'):
+            print(f"⚠️ Structured output failed, trying JSON parsing from content")
+            return parse_queries_from_text(result.content, fallback_data)
+    
+    elif schema_type == "Reflection":
+        if (hasattr(result, 'is_sufficient') and hasattr(result, 'knowledge_gap') and 
+            hasattr(result, 'follow_up_queries')):
+            print(f"✅ Direct structured output successful for Reflection")
+            return {
+                "is_sufficient": result.is_sufficient,
+                "knowledge_gap": result.knowledge_gap,
+                "follow_up_queries": result.follow_up_queries
+            }
+        elif hasattr(result, 'content'):
+            print(f"⚠️ Structured reflection failed, trying JSON parsing")
+            try:
+                import json
+                import re
+                
+                # Try to extract JSON from content
+                json_match = re.search(r'\{.*\}', result.content, re.DOTALL)
+                if json_match:
+                    parsed = json.loads(json_match.group())
+                    return {
+                        "is_sufficient": parsed.get("is_sufficient", fallback_data["is_sufficient"]),
+                        "knowledge_gap": parsed.get("knowledge_gap", fallback_data["knowledge_gap"]),
+                        "follow_up_queries": parsed.get("follow_up_queries", fallback_data["follow_up_queries"])
+                    }
+            except Exception as e:
+                print(f"⚠️ JSON parsing failed: {e}")
+    
+    print(f"⚠️ All parsing methods failed, using fallback")
+    return fallback_data
+
+
 def create_llm_direct(provider: str, model: str, temperature: float = 0.7):
     """Create LLM instance directly following reference patterns"""
     
@@ -143,37 +234,64 @@ def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerati
     if state.get("initial_search_query_count") is None:
         state["initial_search_query_count"] = configurable.number_of_initial_queries
 
-    # Create LLM directly following reference pattern (FIXED)
+    # Prepare fallback data first
+    research_topic = get_research_topic(state["messages"])
+    fallback_queries = [
+        f"{research_topic} overview",
+        f"{research_topic} recent developments",
+        f"{research_topic} applications"
+    ][:state["initial_search_query_count"]]
+
+    # Create LLM directly following reference pattern (FIXED for DashScope compatibility)
     try:
+        provider_type = configurable.llm_provider
         llm = create_llm_direct(
-            provider=configurable.llm_provider,
+            provider=provider_type,
             model=configurable.query_generator_model,
             temperature=1.0
         )
-        structured_llm = llm.with_structured_output(SearchQueryList)
-
+        
         # Format the prompt
         current_date = get_current_date()
         formatted_prompt = query_writer_instructions.format(
             current_date=current_date,
-            research_topic=get_research_topic(state["messages"]),
+            research_topic=research_topic,
             number_queries=state["initial_search_query_count"],
         )
         
-        # Generate the search queries
-        result = structured_llm.invoke(formatted_prompt)
-        return {"search_query": result.query}
+        # Try structured output first
+        try:
+            print(f"🔧 Attempting structured output with {provider_type}")
+            structured_llm = llm.with_structured_output(SearchQueryList)
+            result = structured_llm.invoke(formatted_prompt)
+            
+            # Use robust structured output handling (FIXED BUG)
+            queries = handle_structured_output(result, provider_type, "SearchQueryList", fallback_queries)
+            
+            if queries and len(queries) > 0:
+                print(f"✅ Query generation successful: {len(queries)} queries")
+                return {"search_query": queries}
+            else:
+                raise ValueError("No queries returned from structured output")
+                
+        except Exception as structured_error:
+            print(f"⚠️ Structured output failed with {provider_type}: {structured_error}")
+            print(f"🔄 Trying fallback LLM call...")
+            
+            # Fallback: regular LLM call with JSON parsing
+            regular_result = llm.invoke(formatted_prompt)
+            queries = parse_queries_from_text(regular_result.content, fallback_queries)
+            
+            if queries:
+                print(f"✅ Fallback parsing successful: {len(queries)} queries")
+                return {"search_query": queries}
+            else:
+                raise ValueError("Fallback parsing also failed")
         
     except Exception as e:
-        print(f"❌ Query generation failed: {e}")
-        print("💡 Please check your API key configuration")
-        
-        # Simple fallback without mock
-        research_topic = get_research_topic(state["messages"])
-        fallback_queries = [
-            f"{research_topic} overview",
-            f"{research_topic} recent developments"
-        ][:state["initial_search_query_count"]]
+        print(f"❌ Query generation completely failed: {e}")
+        print("💡 Please check your API key configuration and provider compatibility")
+        print(f"🔄 Using simple fallback queries...")
         
         return {"search_query": fallback_queries}
 
@@ -286,10 +404,20 @@ def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
     # Increment the research loop count
     state["research_loop_count"] = state.get("research_loop_count", 0) + 1
 
+    # Prepare fallback data first
+    web_results = state.get("web_research_result", [])
+    is_sufficient = len(web_results) >= 2
+    fallback_reflection = {
+        "is_sufficient": is_sufficient,
+        "knowledge_gap": "Need more comprehensive coverage" if not is_sufficient else "",
+        "follow_up_queries": [f"{get_research_topic(state['messages'])} details"] if not is_sufficient else []
+    }
+
     try:
-        # Create LLM directly following reference pattern (FIXED)
+        provider_type = configurable.llm_provider
+        # Create LLM directly following reference pattern (FIXED for DashScope compatibility)
         llm = create_llm_direct(
-            provider=configurable.llm_provider,
+            provider=provider_type,
             model=configurable.reflection_model,
             temperature=1.0
         )
@@ -302,27 +430,50 @@ def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
             summaries="\n\n---\n\n".join(state["web_research_result"]),
         )
         
-        result = llm.with_structured_output(Reflection).invoke(formatted_prompt)
-
-        return {
-            "is_sufficient": result.is_sufficient,
-            "knowledge_gap": result.knowledge_gap,
-            "follow_up_queries": result.follow_up_queries,
-            "research_loop_count": state["research_loop_count"],
-            "number_of_ran_queries": len(state["search_query"]),
-        }
+        # Try structured output first
+        try:
+            print(f"🔧 Attempting structured reflection with {provider_type}")
+            result = llm.with_structured_output(Reflection).invoke(formatted_prompt)
+            
+            # Use robust structured output handling (FIXED BUG)
+            reflection_data = handle_structured_output(result, provider_type, "Reflection", fallback_reflection)
+            
+            if reflection_data:
+                print(f"✅ Reflection successful with {provider_type}")
+                return {
+                    "is_sufficient": reflection_data.get("is_sufficient", fallback_reflection["is_sufficient"]),
+                    "knowledge_gap": reflection_data.get("knowledge_gap", fallback_reflection["knowledge_gap"]),
+                    "follow_up_queries": reflection_data.get("follow_up_queries", fallback_reflection["follow_up_queries"]),
+                    "research_loop_count": state["research_loop_count"],
+                    "number_of_ran_queries": len(state["search_query"]),
+                }
+            else:
+                raise ValueError("No reflection data returned")
+                
+        except Exception as structured_error:
+            print(f"⚠️ Structured reflection failed with {provider_type}: {structured_error}")
+            print(f"🔄 Trying fallback LLM call...")
+            
+            # Fallback: regular LLM call
+            regular_result = llm.invoke(formatted_prompt)
+            print(f"✅ Using heuristic fallback for reflection")
+            
+            return {
+                "is_sufficient": fallback_reflection["is_sufficient"],
+                "knowledge_gap": fallback_reflection["knowledge_gap"],
+                "follow_up_queries": fallback_reflection["follow_up_queries"],
+                "research_loop_count": state["research_loop_count"],
+                "number_of_ran_queries": len(state["search_query"]),
+            }
         
     except Exception as e:
-        print(f"❌ Reflection failed: {e}")
-        
-        # Simple heuristic fallback
-        web_results = state.get("web_research_result", [])
-        is_sufficient = len(web_results) >= 2
+        print(f"❌ Reflection completely failed: {e}")
+        print("💡 Using simple heuristic fallback")
         
         return {
-            "is_sufficient": is_sufficient,
-            "knowledge_gap": "Need more comprehensive coverage" if not is_sufficient else "",
-            "follow_up_queries": [f"{get_research_topic(state['messages'])} details"] if not is_sufficient else [],
+            "is_sufficient": fallback_reflection["is_sufficient"],
+            "knowledge_gap": fallback_reflection["knowledge_gap"],
+            "follow_up_queries": fallback_reflection["follow_up_queries"],
             "research_loop_count": state["research_loop_count"],
             "number_of_ran_queries": len(state["search_query"]),
         }

@@ -38,6 +38,12 @@ This tutorial demonstrates the **complete production PHMGA system** by integrati
     └── generate_final_report() - Reporting
 ```
 
+### React 
+<img src="image.png" alt="alt text" width="600"/>
+
+###  Autonomous industrial signal processing agents
+<img src="image-1.png" alt="alt text" width="400"/>
+
 ### Tutorial Enhancement Layer
 
 ```
