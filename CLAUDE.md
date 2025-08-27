@@ -16,8 +16,9 @@ pip install -r requirements.txt
 # Environment variables (.env file)
 OPENAI_API_KEY=your_key_here
 GEMINI_API_KEY=your_key_here
-LLM_PROVIDER=google  # or openai
-LLM_MODEL=gemini-2.5-pro  # or gpt-4o
+DASHSCOPE_API_KEY=your_key_here
+LLM_PROVIDER=google  # or openai, dashscope
+LLM_MODEL=gemini-2.5-pro  # or gpt-4o, qwen-plus
 ```
 
 ### Running Analysis Cases
@@ -42,7 +43,7 @@ python test_complete_system.py
 - Multi-agent system with 7+ specialized agents
 - 60+ signal processing operators with automatic registration
 - Comprehensive state management with immutable updates
-- Multi-provider LLM integration (Google/OpenAI)
+- Multi-provider LLM integration (Google/OpenAI/DashScope)
 - Advanced visualization and reporting capabilities
 
 ## Documentation Index

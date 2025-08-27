@@ -280,6 +280,59 @@ class GLMProvider(BaseLLMProvider):
         )
 
 
+class DashScopeOpenAIProvider(BaseLLMProvider):
+    """DashScope OpenAI-compatible LLM provider implementation."""
+    
+    @property
+    def provider_name(self) -> str:
+        return "dashscope"
+    
+    @property
+    def supported_models(self) -> List[str]:
+        return [
+            "qwen-plus",
+            "qwen-turbo", 
+            "qwen-max",
+            "qwen-max-longcontext",
+            "qwen2.5-coder-32b-instruct",
+            "qwen2.5-72b-instruct",
+            "qwen2.5-32b-instruct",
+            "qwen2.5-14b-instruct",
+            "qwen2.5-7b-instruct"
+        ]
+    
+    def _create_client(self) -> BaseChatModel:
+        """Create DashScope OpenAI-compatible client."""
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError as e:
+            raise ImportError(
+                "DashScope provider requires langchain-openai. "
+                "Install with: pip install langchain-openai"
+            ) from e
+        
+        # Handle special DashScope parameters
+        extra_params = self.config.extra_params.copy()
+        
+        # Extract DashScope-specific parameters
+        enable_thinking = extra_params.pop('enable_thinking', None)
+        if enable_thinking is not None:
+            # For Qwen3 models, thinking can be controlled via extra_body
+            if 'extra_body' not in extra_params:
+                extra_params['extra_body'] = {}
+            extra_params['extra_body']['enable_thinking'] = enable_thinking
+        
+        return ChatOpenAI(
+            model=self.config.model,
+            api_key=self.config.api_key,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+            temperature=self.config.temperature,
+            max_retries=self.config.max_retries,
+            timeout=self.config.timeout,
+            **extra_params
+        )
+
+
 class MockLLMProvider(BaseLLMProvider):
     """Mock LLM provider for testing."""
     
@@ -323,6 +376,7 @@ class LLMProviderRegistry:
         self.register("openai", OpenAIProvider)
         self.register("tongyi", TongyiProvider)
         self.register("glm", GLMProvider)
+        self.register("dashscope", DashScopeOpenAIProvider)
         self.register("mock", MockLLMProvider)
     
     def register(self, name: str, provider_class: Type[BaseLLMProvider]):
@@ -431,6 +485,8 @@ def create_llm_provider(
         elif provider == "openai":
             api_key = os.getenv("OPENAI_API_KEY")
         elif provider == "tongyi":
+            api_key = os.getenv("DASHSCOPE_API_KEY")
+        elif provider == "dashscope":
             api_key = os.getenv("DASHSCOPE_API_KEY")
         elif provider == "glm":
             api_key = os.getenv("ZHIPUAI_API_KEY")
@@ -560,7 +616,7 @@ class LLMProviderFactory:
         elif os.getenv("OPENAI_API_KEY"):
             return create_llm_provider("openai", "gpt-4o")
         elif os.getenv("DASHSCOPE_API_KEY"):
-            return create_llm_provider("tongyi", "qwen-turbo")
+            return create_llm_provider("dashscope", "qwen-plus")
         elif os.getenv("ZHIPUAI_API_KEY"):
             return create_llm_provider("glm", "glm-4")
         else:

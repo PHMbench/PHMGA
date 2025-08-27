@@ -16,6 +16,11 @@ The system supports multiple LLM providers with unified interface:
 - **Models**: gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo
 - **Environment Variable**: `OPENAI_API_KEY`
 
+#### DashScope (Qwen Models)
+- **Models**: qwen-plus, qwen-turbo, qwen-max, qwen-max-longcontext, qwen2.5-coder-32b-instruct
+- **Environment Variable**: `DASHSCOPE_API_KEY`
+- **Features**: OpenAI-compatible API, thinking process control, latest Qwen models
+
 #### Mock (Testing)
 - **Models**: mock-model, test-model
 - **Purpose**: Testing and development
@@ -26,12 +31,13 @@ The system supports multiple LLM providers with unified interface:
 
 ```bash
 # Provider selection
-export LLM_PROVIDER="google"  # or "openai"
-export LLM_MODEL="gemini-2.5-pro"  # or "gpt-4o"
+export LLM_PROVIDER="google"  # or "openai", "dashscope"
+export LLM_MODEL="gemini-2.5-pro"  # or "gpt-4o", "qwen-plus"
 
 # API keys
 export GEMINI_API_KEY="your_gemini_key"
 export OPENAI_API_KEY="your_openai_key"
+export DASHSCOPE_API_KEY="your_dashscope_key"
 
 # Optional settings
 export LLM_TEMPERATURE="0.7"
@@ -49,6 +55,7 @@ llm = get_llm(temperature=0.7)
 # Explicitly choose provider  
 google_llm = get_llm_by_provider("google", "gemini-2.5-pro")
 openai_llm = get_llm_by_provider("openai", "gpt-4o")
+dashscope_llm = get_llm_by_provider("dashscope", "qwen-plus")
 ```
 
 ### Structured Output
@@ -59,6 +66,36 @@ from src.schemas.plan_schema import AnalysisPlan
 llm = get_llm()
 structured_llm = llm.with_structured_output(AnalysisPlan)
 plan = structured_llm.invoke("Create analysis plan")
+```
+
+### DashScope-Specific Features
+
+```python
+from src.model.providers import create_llm_provider
+
+# Basic DashScope usage
+dashscope_provider = create_llm_provider("dashscope", "qwen-plus")
+llm = dashscope_provider.client
+
+# With thinking process control (for Qwen3 models)
+dashscope_with_thinking = create_llm_provider(
+    "dashscope", 
+    "qwen-plus",
+    extra_params={"enable_thinking": False}  # Disable thinking process
+)
+
+# Advanced configuration
+advanced_dashscope = create_llm_provider(
+    "dashscope",
+    "qwen-max",
+    temperature=0.8,
+    max_retries=3,
+    timeout=60,
+    extra_params={
+        "enable_thinking": True,
+        "top_p": 0.9
+    }
+)
 ```
 
 ### Unified State Configuration

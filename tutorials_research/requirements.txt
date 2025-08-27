@@ -1,0 +1,60 @@
+# Core LangChain and LangGraph
+langchain>=0.3.0
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
+# LLM Providers
+langchain-google-genai>=2.0.0
+langchain-openai>=0.2.0
+langchain-community>=0.3.0
+
+# Specific Provider Dependencies
+dashscope>=1.20.0
+zhipuai>=2.1.0
+google-generativeai>=0.8.0
+
+# Research Tools and APIs
+arxiv>=2.1.0
+scholarly>=1.7.11
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+feedparser>=6.0.11
+
+# Data Processing
+pydantic>=2.5.0
+numpy>=1.24.0
+pandas>=2.0.0
+
+# Jupyter and Visualization
+jupyter>=1.0.0
+jupyterlab>=4.0.0
+matplotlib>=3.7.0
+plotly>=5.17.0
+graphviz>=0.20.1
+
+# Utilities
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+tqdm>=4.66.0
+colorama>=0.4.6
+
+# Web scraping and processing
+selenium>=4.15.0
+webdriver-manager>=4.0.1
+
+# Citation processing
+bibtexparser>=1.4.1
+crossref-commons>=0.0.7
+
+# Optional: Enhanced text processing
+spacy>=3.7.0
+nltk>=3.8.1
+
+# Development and testing
+pytest>=7.4.0
+black>=23.9.0
+flake8>=6.1.0
+
+# Documentation
+mistune>=3.0.0
+markdown>=3.5.0
