@@ -38,11 +38,245 @@ This tutorial demonstrates the **complete production PHMGA system** by integrati
     └── generate_final_report() - Reporting
 ```
 
-### React 
-<img src="image.png" alt="alt text" width="600"/>
+## Abstract
+
+Vibration signal analysis is a cornerstone of machine condition monitoring and fault diagnosis, yet it faces a central dilemma: traditional expert systems have rigid workflows, while end-to-end deep models, despite their adaptive learning abilities, suffer from being "black boxes" with insufficient reproducibility. This paper introduces a neuro-symbolic multi-agent framework for autonomous signal processing. The framework utilizes a Large Language Model (LLM) as a central decision-maker, coordinating a toolbox of interpretable, symbolic signal processing operators to enable autonomous vibration signal analysis and diagnosis. 
+
+The framework adopts a Plan-Execute-Review multi-agent architecture to iteratively optimize signal processing decision chains. To ensure logical consistency of LLM planning and prevent incorrect operator calls, all operators are formally regulated based on their dimensional and semantic transformation properties. Specifically, operators are categorized into four types (dimension-increasing, dimension-preserving, dimension-reducing, and multi-signal) with semantic constraints for LLM comprehension.
+
+Validation on bearing fault diagnosis datasets demonstrates that this framework can autonomously generate signal processing decision chains with clear physical meaning, successfully reproducing expert-level interpretable diagnostic algorithms such as "envelope spectrum-kurtosis." In single-domain tests on the Tsinghua University bearing dataset, the Gemini-2.5-pro version achieved 97.8% accuracy. In cross-domain tests on the University of Ottawa variable-speed dataset, training only on 'acceleration' and 'deceleration' conditions, the framework achieved 99.3% accuracy on unseen conditions, proving its generalization ability. This research provides a promising new paradigm for building trustworthy, reproducible, and scalable next-generation intelligent diagnostic systems.
+
+## 1. Introduction
+
+**Motivation.** Rotating machinery (bearings, gears) manifests early defects as pattern changes in vibration signals. Classic workflows—filtering, time/frequency transforms, feature engineering, classification—are *interpretable* but **expert‑crafted** and fragile under domain shift. Conversely, deep end‑to‑end models learn powerful representations but are **opaque**, difficult to audit, and may generalize poorly to OOD settings.
+
+**Idea.** We seek a third way: combine **LLM‑level planning and reasoning** with **symbolic, physics‑grounded operators** to autonomously assemble *explainable* signal‑processing pipelines.
+
+**Contributions.**
+
+1. We **fuse an LLM agent** with a **neuro‑symbolically specified operator library**, bridging high‑level reasoning and precise numerical computation.
+2. We propose a **multi‑agent loop**—**Planner, Executor, Reviewer**—that builds and refines a **DAG‑shaped decision chain** (nodes = operators, edges = dataflow) with transparent semantics.
+3. We deliver **evidence** on two public bearing datasets, including **zero‑shot cross‑condition generalization** under variable speed.
+
+**What’s new vs. expert systems / end‑to‑end DL / raw LLMs.** Our framework retains interpretability (like expert systems) but is *adaptive*; retains learning benefits (like DL) but is *auditable*; and anchors an LLM’s free‑form reasoning **to formal operator specs**, mitigating hallucination.
+
+| Dimension | Our Framework | Expert Systems | Neural Networks | LLMs |
+|-----------|--------------|----------------|-----------------|------|
+| Autonomous Planning | ✓✓ | ✗ | ✓ | ✓ |
+| Interpretability | ✓✓ | ✓✓ | ~ | ~ |
+| Dynamic Adaptation | ✓✓ | ✗ | ✓ | ~ |
+| Domain Knowledge | ✓✓ | ✓✓ | ✗ | ✗ |
+| Tool Usage | ✓✓ | / | / | ✗ |
+
+Legend: ✓✓ (core strength), ✓ (capable), ~ (limited), ✗ (insufficient), / (not applicable)
+
+## React
+
+### React
+<p align="center">
+    <img src="image.png" alt="alt text" width="600"/>
+</p>
+
+
+### 2.1 Neuro-Symbolic Specification of Signal Processing Operators
+
+To enable LLMs to autonomously plan signal processing workflows and construct effective decision chains, the core challenge is to eliminate LLM "hallucinations" in tool usage and bridge the gap between LLM's powerful symbolic reasoning capabilities and precise numerical computations. We propose a Neuro-Symbolic Specification that formalizes signal processing algorithms as LLM-understandable and callable "operators."
+
+Each signal processing step is abstracted as an operator Φ with parameters θ, which receives one or more signal tensors as input and outputs a new tensor:
+
+$$\mathbf{Y} = \Phi(\mathbf{X}_1, \mathbf{X}_2, ...; \theta), \mathbf{X} \in \mathbb{C}^{B \times C \times D_m}$$
+
+where B represents batch size, C is the number of channels, and D_m represents remaining dimensions.
+
+Based on dimensional transformation characteristics, we categorize operators into four fundamental types:
+
+**1. Dimension-Increasing Operators:** Transform input tensors to higher-dimensional spaces to reveal latent structures. For example, Short-Time Fourier Transform (STFT) maps 1D time-domain signals to 2D time-frequency representations.
+
+**2. Dimension-Reducing Operators:** Compress input tensors through aggregation along axes to extract compact features. For example, statistical measures like mean or RMS along the time axis.
+
+**3. Dimension-Preserving Operators:** Transform numerical values or semantics without changing tensor shape. For example, FFT changes the semantic meaning from time domain to frequency domain while preserving dimensions.
+
+**4. Multi-Signal Operators:** Accept two or more independent signal tensors and output relationships between them. For example, coherence spectrum calculation between two channels.
+
+### 2.2 Multi-Agent Architecture
+
+The framework employs three core agents working in coordination:
+
+#### 2.2.1 Planner Agent
+The Planner serves as the cognitive core, responsible for task decomposition and strategy generation. It receives user-defined goals (e.g., "diagnose bearing faults"), analyzes the current DAG topology, and references historical feedback from the Reviewer. Its state transition function is:
+
+$$P_t = \mathcal{A}_p(I, D_t, H_t)$$
+
+where I is the task instruction, D_t is the current DAG, and H_t is the review history.
+
+#### 2.2.2 Executor Agent
+The Executor translates abstract plans into concrete numerical computations and DAG construction. It calls validated industrial-grade operators from the predefined library, updating the signal processing graph with new nodes or connections. Its state transition function is:
+
+$$D_{t+1} = \mathcal{A}_e(D_t, P_t)$$
+
+#### 2.2.3 Reviewer Agent
+The Reviewer performs meta-cognitive evaluation after each execution cycle. It critically assesses the updated DAG for execution success, strategy effectiveness, feature redundancy, logical coherence, and alignment with the final goal. It generates structured feedback and determines whether further optimization is needed:
+
+$$H_{t+1} = \mathcal{A}_r(I, D_{t+1}, H_t)$$
+
+### 2.3 Problem Formulation: Optimizing Signal Processing Decision Chains
+
+The core problem is formalized as: How can an intelligent system autonomously call operators from a given library to construct and optimize a signal processing decision chain for equipment fault diagnosis?
+
+Given:
+- Task instruction I (e.g., "diagnose bearing A faults")
+- Operator library Φ containing atomic signal processing operators
+- Signal dataset S, divided into training/validation S_train and test S_test
+- Signal processing decision chain D as a DAG with topology D_topo and parameters Θ
+
+The offline training phase seeks to learn an optimal decision chain D* that maximizes a utility function U:
+
+$$D^*, \Theta^* = \arg\max_{D, \Theta} U(D(\Theta), S_{train}, I)$$
+
+
 
 ###  Autonomous industrial signal processing agents
-<img src="image-1.png" alt="alt text" width="400"/>
+
+<p align="center">
+    <img src="image-1.png" alt="alt text" width="400"/>
+</p>
+
+
+
+## 3. Experimental Validation
+
+### 3.1 Datasets
+
+**Dataset 1 (D1): Tsinghua University Bearing Dataset [17]**
+- Steady-state conditions with five health states: healthy, inner race fault, outer race fault, rolling element fault, and cage crack
+- Train/test split: 1:1 ratio with 5-fold cross-validation
+
+**Rotor**
+![alt text](image-3.png)
+
+**Signal**
+![alt text](image-4.png)
+
+
+**Dataset 2 (D2): University of Ottawa Variable Speed Dataset [18]**
+- Four time-varying speed conditions with three health states
+- Cross-domain validation: Training on simple "acceleration" and "deceleration" conditions
+- Testing on unseen complex patterns: "acceleration-then-deceleration" and "deceleration-then-acceleration"
+
+
+![alt text](image-5.png)
+
+### 3.2 Case Studies Configuration
+
+Three validation cases were designed:
+1. **Case 1:** D1 dataset with Gemini-2.0-flash model
+2. **Case 2:** D1 dataset with Gemini-2.5-pro model
+3. **Case 3:** D2 variable speed dataset with Gemini-2.5-pro model
+
+
+### 3.3 Results and Analysis
+
+#### 3.3.1 DAG Evolution Process
+
+The system demonstrated sophisticated planning capabilities across all cases:
+
+- **Case 1:** Generated a depth-4 DAG through 5 iterations, establishing parallel envelope analysis and FFT paths for dual channels, autonomously discovering "envelope spectrum-kurtosis" features
+
+- **Case 2:** With the more capable Gemini-2.5-pro model, the system created more complex expert-level logic, including cross-channel correlation functions and STFT, precisely reproducing the golden standard "Hilbert envelope → FFT → spectral kurtosis/skewness" workflow
+
+- **Case 3:** For variable speed conditions, the system adaptively explored both envelope analysis and wavelet transforms, incorporating cross-channel correlation analysis for robust feature extraction under non-stationary conditions
+
+#### 3.3.2 Classification Performance
+
+Using only Support Vector Machines as shallow classifiers to isolate the contribution of generated features:
+
+**Table 1: Case 1 Performance (Gemini-2.0-flash)**
+| Feature | Accuracy | F1 Score |
+|---------|----------|----------|
+| Best Individual (Φ3) | 0.872 | 0.857 |
+| Ensemble Model | 0.872 | 0.857 |
+
+![alt text](image-2.png)
+
+
+**Table 2: Case 2 Performance (Gemini-2.5-pro)**
+| Feature | Accuracy | F1 Score |
+|---------|----------|----------|
+| Best Individual (Φ9) | 0.977 | 0.977 |
+| Ensemble Model | 0.978 | 0.978 |
+
+![alt text](image-6.png)
+
+**Table 3: Case 3 Performance (Cross-domain)**
+| Feature | Accuracy | F1 Score |
+|---------|----------|----------|
+| Best Individual (Φ9) | 0.994 | 0.994 |
+| Ensemble Model | 0.993 | 0.993 |
+
+![alt text](image-7.png)
+
+### 3.4 Ablation Studies
+
+[Reserved section for additional ablation studies]
+
+To validate the necessity of core design components, we conducted ablation experiments:
+
+#### 3.4.1 Impact of DAG Depth Constraints
+- Without minimum depth requirements, the system tends to generate shallow decision chains
+- Mechanical fault features often require cascaded processing (filtering-demodulation-spectrum analysis)
+- Depth guidance ensures sufficient feature exploration
+
+#### 3.4.2 Importance of Neuro-Symbolic Specification
+- Without formal operator specifications, LLMs frequently generate:
+  - Parameter "hallucinations" (non-existent sampling rates, filter orders)
+  - Logic mismatches (applying time-domain operators to frequency-domain signals)
+- Specifications provide an unambiguous "operation manual" ensuring planning accuracy
+
+#### 3.4.3 Effect of Expansion Position Constraints
+- Restricting expansion to leaf nodes only results in linear "chains" with insufficient exploration breadth
+- Allowing branching at any non-leaf node enables parallel exploration of multiple feature extraction strategies
+
+
+
+
+
+
+
+## 4. Discussion
+
+### 4.1 Framework Interpretability
+
+The framework's interpretability permeates the entire signal processing pipeline:
+
+**Architectural Level:** Each node and edge in the DAG maps to signal processing operators with clear physical semantics, forming a traceable diagnostic reasoning chain from raw signals to final conclusions.
+
+**Output Level:** The Report Agent automatically generates structured diagnostic reports containing not only final conclusions but complete records of key intermediate transformations and feature evolution processes.
+
+**Empirical Level:** The system successfully reproduces classic expert diagnostic paths like "Hilbert envelope → FFT → spectral kurtosis/skewness," validating its professional logic and credibility.
+
+### 4.2 Comparison with Related Work
+
+| Dimension | Our Framework | Expert Systems | Neural Networks | LLMs |
+|-----------|--------------|----------------|-----------------|------|
+| Autonomous Planning | ✓✓ | ✗ | ✓ | ✓ |
+| Interpretability | ✓✓ | ✓✓ | ~ | ~ |
+| Dynamic Adaptation | ✓✓ | ✗ | ✓ | ~ |
+| Domain Knowledge | ✓✓ | ✓✓ | ✗ | ✗ |
+| Tool Usage | ✓✓ | / | / | ✗ |
+
+Legend: ✓✓ (core strength), ✓ (capable), ~ (limited), ✗ (insufficient), / (not applicable)
+
+
+## 5. Conclusion
+
+This paper presents a neuro-symbolic multi-agent framework for autonomous vibration signal processing, addressing the fundamental contradiction between rigid expert systems and "black box" deep learning models. By leveraging LLMs as cognitive cores coordinated with formally specified signal processing operators, the framework achieves autonomous planning, execution, and optimization of diagnostic decision chains.
+
+Key contributions include:
+1. Deep integration of LLM agents with neuro-symbolically specified operator libraries
+2. Plan-Execute-Review multi-agent architecture for iterative optimization
+3. Dynamic DAG representation with physically meaningful operators and data flows
+
+The framework demonstrates strong performance in both single-domain and cross-domain diagnostic tasks while maintaining full interpretability and reproducibility. Future work will explore multimodal information fusion, online incremental learning, cross-domain knowledge transfer, human-in-the-loop collaboration, and theoretical foundations for convergence guarantees.
 
 ### Tutorial Enhancement Layer
 

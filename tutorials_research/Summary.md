@@ -7,7 +7,6 @@ This tutorial series provides a comprehensive learning path for researchers and 
 ## 🎯 Tutorial Philosophy
 
 - **Real Research Tasks**: Every example addresses actual academic problems
-- **No Mock Implementations**: All code uses real LLM providers and APIs
 - **Multi-Provider Support**: Works with global LLM providers (Google, OpenAI, DashScope, Zhipu)
 - **Progressive Learning**: From basic concepts to production-ready systems
 - **Production Ready**: Patterns you can immediately use in your research
