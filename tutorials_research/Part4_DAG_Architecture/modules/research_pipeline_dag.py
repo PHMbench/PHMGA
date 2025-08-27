@@ -1,648 +1,443 @@
 """
 Research Pipeline DAG Implementation
 
-Advanced DAG patterns for academic research workflows including
-literature review, systematic analysis, and multi-stage research processes.
+Simplified research workflow DAGs focusing on core DAG patterns:
+- Multi-stage research processes
+- Parallel processing (fan-out/fan-in)  
+- Conditional workflows
+- Quality gates and validation
 """
 
-import sys
 from typing import List, Dict, Any, Optional, Set
 from dataclasses import dataclass
 from enum import Enum
 import time
-import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import random
 
-# Import from our foundation
-sys.path.append('../../Part1_Foundations/modules')
+# Smart import handling
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+
 from dag_fundamentals import ResearchDAG, DAGNode, NodeType, ExecutionStatus
+
+# Try to import visualization - optional dependency
+try:
+    from dag_visualization import DAGVisualizer
+    VISUALIZATION_AVAILABLE = True
+except ImportError:
+    VISUALIZATION_AVAILABLE = False
+
+
+# ====================================
+# NUMPY-COMPATIBLE UTILITY FUNCTIONS
+# ====================================
+
+def random_randint(low, high):
+    """Generate random integer, compatible with numpy.random.randint"""
+    if NUMPY_AVAILABLE:
+        return np.random.randint(low, high)
+    else:
+        return random.randint(low, high - 1)  # Python's randint is inclusive
+
+
+def random_uniform(low, high):
+    """Generate random float, compatible with numpy.random.uniform"""
+    if NUMPY_AVAILABLE:
+        return np.random.uniform(low, high)
+    else:
+        return random.uniform(low, high)
 
 
 class ResearchPhase(Enum):
-    """Phases of academic research process"""
+    """Simplified research process phases"""
     PLANNING = "planning"
-    SEARCH = "search"
-    SCREENING = "screening"
-    EXTRACTION = "extraction"
+    DATA_COLLECTION = "data_collection"
     ANALYSIS = "analysis"
-    SYNTHESIS = "synthesis"
+    VALIDATION = "validation"
     REPORTING = "reporting"
 
 
-class QualityGate(Enum):
-    """Quality gates for research validation"""
-    RELEVANCE_CHECK = "relevance_check"
-    CREDIBILITY_ASSESSMENT = "credibility_assessment"
-    COMPLETENESS_VALIDATION = "completeness_validation"
-    BIAS_DETECTION = "bias_detection"
-
-
 @dataclass
-class ResearchCriteria:
-    """Inclusion/exclusion criteria for systematic reviews"""
-    inclusion_keywords: List[str]
-    exclusion_keywords: List[str]
-    min_publication_year: int = 2020
-    required_study_types: List[str] = None
-    minimum_citation_count: int = 0
-    language_requirements: List[str] = None
+class ResearchConfig:
+    """Simple research configuration"""
+    topic: str
+    keywords: List[str]
+    min_sources: int = 5
+    quality_threshold: float = 0.7
     
     def __post_init__(self):
-        if self.required_study_types is None:
-            self.required_study_types = ["empirical", "systematic_review", "case_study"]
-        if self.language_requirements is None:
-            self.language_requirements = ["english"]
+        if not self.keywords:
+            self.keywords = [self.topic.lower()]
 
 
-class LiteratureReviewDAG(ResearchDAG):
+class SimpleResearchDAG(ResearchDAG):
     """
-    Specialized DAG for systematic literature review workflows.
+    Simplified research workflow DAG for educational purposes.
     
-    Implements the standard systematic review process:
-    Planning → Search → Screening → Data Extraction → Analysis → Synthesis
+    Demonstrates: Planning → Data Collection → Analysis → Validation → Report
     """
     
-    def __init__(self, review_topic: str, criteria: ResearchCriteria):
-        super().__init__(f"literature_review_{review_topic}", 
-                        f"Systematic literature review on {review_topic}")
-        self.review_topic = review_topic
-        self.criteria = criteria
-        self.search_databases = ["arxiv", "pubmed", "ieee", "acm"]
-        self.parallel_enabled = True
-        
-        # Build the complete workflow
-        self._build_review_pipeline()
+    def __init__(self, config: ResearchConfig):
+        super().__init__(f"research_{config.topic.replace(' ', '_')}", 
+                        f"Research workflow for {config.topic}")
+        self.config = config
+        self._build_simple_pipeline()
     
-    def _build_review_pipeline(self):
-        """Construct the complete literature review DAG"""
+    def _build_simple_pipeline(self):
+        """Build a straightforward 5-stage research pipeline"""
         
-        # Phase 1: Planning and Query Generation
-        self._add_planning_phase()
-        
-        # Phase 2: Multi-database search (parallel)
-        self._add_search_phase()
-        
-        # Phase 3: Title and abstract screening
-        self._add_screening_phase()
-        
-        # Phase 4: Full-text review and data extraction
-        self._add_extraction_phase()
-        
-        # Phase 5: Quality assessment and analysis
-        self._add_analysis_phase()
-        
-        # Phase 6: Synthesis and reporting
-        self._add_synthesis_phase()
-    
-    def _add_planning_phase(self):
-        """Add research planning nodes"""
-        
-        def define_research_questions(inputs):
-            """Define primary and secondary research questions"""
+        # Stage 1: Research Planning
+        def planning_operation(inputs):
             return {
-                "primary_question": f"What are the recent advances in {self.review_topic}?",
-                "secondary_questions": [
-                    f"What methodologies are used in {self.review_topic} research?",
-                    f"What are the main challenges in {self.review_topic}?",
-                    f"What future research directions are identified?"
-                ],
-                "search_strategy": "comprehensive"
+                "research_question": f"What are the key developments in {self.config.topic}?",
+                "methodology": "systematic review",
+                "search_strategy": f"Keywords: {', '.join(self.config.keywords)}"
             }
         
-        def generate_search_queries(inputs):
-            """Generate search queries for different databases"""
-            base_terms = self.criteria.inclusion_keywords
-            
-            # Create Boolean search strategies
-            queries = {
-                "boolean_and": " AND ".join(base_terms),
-                "boolean_or": " OR ".join(base_terms), 
-                "phrase_search": f'"{" ".join(base_terms)}"',
-                "wildcard_search": " AND ".join([f"{term}*" for term in base_terms])
-            }
+        # Stage 2: Data Collection
+        def data_collection_operation(inputs):
+            time.sleep(0.4)  # Simulate collection time
+            planning = inputs.get('planning', {})
+            num_sources = random_randint(self.config.min_sources, self.config.min_sources + 10)
             
             return {
-                "search_queries": queries,
-                "database_specific_queries": {
-                    db: self._adapt_query_for_database(queries["boolean_and"], db) 
-                    for db in self.search_databases
-                }
+                "sources_found": num_sources,
+                "data_quality": random_uniform(0.6, 1.0),
+                "collection_method": planning.get("methodology", "unknown"),
+                "sources": [f"Source {i+1} on {self.config.topic}" for i in range(min(num_sources, 5))]
             }
         
-        # Create planning nodes
-        planning_node = DAGNode("planning", "Research Planning", NodeType.INPUT, define_research_questions)
-        planning_node.research_phase = ResearchPhase.PLANNING.value
-        
-        query_gen_node = DAGNode("query_generation", "Search Query Generation", 
-                                NodeType.PROCESSING, generate_search_queries)
-        query_gen_node.research_phase = ResearchPhase.PLANNING.value
-        
-        self.add_node(planning_node)
-        self.add_node(query_gen_node)
-        self.add_edge("planning", "query_generation")
-    
-    def _add_search_phase(self):
-        """Add parallel database search nodes"""
-        
-        search_nodes = []
-        
-        for database in self.search_databases:
-            def create_search_operation(db_name):
-                def search_database(inputs):
-                    """Search specific database"""
-                    queries = inputs.get("query_generation", {}).get("database_specific_queries", {})
-                    query = queries.get(db_name, self.review_topic)
-                    
-                    # Simulate database search with realistic delays
-                    time.sleep(0.3 + hash(db_name) % 3 * 0.1)  # Varied delays
-                    
-                    # Generate realistic result counts
-                    base_results = 50 + hash(f"{db_name}{query}") % 200
-                    
-                    return {
-                        "database": db_name,
-                        "query_used": query,
-                        "total_results": base_results,
-                        "results": [
-                            {
-                                "id": f"{db_name}_{i}",
-                                "title": f"Paper {i} from {db_name} on {self.review_topic}",
-                                "authors": [f"Author {i}A", f"Author {i}B"],
-                                "year": 2020 + (i % 5),
-                                "abstract": f"This paper discusses {self.review_topic} with focus on aspect {i}...",
-                                "citation_count": max(0, 100 - i * 2),
-                                "database_source": db_name
-                            }
-                            for i in range(min(base_results, 20))  # Limit for demo
-                        ]
-                    }
-                return search_database
-            
-            search_node = DAGNode(f"search_{database}", f"Search {database.upper()}", 
-                                NodeType.PROCESSING, create_search_operation(database))
-            search_node.research_phase = ResearchPhase.SEARCH.value
-            search_nodes.append(search_node.node_id)
-            
-            self.add_node(search_node)
-            self.add_edge("query_generation", search_node.node_id)
-        
-        # Add aggregation node to combine search results
-        def aggregate_search_results(inputs):
-            """Combine results from all databases"""
-            all_results = []
-            total_found = 0
-            database_coverage = {}
-            
-            for node_id in search_nodes:
-                if node_id in inputs:
-                    search_data = inputs[node_id]
-                    all_results.extend(search_data.get("results", []))
-                    total_found += search_data.get("total_results", 0)
-                    database_coverage[search_data.get("database")] = search_data.get("total_results", 0)
-            
-            # Remove duplicates based on title similarity
-            unique_results = self._deduplicate_papers(all_results)
+        # Stage 3: Data Analysis
+        def analysis_operation(inputs):
+            time.sleep(0.3)
+            data = inputs.get('data_collection', {})
+            sources = data.get('sources', [])
             
             return {
-                "combined_results": unique_results,
-                "total_papers_found": len(unique_results),
-                "total_database_hits": total_found,
-                "database_coverage": database_coverage,
-                "deduplication_removed": len(all_results) - len(unique_results)
+                "analyzed_sources": len(sources),
+                "key_themes": [f"Theme {i+1}" for i in range(3)],
+                "findings": [f"Finding from {source}" for source in sources[:3]],
+                "confidence": random_uniform(0.7, 0.95)
             }
         
-        aggregation_node = DAGNode("search_aggregation", "Combine Search Results", 
-                                  NodeType.AGGREGATION, aggregate_search_results)
-        aggregation_node.research_phase = ResearchPhase.SEARCH.value
-        
-        self.add_node(aggregation_node)
-        for search_node_id in search_nodes:
-            self.add_edge(search_node_id, "search_aggregation")
-    
-    def _add_screening_phase(self):
-        """Add title/abstract screening nodes"""
-        
-        def title_abstract_screening(inputs):
-            """Screen papers based on title and abstract"""
-            papers = inputs.get("search_aggregation", {}).get("combined_results", [])
+        # Stage 4: Quality Validation
+        def validation_operation(inputs):
+            analysis = inputs.get('analysis', {})
+            data = inputs.get('data_collection', {})
             
-            included_papers = []
-            excluded_papers = []
-            screening_reasons = {}
-            
-            for paper in papers:
-                include_score = self._calculate_inclusion_score(paper)
-                
-                if include_score >= 0.6:  # Inclusion threshold
-                    included_papers.append(paper)
-                    screening_reasons[paper["id"]] = f"Included (score: {include_score:.2f})"
-                else:
-                    excluded_papers.append(paper)
-                    screening_reasons[paper["id"]] = f"Excluded (score: {include_score:.2f})"
+            data_quality = data.get('data_quality', 0.5)
+            confidence = analysis.get('confidence', 0.5)
+            overall_quality = (data_quality + confidence) / 2
             
             return {
-                "included_papers": included_papers,
-                "excluded_papers": excluded_papers,
-                "screening_reasons": screening_reasons,
-                "inclusion_rate": len(included_papers) / len(papers) if papers else 0,
-                "screening_statistics": {
-                    "total_screened": len(papers),
-                    "included": len(included_papers),
-                    "excluded": len(excluded_papers)
-                }
+                "quality_score": overall_quality,
+                "validation_passed": overall_quality >= self.config.quality_threshold,
+                "recommendations": "Good quality analysis" if overall_quality >= 0.8 else "Consider more sources"
             }
         
-        def quality_gate_check(inputs):
-            """Quality gate for screening results"""
-            screening_stats = inputs.get("title_screening", {}).get("screening_statistics", {})
-            inclusion_rate = inputs.get("title_screening", {}).get("inclusion_rate", 0)
-            
-            # Quality checks
-            quality_passed = True
-            quality_issues = []
-            
-            if inclusion_rate < 0.1:
-                quality_issues.append("Very low inclusion rate - criteria may be too strict")
-                
-            if inclusion_rate > 0.8:
-                quality_issues.append("Very high inclusion rate - criteria may be too broad")
-            
-            if screening_stats.get("total_screened", 0) < 10:
-                quality_issues.append("Insufficient papers for reliable analysis")
-                quality_passed = False
+        # Stage 5: Report Generation
+        def reporting_operation(inputs):
+            analysis = inputs.get('analysis', {})
+            validation = inputs.get('validation', {})
             
             return {
-                "quality_gate_passed": quality_passed,
-                "quality_issues": quality_issues,
-                "screening_quality_score": 1.0 - len(quality_issues) * 0.2,
-                "recommendation": "proceed" if quality_passed else "revise_criteria"
+                "report_status": "Complete",
+                "summary": f"Analysis of {analysis.get('analyzed_sources', 0)} sources completed",
+                "quality_certified": validation.get('validation_passed', False),
+                "recommendations": validation.get('recommendations', 'No recommendations')
             }
         
-        # Create screening nodes
-        screening_node = DAGNode("title_screening", "Title/Abstract Screening", 
-                               NodeType.PROCESSING, title_abstract_screening)
-        screening_node.research_phase = ResearchPhase.SCREENING.value
+        # Create nodes
+        nodes = [
+            DAGNode("planning", "Research Planning", NodeType.INPUT, planning_operation),
+            DAGNode("data_collection", "Data Collection", NodeType.PROCESSING, data_collection_operation),
+            DAGNode("analysis", "Data Analysis", NodeType.PROCESSING, analysis_operation),
+            DAGNode("validation", "Quality Validation", NodeType.VALIDATION, validation_operation),
+            DAGNode("reporting", "Report Generation", NodeType.OUTPUT, reporting_operation)
+        ]
         
-        quality_node = DAGNode("screening_quality", "Screening Quality Gate", 
-                              NodeType.VALIDATION, quality_gate_check)
-        quality_node.quality_requirements = {"min_papers": 10, "inclusion_rate_range": [0.1, 0.8]}
+        # Add nodes to DAG
+        for node in nodes:
+            self.add_node(node)
         
-        self.add_node(screening_node)
-        self.add_node(quality_node)
-        self.add_edge("search_aggregation", "title_screening")
-        self.add_edge("title_screening", "screening_quality")
-    
-    def _add_extraction_phase(self):
-        """Add data extraction and full-text review nodes"""
+        # Create linear pipeline
+        edges = [
+            ("planning", "data_collection"),
+            ("data_collection", "analysis"),
+            ("analysis", "validation"),
+            ("validation", "reporting")
+        ]
         
-        def full_text_review(inputs):
-            """Conduct full-text review of included papers"""
-            papers = inputs.get("title_screening", {}).get("included_papers", [])
-            
-            extracted_data = []
-            exclusions_full_text = []
-            
-            for paper in papers[:10]:  # Limit for demo
-                # Simulate full-text availability and review
-                if hash(paper["id"]) % 4 != 0:  # 75% availability
-                    extraction = {
-                        "paper_id": paper["id"],
-                        "title": paper["title"],
-                        "methodology": f"Methodology for {paper['title'][:30]}",
-                        "key_findings": [f"Finding 1 from {paper['id']}", f"Finding 2 from {paper['id']}"],
-                        "limitations": f"Limitations discussed in {paper['id']}",
-                        "quality_score": 0.6 + (hash(paper["id"]) % 40) / 100,
-                        "data_extraction_complete": True
-                    }
-                    extracted_data.append(extraction)
-                else:
-                    exclusions_full_text.append({
-                        "paper_id": paper["id"],
-                        "exclusion_reason": "Full text not available"
-                    })
-            
-            return {
-                "extracted_data": extracted_data,
-                "full_text_exclusions": exclusions_full_text,
-                "extraction_success_rate": len(extracted_data) / len(papers) if papers else 0,
-                "data_points_extracted": len(extracted_data) * 4  # methodology, findings, limitations, quality
-            }
-        
-        extraction_node = DAGNode("data_extraction", "Full-text Review & Data Extraction", 
-                                NodeType.PROCESSING, full_text_review)
-        extraction_node.research_phase = ResearchPhase.EXTRACTION.value
-        
-        self.add_node(extraction_node)
-        self.add_edge("screening_quality", "data_extraction")
-    
-    def _add_analysis_phase(self):
-        """Add analysis and quality assessment nodes"""
-        
-        def thematic_analysis(inputs):
-            """Perform thematic analysis of extracted data"""
-            extracted_data = inputs.get("data_extraction", {}).get("extracted_data", [])
-            
-            # Identify themes from findings
-            themes = {
-                "methodological_approaches": [],
-                "key_challenges": [],
-                "emerging_trends": [],
-                "future_directions": []
-            }
-            
-            theme_frequency = {}
-            
-            for data in extracted_data:
-                findings = data.get("key_findings", [])
-                for finding in findings:
-                    # Simple theme classification based on keywords
-                    if any(word in finding.lower() for word in ["method", "approach", "technique"]):
-                        themes["methodological_approaches"].append(finding)
-                    elif any(word in finding.lower() for word in ["challenge", "problem", "limitation"]):
-                        themes["key_challenges"].append(finding)
-                    elif any(word in finding.lower() for word in ["trend", "emerging", "novel"]):
-                        themes["emerging_trends"].append(finding)
-                    elif any(word in finding.lower() for word in ["future", "direction", "recommendation"]):
-                        themes["future_directions"].append(finding)
-                
-                # Count theme occurrences
-                for theme_name, theme_items in themes.items():
-                    theme_frequency[theme_name] = len(theme_items)
-            
-            return {
-                "identified_themes": themes,
-                "theme_frequency": theme_frequency,
-                "total_themes_found": sum(theme_frequency.values()),
-                "dominant_theme": max(theme_frequency.keys(), key=lambda k: theme_frequency[k]) if theme_frequency else None
-            }
-        
-        def quality_assessment(inputs):
-            """Assess overall quality of the research corpus"""
-            extracted_data = inputs.get("data_extraction", {}).get("extracted_data", [])
-            
-            quality_metrics = {
-                "average_quality_score": 0.0,
-                "high_quality_papers": 0,
-                "quality_distribution": {"high": 0, "medium": 0, "low": 0},
-                "reliability_score": 0.0
-            }
-            
-            if extracted_data:
-                quality_scores = [data.get("quality_score", 0.5) for data in extracted_data]
-                quality_metrics["average_quality_score"] = sum(quality_scores) / len(quality_scores)
-                
-                for score in quality_scores:
-                    if score >= 0.8:
-                        quality_metrics["quality_distribution"]["high"] += 1
-                    elif score >= 0.6:
-                        quality_metrics["quality_distribution"]["medium"] += 1
-                    else:
-                        quality_metrics["quality_distribution"]["low"] += 1
-                
-                quality_metrics["high_quality_papers"] = quality_metrics["quality_distribution"]["high"]
-                quality_metrics["reliability_score"] = quality_metrics["average_quality_score"] * 0.7 + (len(extracted_data) / 50) * 0.3
-            
-            return {
-                "quality_assessment": quality_metrics,
-                "corpus_reliability": "high" if quality_metrics["reliability_score"] > 0.7 else "medium" if quality_metrics["reliability_score"] > 0.5 else "low",
-                "recommendation": "sufficient" if quality_metrics["average_quality_score"] > 0.6 else "expand_search"
-            }
-        
-        # Create analysis nodes
-        thematic_node = DAGNode("thematic_analysis", "Thematic Analysis", 
-                              NodeType.PROCESSING, thematic_analysis)
-        thematic_node.research_phase = ResearchPhase.ANALYSIS.value
-        
-        quality_node = DAGNode("quality_assessment", "Quality Assessment", 
-                              NodeType.VALIDATION, quality_assessment)
-        quality_node.research_phase = ResearchPhase.ANALYSIS.value
-        
-        self.add_node(thematic_node)
-        self.add_node(quality_node)
-        self.add_edge("data_extraction", "thematic_analysis")
-        self.add_edge("data_extraction", "quality_assessment")
-    
-    def _add_synthesis_phase(self):
-        """Add synthesis and reporting nodes"""
-        
-        def synthesize_findings(inputs):
-            """Synthesize all findings into coherent insights"""
-            themes = inputs.get("thematic_analysis", {}).get("identified_themes", {})
-            quality_assessment = inputs.get("quality_assessment", {}).get("quality_assessment", {})
-            
-            synthesis = {
-                "executive_summary": f"Systematic review of {self.review_topic} identified {len(themes)} major themes",
-                "key_insights": [],
-                "research_gaps": [],
-                "methodological_summary": {},
-                "confidence_level": "high" if quality_assessment.get("reliability_score", 0) > 0.7 else "medium"
-            }
-            
-            # Generate insights from themes
-            for theme_name, theme_items in themes.items():
-                if theme_items:
-                    insight = f"{theme_name.replace('_', ' ').title()}: {len(theme_items)} findings identified"
-                    synthesis["key_insights"].append(insight)
-            
-            # Identify research gaps
-            if themes.get("future_directions"):
-                synthesis["research_gaps"] = [
-                    "Need for standardized methodologies",
-                    "Limited long-term studies available", 
-                    "Geographical bias in current research"
-                ]
-            
-            return synthesis
-        
-        def generate_report(inputs):
-            """Generate final research report"""
-            synthesis = inputs.get("synthesis", {})
-            planning = inputs.get("planning", {})
-            search_stats = inputs.get("search_aggregation", {})
-            
-            report = {
-                "title": f"Systematic Literature Review: {self.review_topic}",
-                "research_question": planning.get("primary_question", ""),
-                "methodology": {
-                    "databases_searched": len(self.search_databases),
-                    "total_papers_found": search_stats.get("total_papers_found", 0),
-                    "papers_included": len(inputs.get("data_extraction", {}).get("extracted_data", [])),
-                    "screening_approach": "title_abstract_then_fulltext"
-                },
-                "key_findings": synthesis.get("key_insights", []),
-                "research_gaps": synthesis.get("research_gaps", []),
-                "limitations": [
-                    "Limited to English language papers",
-                    "Search restricted to selected databases",
-                    "Publication bias may affect results"
-                ],
-                "recommendations": [
-                    "Future research should address identified gaps",
-                    "Standardization of methodologies needed",
-                    "Longitudinal studies recommended"
-                ],
-                "confidence_assessment": synthesis.get("confidence_level", "medium")
-            }
-            
-            return report
-        
-        # Create synthesis nodes
-        synthesis_node = DAGNode("synthesis", "Findings Synthesis", 
-                               NodeType.AGGREGATION, synthesize_findings)
-        synthesis_node.research_phase = ResearchPhase.SYNTHESIS.value
-        
-        report_node = DAGNode("final_report", "Report Generation", 
-                            NodeType.OUTPUT, generate_report)
-        report_node.research_phase = ResearchPhase.REPORTING.value
-        
-        self.add_node(synthesis_node)
-        self.add_node(report_node)
-        self.add_edge("thematic_analysis", "synthesis")
-        self.add_edge("quality_assessment", "synthesis")
-        self.add_edge("synthesis", "final_report")
-    
-    def _adapt_query_for_database(self, base_query: str, database: str) -> str:
-        """Adapt search query for specific database syntax"""
-        adaptations = {
-            "arxiv": f"({base_query}) AND cat:cs.*",  # Computer Science category
-            "pubmed": f"({base_query})[Title/Abstract]",  # PubMed syntax
-            "ieee": f'("{base_query}") AND (Document Type:Conference OR Document Type:Journal)',
-            "acm": f"({base_query}) AND (acmdlTitle:({base_query}) OR acmdlAbstract:({base_query}))"
-        }
-        return adaptations.get(database, base_query)
-    
-    def _deduplicate_papers(self, papers: List[Dict]) -> List[Dict]:
-        """Remove duplicate papers based on title similarity"""
-        unique_papers = []
-        seen_titles = set()
-        
-        for paper in papers:
-            title_normalized = paper["title"].lower().strip()
-            if title_normalized not in seen_titles:
-                seen_titles.add(title_normalized)
-                unique_papers.append(paper)
-        
-        return unique_papers
-    
-    def _calculate_inclusion_score(self, paper: Dict) -> float:
-        """Calculate inclusion score based on criteria"""
-        score = 0.5  # Base score
-        
-        # Year check
-        if paper.get("year", 2020) >= self.criteria.min_publication_year:
-            score += 0.2
-        
-        # Keyword relevance
-        title_abstract = f"{paper.get('title', '')} {paper.get('abstract', '')}".lower()
-        
-        inclusion_matches = sum(1 for keyword in self.criteria.inclusion_keywords 
-                              if keyword.lower() in title_abstract)
-        exclusion_matches = sum(1 for keyword in self.criteria.exclusion_keywords 
-                               if keyword.lower() in title_abstract)
-        
-        score += (inclusion_matches * 0.1) - (exclusion_matches * 0.2)
-        
-        # Citation count
-        if paper.get("citation_count", 0) >= self.criteria.minimum_citation_count:
-            score += 0.1
-        
-        return max(0.0, min(1.0, score))  # Clamp between 0 and 1
+        for from_node, to_node in edges:
+            self.add_edge(from_node, to_node)
 
 
-class ResearchPipeline:
+class ParallelAnalysisDAG(ResearchDAG):
     """
-    High-level interface for creating and managing research pipelines.
+    Demonstrates parallel processing with fan-out/fan-in pattern.
     
-    Simplifies the creation of complex research DAGs with common patterns.
+    Input → [Statistical Analysis | Content Analysis | Network Analysis] → Synthesis
     """
     
-    @staticmethod
-    def create_literature_review(topic: str, inclusion_keywords: List[str], 
-                               exclusion_keywords: List[str] = None) -> LiteratureReviewDAG:
-        """Create a standard literature review pipeline"""
-        criteria = ResearchCriteria(
-            inclusion_keywords=inclusion_keywords,
-            exclusion_keywords=exclusion_keywords or [],
-            min_publication_year=2020,
-            minimum_citation_count=0
-        )
-        
-        return LiteratureReviewDAG(topic, criteria)
+    def __init__(self, dataset_name: str = "research_data"):
+        super().__init__(f"parallel_{dataset_name}", f"Parallel analysis of {dataset_name}")
+        self.dataset_name = dataset_name
+        self._build_parallel_pipeline()
     
-    @staticmethod
-    def create_meta_analysis(topic: str, effect_size_measure: str = "cohen_d") -> ResearchDAG:
-        """Create a meta-analysis pipeline (simplified)"""
-        dag = ResearchDAG(f"meta_analysis_{topic}", f"Meta-analysis of {topic}")
+    def _build_parallel_pipeline(self):
+        """Build parallel analysis pipeline with three analysis branches"""
         
-        # Add meta-analysis specific nodes
-        # (Implementation simplified for demo)
+        def input_operation(inputs):
+            return {
+                "dataset": self.dataset_name,
+                "size": random_randint(100, 500),
+                "format": "structured_data"
+            }
         
-        return dag
-    
-    @staticmethod
-    def create_comparative_analysis(topics: List[str]) -> ResearchDAG:
-        """Create a comparative analysis pipeline"""
-        dag = ResearchDAG("comparative_analysis", f"Comparative analysis of {', '.join(topics)}")
+        def statistical_analysis(inputs):
+            time.sleep(0.3)  # Different processing times
+            data_info = inputs.get('input', {})
+            return {
+                "analysis_type": "statistical",
+                "mean_values": [1.2, 3.4, 2.1],
+                "correlations": {"var1_var2": 0.75, "var1_var3": 0.45},
+                "significance": "p < 0.05"
+            }
         
-        # Add comparative analysis nodes
-        # (Implementation simplified for demo)
+        def content_analysis(inputs):
+            time.sleep(0.5)  # Longer processing time
+            data_info = inputs.get('input', {})
+            return {
+                "analysis_type": "content",
+                "themes_identified": 4,
+                "sentiment_score": 0.65,
+                "key_topics": ["topic1", "topic2", "topic3"]
+            }
         
-        return dag
+        def network_analysis(inputs):
+            time.sleep(0.2)  # Shorter processing time
+            data_info = inputs.get('input', {})
+            return {
+                "analysis_type": "network",
+                "nodes": 42,
+                "edges": 89,
+                "clustering_coefficient": 0.34,
+                "centrality_measures": {"node_a": 0.8, "node_b": 0.6}
+            }
+        
+        def synthesis_operation(inputs):
+            # Combine results from all three analyses
+            stats = inputs.get('stats_analysis', {})
+            content = inputs.get('content_analysis', {})
+            network = inputs.get('network_analysis', {})
+            
+            return {
+                "combined_insights": f"Integrated {len(stats)} + {len(content)} + {len(network)} analysis results",
+                "statistical_summary": stats.get('significance', 'N/A'),
+                "content_themes": content.get('themes_identified', 0),
+                "network_structure": f"{network.get('nodes', 0)} nodes analyzed",
+                "overall_score": random_uniform(0.7, 0.9)
+            }
+        
+        # Create nodes
+        nodes = [
+            DAGNode("input", "Data Input", NodeType.INPUT, input_operation),
+            DAGNode("stats_analysis", "Statistical Analysis", NodeType.PROCESSING, statistical_analysis),
+            DAGNode("content_analysis", "Content Analysis", NodeType.PROCESSING, content_analysis),
+            DAGNode("network_analysis", "Network Analysis", NodeType.PROCESSING, network_analysis),
+            DAGNode("synthesis", "Results Synthesis", NodeType.AGGREGATION, synthesis_operation)
+        ]
+        
+        for node in nodes:
+            self.add_node(node)
+        
+        # Fan-out from input to three parallel analyses
+        for analysis_node in ["stats_analysis", "content_analysis", "network_analysis"]:
+            self.add_edge("input", analysis_node)
+        
+        # Fan-in from all analyses to synthesis
+        for analysis_node in ["stats_analysis", "content_analysis", "network_analysis"]:
+            self.add_edge(analysis_node, "synthesis")
 
 
-def demonstrate_research_pipeline():
-    """Demonstrate research pipeline DAG capabilities"""
+class ConditionalWorkflowDAG(ResearchDAG):
+    """
+    Demonstrates conditional workflow with quality gates.
     
-    print("📚 RESEARCH PIPELINE DAG DEMONSTRATION")
+    Shows how DAGs can branch based on intermediate results.
+    """
+    
+    def __init__(self):
+        super().__init__("conditional_workflow", "Conditional research workflow")
+        self._build_conditional_pipeline()
+    
+    def _build_conditional_pipeline(self):
+        """Build workflow with conditional branches based on data quality"""
+        
+        def initial_analysis(inputs):
+            quality_score = random_uniform(0.3, 0.9)
+            return {
+                "data_quality": quality_score,
+                "sample_size": random_randint(20, 100),
+                "recommendation": "detailed" if quality_score > 0.6 else "basic"
+            }
+        
+        def quality_gate(inputs):
+            """Decision node that determines workflow path"""
+            analysis = inputs.get('initial_analysis', {})
+            quality = analysis.get('data_quality', 0.5)
+            
+            return {
+                "gate_passed": quality > 0.6,
+                "quality_level": "high" if quality > 0.8 else "medium" if quality > 0.6 else "low",
+                "next_step": "detailed_analysis" if quality > 0.6 else "basic_analysis"
+            }
+        
+        def detailed_analysis(inputs):
+            time.sleep(0.4)
+            return {
+                "analysis_depth": "comprehensive",
+                "methods_used": ["advanced_stats", "ml_models", "validation"],
+                "confidence": 0.85,
+                "detailed_findings": ["finding1", "finding2", "finding3"]
+            }
+        
+        def basic_analysis(inputs):
+            time.sleep(0.2)
+            return {
+                "analysis_depth": "basic",
+                "methods_used": ["descriptive_stats"],
+                "confidence": 0.65,
+                "basic_findings": ["finding1", "finding2"]
+            }
+        
+        def final_report(inputs):
+            """Combines results from either analysis path"""
+            gate_result = inputs.get('quality_gate', {})
+            
+            # Check which analysis was performed
+            if 'detailed_analysis' in inputs:
+                analysis_result = inputs['detailed_analysis']
+                analysis_type = "detailed"
+            elif 'basic_analysis' in inputs:
+                analysis_result = inputs['basic_analysis']
+                analysis_type = "basic"
+            else:
+                analysis_result = {}
+                analysis_type = "unknown"
+            
+            return {
+                "report_type": analysis_type,
+                "analysis_path_taken": gate_result.get('next_step', 'unknown'),
+                "final_confidence": analysis_result.get('confidence', 0.5),
+                "report_summary": f"Completed {analysis_type} analysis based on data quality"
+            }
+        
+        # Create nodes
+        nodes = [
+            DAGNode("initial_analysis", "Initial Analysis", NodeType.PROCESSING, initial_analysis),
+            DAGNode("quality_gate", "Quality Gate", NodeType.DECISION, quality_gate),
+            DAGNode("detailed_analysis", "Detailed Analysis", NodeType.PROCESSING, detailed_analysis),
+            DAGNode("basic_analysis", "Basic Analysis", NodeType.PROCESSING, basic_analysis),
+            DAGNode("final_report", "Final Report", NodeType.OUTPUT, final_report)
+        ]
+        
+        for node in nodes:
+            self.add_node(node)
+        
+        # Create conditional flow
+        # Note: In a real system, the execution logic would handle conditional routing
+        # Here we show the structure - both paths exist but only one would execute
+        self.add_edge("initial_analysis", "quality_gate")
+        self.add_edge("quality_gate", "detailed_analysis")
+        self.add_edge("quality_gate", "basic_analysis")
+        self.add_edge("detailed_analysis", "final_report")
+        self.add_edge("basic_analysis", "final_report")
+    
+
+# Convenience functions for creating research DAGs
+
+def create_simple_research_workflow(topic: str = "machine learning") -> SimpleResearchDAG:
+    """Create a simple 5-stage research workflow"""
+    config = ResearchConfig(
+        topic=topic,
+        keywords=[topic.lower(), "research", "analysis"],
+        min_sources=8,
+        quality_threshold=0.75
+    )
+    return SimpleResearchDAG(config)
+
+
+def create_parallel_analysis_workflow(dataset: str = "survey_data") -> ParallelAnalysisDAG:
+    """Create a parallel analysis workflow with fan-out/fan-in pattern"""
+    return ParallelAnalysisDAG(dataset)
+
+
+def create_conditional_workflow() -> ConditionalWorkflowDAG:
+    """Create a conditional workflow with quality gates"""
+    return ConditionalWorkflowDAG()
+
+
+def demonstrate_research_patterns():
+    """Demonstrate the three main research DAG patterns"""
+    
+    print("📚 RESEARCH DAG PATTERNS DEMONSTRATION")
     print("=" * 50)
     
-    # Create a literature review pipeline
-    print("\\n🔬 Creating Literature Review Pipeline...")
+    # Pattern 1: Simple Linear Pipeline
+    print("\n🔄 Pattern 1: Simple Linear Research Pipeline")
+    simple_dag = create_simple_research_workflow("artificial intelligence")
+    print(f"   • Nodes: {len(simple_dag.nodes)} (linear sequence)")
+    print(f"   • Phases: Planning → Data Collection → Analysis → Validation → Report")
     
-    criteria = ResearchCriteria(
-        inclusion_keywords=["quantum", "error correction", "fault tolerance"],
-        exclusion_keywords=["classical", "obsolete"],
-        min_publication_year=2020
-    )
+    results = simple_dag.execute()
+    stats = simple_dag.get_statistics()
+    print(f"   • Execution: {stats['success_rate']:.1%} success rate")
     
-    review_dag = LiteratureReviewDAG("Quantum Error Correction", criteria)
+    # Pattern 2: Parallel Processing  
+    print("\n⚡ Pattern 2: Parallel Analysis (Fan-out/Fan-in)")
+    parallel_dag = create_parallel_analysis_workflow("research_corpus")
+    print(f"   • Nodes: {len(parallel_dag.nodes)} (parallel branches)")
+    print(f"   • Structure: Input → [Statistical|Content|Network] → Synthesis")
     
-    print(f"✅ Created DAG with {len(review_dag.nodes)} nodes")
-    print(f"📋 Research phases: {len(set(node.research_phase for node in review_dag.nodes.values()))}")
+    parallel_results = parallel_dag.execute()
+    parallel_stats = parallel_dag.get_statistics()
+    print(f"   • Execution: {parallel_stats['success_rate']:.1%} success rate")
     
-    # Show DAG structure
-    print(review_dag.visualize_structure())
+    # Show parallelization benefit
+    simple_time = sum(node.execution_time for node in simple_dag.nodes.values())
+    parallel_time = max([node.execution_time for node in parallel_dag.nodes.values() 
+                        if node.node_type != NodeType.INPUT])
     
-    print("\\n🚀 Executing Literature Review Pipeline...")
-    try:
-        start_time = time.time()
-        results = review_dag.execute()
-        execution_time = time.time() - start_time
-        
-        print(f"✅ Pipeline completed in {execution_time:.2f} seconds")
-        
-        # Show key results
-        if "final_report" in results:
-            report = results["final_report"]
-            print(f"\\n📊 Review Results:")
-            print(f"   • Title: {report.get('title', 'N/A')}")
-            print(f"   • Papers found: {report.get('methodology', {}).get('total_papers_found', 0)}")
-            print(f"   • Papers included: {report.get('methodology', {}).get('papers_included', 0)}")
-            print(f"   • Key findings: {len(report.get('key_findings', []))}")
-            print(f"   • Confidence: {report.get('confidence_assessment', 'N/A')}")
-        
-        # Show execution statistics
-        stats = review_dag.get_statistics()
-        print(f"\\n📈 Execution Statistics:")
-        print(f"   • Success rate: {stats['success_rate']:.1%}")
-        print(f"   • Total nodes: {stats['total_nodes']}")
-        print(f"   • Node types: {stats['nodes_by_type']}")
-        
-    except Exception as e:
-        print(f"❌ Pipeline execution failed: {e}")
-        import traceback
-        traceback.print_exc()
+    print(f"\n⚡ Parallelization Benefit:")
+    print(f"   • Linear pipeline: {simple_time:.2f}s total")
+    print(f"   • Parallel pipeline: {parallel_time:.2f}s (max branch)")
+    if simple_time > 0 and parallel_time > 0:
+        speedup = simple_time / parallel_time
+        print(f"   • Theoretical speedup: {speedup:.1f}x")
+    
+    # Pattern 3: Conditional Workflow
+    print("\n🌳 Pattern 3: Conditional Workflow with Quality Gates")
+    conditional_dag = create_conditional_workflow()
+    print(f"   • Nodes: {len(conditional_dag.nodes)} (conditional branches)")
+    print(f"   • Logic: Quality Gate determines analysis depth")
+    
+    conditional_results = conditional_dag.execute()
+    
+    # Show which path was taken
+    if 'final_report' in conditional_results:
+        report = conditional_results['final_report']
+        path_taken = report.get('analysis_path_taken', 'unknown')
+        confidence = report.get('final_confidence', 0)
+        print(f"   • Path taken: {path_taken}")
+        print(f"   • Final confidence: {confidence:.2f}")
+    
+    print(f"\n📊 All three patterns ready for visualization!")
+    print("Use DAGVisualizer to plot these workflows and see the structural differences.")
 
 
 if __name__ == "__main__":
-    demonstrate_research_pipeline()
+    demonstrate_research_patterns()

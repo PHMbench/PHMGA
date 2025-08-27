@@ -460,8 +460,8 @@ class ResearchToolsAggregator:
         print(f"🔍 Searching ArXiv for: {query}")
         results['arxiv'] = self.arxiv.search_papers(query, max_results_per_source)
         
-        print(f"🔍 Searching Semantic Scholar for: {query}")
-        results['semantic_scholar'] = self.semantic_scholar.search_papers(query, max_results_per_source)
+        # print(f"🔍 Searching Semantic Scholar for: {query}")
+        # results['semantic_scholar'] = self.semantic_scholar.search_papers(query, max_results_per_source)
         
         return results
     

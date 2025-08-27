@@ -139,12 +139,12 @@ class LiteratureSearchAgent:
                 filters_applied=filters
             )
         
-        # Apply filters
-        filtered_papers = self._apply_filters(papers, filters)
-        print(f"   {len(filtered_papers)} papers after filtering")
+        # # Apply filters
+        # filtered_papers = self._apply_filters(papers, filters)
+        # print(f"   {len(filtered_papers)} papers after filtering")
         
         # Final ranking and selection
-        final_papers = self._rank_and_select(filtered_papers, query, max_results)
+        final_papers = self._rank_and_select(papers, query, max_results)
         print(f"   Selected top {len(final_papers)} papers")
         
         # Generate insights
@@ -277,15 +277,16 @@ Format as bullet points, keep each insight concise (1-2 sentences)."""
             insights_text = response.content
             
             # Parse bullet points
-            insights = []
-            for line in insights_text.split('\\n'):
-                line = line.strip()
-                if line.startswith(('•', '-', '*', '1.', '2.', '3.', '4.', '5.')):
-                    clean_insight = re.sub(r'^[•\\-*0-9.\\s]+', '', line).strip()
-                    if clean_insight:
-                        insights.append(clean_insight)
+            # insights = []
+            # for line in insights_text.split('\\n'):
+            #     line = line.strip()
+            #     if line.startswith(('•', '-', '*', '1.', '2.', '3.', '4.', '5.')):
+            #         clean_insight = re.sub(r'^[•\\-*0-9.\\s]+', '', line).strip()
+            #         if clean_insight:
+            #             insights.append(clean_insight)
             
-            return insights[:5] if insights else ["Analysis completed successfully"]
+            # return insights[:5] if insights else ["Analysis completed successfully"]
+            return insights_text if insights_text else ["Analysis completed successfully"]
             
         except Exception as e:
             return [f"Insight extraction failed: {str(e)}"]

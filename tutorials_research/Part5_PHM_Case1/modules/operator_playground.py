@@ -272,427 +272,427 @@ class OperatorPlayground:
                         'timestamp': time.time()
                     })
                     
-                    self._plot_signal(signal, f\"Generated {signal_type_widget.value} signal\")\
-                    print(f\"✅ Generated {signal_type_widget.value} signal\")\n",
-                    print(f\"   Signal length: {len(signal)} samples\")\n",
-                    print(f\"   Duration: {self.duration}s at {self.sampling_rate}Hz\")\n",
-                    print(f\"   RMS: {np.sqrt(np.mean(signal**2)):.3f}\")\n",
-                    \n",
-                except Exception as e:\n",
-                    print(f\"❌ Error generating signal: {e}\")\n",
-        \n",
-        def apply_operator(*args):\n",
-            with output_area:\n",
-                clear_output(wait=True)\n",
-                \n",
-                if self.current_signal is None:\n",
-                    print(\"⚠️ Please generate a signal first!\")\n",
-                    return\n",
-                \n",
-                try:\n",
-                    category = category_widget.value\n",
-                    operator_name = operator_widget.value\n",
-                    \n",
-                    # Apply operator (demo version)\n",
-                    result = self._apply_demo_operator(\n",
-                        self.current_signal, category, operator_name\n",
-                    )\n",
-                    \n",
-                    if result is not None:\n",
-                        self.current_result = result\n",
-                        self.operation_log.append({\n",
-                            'operator': f\"{category}.{operator_name}\",\n",
-                            'input_shape': self.current_signal.shape,\n",
-                            'output_shape': result.shape,\n",
-                            'timestamp': time.time()\n",
-                        })\n",
-                        \n",
-                        self._plot_operator_result(\n",
-                            self.current_signal, result, \n",
-                            f\"{category}.{operator_name}\"\n",
-                        )\n",
-                        \n",
-                        print(f\"✅ Applied {category}.{operator_name}\")\n",
-                        print(f\"   Input shape: {self.current_signal.shape}\")\n",
-                        print(f\"   Output shape: {result.shape}\")\n",
-                        \n",
-                        # Update current signal to result for chaining\n",
-                        self.current_signal = result\n",
-                        \n",
-                    else:\n",
-                        print(f\"❌ Failed to apply {operator_name}\")\n",
-                        \n",
-                except Exception as e:\n",
-                    print(f\"❌ Error applying operator: {e}\")\n",
-        \n",
-        def clear_history(*args):\n",
-            with output_area:\n",
-                clear_output(wait=True)\n",
-                self.signal_history.clear()\n",
-                self.operation_log.clear()\n",
-                self.current_signal = None\n",
-                self.current_result = None\n",
-                print(\"🗑️ History cleared!\")\n",
-        \n",
-        # Connect event handlers\n",
-        category_widget.observe(update_operators, names='value')\n",
-        generate_button.on_click(generate_signal)\n",
-        apply_button.on_click(apply_operator)\n",
-        clear_button.on_click(clear_history)\n",
-        \n",
-        # Initialize operators dropdown\n",
-        update_operators()\n",
-        \n",
-        # Display interface\n",
-        signal_controls = widgets.VBox([\n",
-            widgets.HTML(\"<h3>🎵 Signal Generation</h3>\"),\n",
-            signal_type_widget,\n",
-            frequency_widget,\n",
-            amplitude_widget,\n",
-            noise_widget,\n",
-            generate_button\n",
-        ])\n",
-        \n",
-        operator_controls = widgets.VBox([\n",
-            widgets.HTML(\"<h3>⚙️ Operator Application</h3>\"),\n",
-            category_widget,\n",
-            operator_widget,\n",
-            apply_button,\n",
-            clear_button\n",
-        ])\n",
-        \n",
-        controls = widgets.HBox([signal_controls, operator_controls])\n",
-        \n",
-        display(controls)\n",
-        display(output_area)\n",
-        \n",
-        # Show initial help\n",
-        with output_area:\n",
-            print(\"🎮 Welcome to the Operator Playground!\")\n",
-            print(\"\\n📋 Instructions:\")\n",
-            print(\"   1. Select signal type and adjust parameters\")\n",
-            print(\"   2. Click 'Generate Signal' to create test signal\")\n",
-            print(\"   3. Choose operator category and specific operator\")\n",
-            print(\"   4. Click 'Apply Operator' to process the signal\")\n",
-            print(\"   5. Results become new input for operator chaining\")\n",
-            print(\"\\n💡 Available Signal Types:\")\n",
-            for sig_type, description in self.signal_generator.get_signal_info().items():\n",
-                print(f\"   • {sig_type}: {description}\")\n",
-            print(f\"\\n🔧 Available Operator Categories: {len(self.available_operators)}\")\n",
-            for category in self.available_operators.keys():\n",
-                print(f\"   • {category}\")\n",
-    \n",
-    def _apply_demo_operator(self, signal: np.ndarray, category: str, operator_name: str) -> Optional[np.ndarray]:\n",
-        \"\"\"Apply demo version of operator (when production operators not available)\"\"\"\n",
-        \n",
-        if OP_REGISTRY and operator_name in OP_REGISTRY:\n",
-            # Use real production operator (would need proper implementation)\n",
-            try:\n",
-                op_class = OP_REGISTRY[operator_name]\n",
-                # This would need proper operator instantiation and execution\n",
-                # For now, return demo result\n",
-                return self._demo_operator_implementation(signal, category, operator_name)\n",
-            except Exception as e:\n",
-                print(f\"Production operator failed: {e}\")\n",
-                return self._demo_operator_implementation(signal, category, operator_name)\n",
-        else:\n",
-            # Use demo implementation\n",
-            return self._demo_operator_implementation(signal, category, operator_name)\n",
-    \n",
-    def _demo_operator_implementation(self, signal: np.ndarray, category: str, operator_name: str) -> Optional[np.ndarray]:\n",
-        \"\"\"Demo implementations of common operators\"\"\"\n",
-        \n",
-        if category == 'TRANSFORM':\n",
-            if operator_name == 'fft':\n",
-                # Return magnitude spectrum\n",
-                fft_result = np.fft.fft(signal)\n",
-                return np.abs(fft_result[:len(fft_result)//2])\n",
-            \n",
-            elif operator_name in ['filter_lowpass', 'filter_highpass']:\n",
-                # Simple filtering using convolution\n",
-                from scipy import signal as scipy_signal\n",
-                if operator_name == 'filter_lowpass':\n",
-                    b, a = scipy_signal.butter(4, 0.1, btype='low')\n",
-                else:\n",
-                    b, a = scipy_signal.butter(4, 0.1, btype='high')\n",
-                try:\n",
-                    return scipy_signal.filtfilt(b, a, signal)\n",
-                except:\n",
-                    # Fallback simple filter\n",
-                    kernel = np.ones(10) / 10  # Simple moving average\n",
-                    return np.convolve(signal, kernel, mode='same')\n",
-            \n",
-            elif operator_name == 'envelope':\n",
-                # Signal envelope using Hilbert transform\n",
-                try:\n",
-                    from scipy.signal import hilbert\n",
-                    return np.abs(hilbert(signal))\n",
-                except:\n",
-                    # Fallback envelope\n",
-                    return np.abs(signal)\n",
-        \n",
-        elif category == 'AGGREGATE':\n",
-            if operator_name == 'statistics':\n",
-                # Return statistical features as array\n",
-                stats = np.array([\n",
-                    np.mean(signal),\n",
-                    np.std(signal),\n",
-                    np.sqrt(np.mean(signal**2)),  # RMS\n",
-                    np.max(signal),\n",
-                    np.min(signal)\n",
-                ])\n",
-                return stats\n",
-            \n",
-            elif operator_name == 'spectral_features':\n",
-                # Spectral features\n",
-                fft_mag = np.abs(np.fft.fft(signal))[:len(signal)//2]\n",
-                freqs = np.fft.fftfreq(len(signal), 1/self.sampling_rate)[:len(signal)//2]\n",
-                \n",
-                spectral_features = np.array([\n",
-                    np.sum(fft_mag),  # Total power\n",
-                    freqs[np.argmax(fft_mag)],  # Dominant frequency\n",
-                    np.sum(freqs * fft_mag) / np.sum(fft_mag),  # Spectral centroid\n",
-                    np.sqrt(np.sum((freqs - np.sum(freqs * fft_mag) / np.sum(fft_mag))**2 * fft_mag) / np.sum(fft_mag))  # Spectral spread\n",
-                ])\n",
-                return spectral_features\n",
-            \n",
-            elif operator_name == 'time_features':\n",
-                # Time domain features\n",
-                time_features = np.array([\n",
-                    np.mean(np.abs(signal)),  # Mean absolute value\n",
-                    np.sqrt(np.mean(signal**2)),  # RMS\n",
-                    np.max(signal) - np.min(signal),  # Peak-to-peak\n",
-                    len(signal[1:][np.diff(signal > 0)])  # Zero crossings\n",
-                ])\n",
-                return time_features\n",
-        \n",
-        elif category == 'EXPAND':\n",
-            if operator_name == 'windowing':\n",
-                # Simple windowing - return first half\n",
-                window_size = len(signal) // 2\n",
-                return signal[:window_size]\n",
-            \n",
-            elif operator_name == 'overlapping_windows':\n",
-                # Return overlapping windows as 2D array\n",
-                window_size = min(256, len(signal) // 4)\n",
-                step_size = window_size // 2\n",
-                windows = []\n",
-                for i in range(0, len(signal) - window_size, step_size):\n",
-                    windows.append(signal[i:i + window_size])\n",
-                return np.array(windows) if windows else signal.reshape(1, -1)\n",
-        \n",
-        # Default: return original signal\n",
-        print(f\"⚠️ Demo implementation not available for {category}.{operator_name}\")\n",
-        return signal\n",
-    \n",
-    def _plot_signal(self, signal: np.ndarray, title: str):\n",
-        \"\"\"Plot signal in time and frequency domain\"\"\"\n",
-        \n",
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=self.figsize)\n",
-        \n",
-        # Time domain\n",
-        t = np.linspace(0, len(signal) / self.sampling_rate, len(signal))\n",
-        ax1.plot(t, signal, 'b-', linewidth=1)\n",
-        ax1.set_xlabel('Time (s)')\n",
-        ax1.set_ylabel('Amplitude')\n",
-        ax1.set_title(f'{title} - Time Domain')\n",
-        ax1.grid(True, alpha=0.3)\n",
-        \n",
-        # Show only first 0.2 seconds for clarity\n",
-        if len(t) > self.sampling_rate * 0.2:\n",
-            ax1.set_xlim(0, 0.2)\n",
-        \n",
-        # Frequency domain\n",
-        f = np.fft.fftfreq(len(signal), 1/self.sampling_rate)[:len(signal)//2]\n",
-        fft_signal = np.fft.fft(signal)\n",
-        magnitude = np.abs(fft_signal[:len(signal)//2])\n",
-        \n",
-        ax2.plot(f, magnitude, 'r-', linewidth=1)\n",
-        ax2.set_xlabel('Frequency (Hz)')\n",
-        ax2.set_ylabel('Magnitude')\n",
-        ax2.set_title(f'{title} - Frequency Domain')\n",
-        ax2.grid(True, alpha=0.3)\n",
-        ax2.set_xlim(0, min(500, max(f)))\n",
-        \n",
-        plt.tight_layout()\n",
-        plt.show()\n",
-    \n",
-    def _plot_operator_result(self, input_signal: np.ndarray, output_signal: np.ndarray, operator_name: str):\n",
-        \"\"\"Plot operator input and output\"\"\"\n",
-        \n",
-        if len(output_signal.shape) > 1:\n",
-            # 2D output (e.g., windowed signal)\n",
-            fig, axes = plt.subplots(2, 2, figsize=self.figsize)\n",
-            \n",
-            # Input signal time domain\n",
-            t_in = np.linspace(0, len(input_signal) / self.sampling_rate, len(input_signal))\n",
-            axes[0, 0].plot(t_in, input_signal, 'b-', linewidth=1)\n",
-            axes[0, 0].set_title('Input Signal - Time Domain')\n",
-            axes[0, 0].set_xlabel('Time (s)')\n",
-            axes[0, 0].set_ylabel('Amplitude')\n",
-            axes[0, 0].grid(True, alpha=0.3)\n",
-            \n",
-            # Input signal frequency domain\n",
-            f_in = np.fft.fftfreq(len(input_signal), 1/self.sampling_rate)[:len(input_signal)//2]\n",
-            fft_in = np.abs(np.fft.fft(input_signal)[:len(input_signal)//2])\n",
-            axes[0, 1].plot(f_in, fft_in, 'b-', linewidth=1)\n",
-            axes[0, 1].set_title('Input Signal - Frequency Domain')\n",
-            axes[0, 1].set_xlabel('Frequency (Hz)')\n",
-            axes[0, 1].set_ylabel('Magnitude')\n",
-            axes[0, 1].grid(True, alpha=0.3)\n",
-            axes[0, 1].set_xlim(0, min(500, max(f_in)))\n",
-            \n",
-            # Output as 2D plot (spectrogram-like)\n",
-            im = axes[1, 0].imshow(output_signal, aspect='auto', cmap='viridis')\n",
-            axes[1, 0].set_title(f'{operator_name} Output (2D)')\n",
-            axes[1, 0].set_xlabel('Sample')\n",
-            axes[1, 0].set_ylabel('Window/Feature')\n",
-            plt.colorbar(im, ax=axes[1, 0])\n",
-            \n",
-            # Output summary statistics\n",
-            axes[1, 1].bar(range(min(10, output_signal.shape[1])), \n",
-                          np.mean(output_signal, axis=0)[:10])\n",
-            axes[1, 1].set_title('Output Features (Mean across windows)')\n",
-            axes[1, 1].set_xlabel('Feature Index')\n",
-            axes[1, 1].set_ylabel('Mean Value')\n",
-            axes[1, 1].grid(True, alpha=0.3)\n",
-            \n",
-        else:\n",
-            # 1D output\n",
-            fig, axes = plt.subplots(2, 2, figsize=self.figsize)\n",
-            \n",
-            # Input signal\n",
-            t_in = np.linspace(0, len(input_signal) / self.sampling_rate, len(input_signal))\n",
-            axes[0, 0].plot(t_in, input_signal, 'b-', linewidth=1, label='Input')\n",
-            axes[0, 0].set_title('Input Signal')\n",
-            axes[0, 0].set_xlabel('Time (s)')\n",
-            axes[0, 0].set_ylabel('Amplitude')\n",
-            axes[0, 0].grid(True, alpha=0.3)\n",
-            axes[0, 0].legend()\n",
-            \n",
-            # Output signal\n",
-            if len(output_signal) == len(input_signal):\n",
-                # Same length - time domain plot\n",
-                t_out = t_in\n",
-                axes[0, 1].plot(t_out, output_signal, 'r-', linewidth=1, label='Output')\n",
-                axes[0, 1].set_xlabel('Time (s)')\n",
-            else:\n",
-                # Different length - could be frequency domain or features\n",
-                axes[0, 1].plot(output_signal, 'r-', linewidth=1, label='Output')\n",
-                axes[0, 1].set_xlabel('Index')\n",
-                \n",
-            axes[0, 1].set_title(f'{operator_name} Output')\n",
-            axes[0, 1].set_ylabel('Value')\n",
-            axes[0, 1].grid(True, alpha=0.3)\n",
-            axes[0, 1].legend()\n",
-            \n",
-            # Comparison (overlay if same length)\n",
-            if len(output_signal) == len(input_signal):\n",
-                axes[1, 0].plot(t_in, input_signal, 'b-', alpha=0.7, label='Input', linewidth=1)\n",
-                axes[1, 0].plot(t_in, output_signal, 'r-', alpha=0.9, label='Output', linewidth=2)\n",
-                axes[1, 0].set_title('Input vs Output Comparison')\n",
-                axes[1, 0].set_xlabel('Time (s)')\n",
-                axes[1, 0].set_ylabel('Amplitude')\n",
-                axes[1, 0].legend()\n",
-                axes[1, 0].grid(True, alpha=0.3)\n",
-            else:\n",
-                # Show histograms for different lengths\n",
-                axes[1, 0].hist(input_signal, bins=30, alpha=0.7, label='Input', density=True)\n",
-                if len(output_signal) > 1:\n",
-                    axes[1, 0].hist(output_signal, bins=min(30, len(output_signal)), alpha=0.7, label='Output', density=True)\n",
-                axes[1, 0].set_title('Distribution Comparison')\n",
-                axes[1, 0].set_xlabel('Value')\n",
-                axes[1, 0].set_ylabel('Density')\n",
-                axes[1, 0].legend()\n",
-                axes[1, 0].grid(True, alpha=0.3)\n",
-            \n",
-            # Statistics comparison\n",
-            input_stats = [np.mean(input_signal), np.std(input_signal), np.sqrt(np.mean(input_signal**2))]\n",
-            output_stats = [np.mean(output_signal), np.std(output_signal), np.sqrt(np.mean(output_signal**2))]\n",
-            \n",
-            x = np.arange(3)\n",
-            width = 0.35\n",
-            axes[1, 1].bar(x - width/2, input_stats, width, label='Input', alpha=0.7)\n",
-            axes[1, 1].bar(x + width/2, output_stats, width, label='Output', alpha=0.7)\n",
-            axes[1, 1].set_title('Statistics Comparison')\n",
-            axes[1, 1].set_xlabel('Metric')\n",
-            axes[1, 1].set_ylabel('Value')\n",
-            axes[1, 1].set_xticks(x)\n",
-            axes[1, 1].set_xticklabels(['Mean', 'Std', 'RMS'])\n",
-            axes[1, 1].legend()\n",
-            axes[1, 1].grid(True, alpha=0.3)\n",
-        \n",
-        plt.suptitle(f'Operator: {operator_name}', fontsize=16, fontweight='bold')\n",
-        plt.tight_layout()\n",
-        plt.show()\n",
-    \n",
-    def create_standalone_demo(self):\n",
-        \"\"\"Create standalone demo for non-Jupyter environments\"\"\"\n",
-        \n",
-        print(\"🎮 PHMGA OPERATOR PLAYGROUND - STANDALONE DEMO\")\n",
-        print(\"=\" * 55)\n",
-        \n",
-        # Generate demo signals\n",
-        print(\"\\n📡 Generating demo signals...\")\n",
-        signals = {}\n",
-        for signal_type in ['bearing_normal', 'bearing_fault', 'sine', 'noise']:\n",
-            signals[signal_type] = self.signal_generator.generate_signal(\n",
-                signal_type, duration=1.0, sampling_rate=10000,\n",
-                frequency=60, amplitude=1.0, noise_level=0.1\n",
-            )\n",
-        \n",
-        # Show signal info\n",
-        for name, signal in signals.items():\n",
-            print(f\"   • {name}: {len(signal)} samples, RMS: {np.sqrt(np.mean(signal**2)):.3f}\")\n",
-        \n",
-        # Demonstrate operators\n",
-        print(\"\\n⚙️ Demonstrating operators...\")\n",
-        \n",
-        test_signal = signals['bearing_fault']\n",
-        \n",
-        operators_to_demo = [\n",
-            ('TRANSFORM', 'fft'),\n",
-            ('AGGREGATE', 'statistics'),\n",
-            ('AGGREGATE', 'spectral_features')\n",
-        ]\n",
-        \n",
-        for category, op_name in operators_to_demo:\n",
-            print(f\"\\n   Applying {category}.{op_name}...\")\n",
-            result = self._apply_demo_operator(test_signal, category, op_name)\n",
-            \n",
-            if result is not None:\n",
-                print(f\"      Input shape: {test_signal.shape}\")\n",
-                print(f\"      Output shape: {result.shape}\")\n",
-                if len(result) <= 10:\n",
-                    print(f\"      Result: {result}\")\n",
-                else:\n",
-                    print(f\"      Result (first 5): {result[:5]}...\")\n",
-        \n",
-        print(\"\\n🎓 Demo completed! Use create_jupyter_interface() for interactive experience.\")\n",
-        return signals\n",
-\n",
-\n",
-def create_operator_playground(interface_type: str = 'jupyter') -> OperatorPlayground:\n",
-    \"\"\"Create operator playground with specified interface type\"\"\"\n",
-    \n",
-    playground = OperatorPlayground()\n",
-    \n",
-    if interface_type == 'jupyter':\n",
-        try:\n",
-            playground.create_jupyter_interface()\n",
-        except ImportError:\n",
-            print(\"⚠️ Jupyter widgets not available, falling back to standalone demo\")\n",
-            playground.create_standalone_demo()\n",
-    else:\n",
-        playground.create_standalone_demo()\n",
-    \n",
-    return playground\n",
-\n",
-\n",
-if __name__ == \"__main__\":\n",
-    # Create and run playground demo\n",
-    playground = create_operator_playground('standalone')\n",
-    \n",
-    print(\"\\n💡 To use in Jupyter notebook:\")\n",
-    print(\"   from operator_playground import create_operator_playground\")\n",
-    print(\"   playground = create_operator_playground('jupyter')\")\n",
+                    self._plot_signal(signal, f"Generated {signal_type_widget.value} signal")
+                    print(f"✅ Generated {signal_type_widget.value} signal")
+                    print(f"   Signal length: {len(signal)} samples")
+                    print(f"   Duration: {self.duration}s at {self.sampling_rate}Hz")
+                    print(f"   RMS: {np.sqrt(np.mean(signal**2)):.3f}")
+                    
+                except Exception as e:
+                    print(f"❌ Error generating signal: {e}")
+        
+        def apply_operator(*args):
+            with output_area:
+                clear_output(wait=True)
+                
+                if self.current_signal is None:
+                    print("⚠️ Please generate a signal first!")
+                    return
+                
+                try:
+                    category = category_widget.value
+                    operator_name = operator_widget.value
+                    
+                    # Apply operator (demo version)
+                    result = self._apply_demo_operator(
+                        self.current_signal, category, operator_name
+                    )
+                    
+                    if result is not None:
+                        self.current_result = result
+                        self.operation_log.append({
+                            'operator': f"{category}.{operator_name}",
+                            'input_shape': self.current_signal.shape,
+                            'output_shape': result.shape,
+                            'timestamp': time.time()
+                        })
+                        
+                        self._plot_operator_result(
+                            self.current_signal, result, 
+                            f"{category}.{operator_name}"
+                        )
+                        
+                        print(f"✅ Applied {category}.{operator_name}")
+                        print(f"   Input shape: {self.current_signal.shape}")
+                        print(f"   Output shape: {result.shape}")
+                        
+                        # Update current signal to result for chaining
+                        self.current_signal = result
+                        
+                    else:
+                        print(f"❌ Failed to apply {operator_name}")
+                        
+                except Exception as e:
+                    print(f"❌ Error applying operator: {e}")
+        
+        def clear_history(*args):
+            with output_area:
+                clear_output(wait=True)
+                self.signal_history.clear()
+                self.operation_log.clear()
+                self.current_signal = None
+                self.current_result = None
+                print("🗑️ History cleared!")
+        
+        # Connect event handlers
+        category_widget.observe(update_operators, names='value')
+        generate_button.on_click(generate_signal)
+        apply_button.on_click(apply_operator)
+        clear_button.on_click(clear_history)
+        
+        # Initialize operators dropdown
+        update_operators()
+        
+        # Display interface
+        signal_controls = widgets.VBox([
+            widgets.HTML("<h3>🎵 Signal Generation</h3>"),
+            signal_type_widget,
+            frequency_widget,
+            amplitude_widget,
+            noise_widget,
+            generate_button
+        ])
+        
+        operator_controls = widgets.VBox([
+            widgets.HTML("<h3>⚙️ Operator Application</h3>"),
+            category_widget,
+            operator_widget,
+            apply_button,
+            clear_button
+        ])
+        
+        controls = widgets.HBox([signal_controls, operator_controls])
+        
+        display(controls)
+        display(output_area)
+        
+        # Show initial help
+        with output_area:
+            print("🎮 Welcome to the Operator Playground!")
+            print("\n📋 Instructions:")
+            print("   1. Select signal type and adjust parameters")
+            print("   2. Click 'Generate Signal' to create test signal")
+            print("   3. Choose operator category and specific operator")
+            print("   4. Click 'Apply Operator' to process the signal")
+            print("   5. Results become new input for operator chaining")
+            print("\n💡 Available Signal Types:")
+            for sig_type, description in self.signal_generator.get_signal_info().items():
+                print(f"   • {sig_type}: {description}")
+            print(f"\n🔧 Available Operator Categories: {len(self.available_operators)}")
+            for category in self.available_operators.keys():
+                print(f"   • {category}")
+    
+    def _apply_demo_operator(self, signal: np.ndarray, category: str, operator_name: str) -> Optional[np.ndarray]:
+        """Apply demo version of operator (when production operators not available)"""
+        
+        if OP_REGISTRY and operator_name in OP_REGISTRY:
+            # Use real production operator (would need proper implementation)
+            try:
+                op_class = OP_REGISTRY[operator_name]
+                # This would need proper operator instantiation and execution
+                # For now, return demo result
+                return self._demo_operator_implementation(signal, category, operator_name)
+            except Exception as e:
+                print(f"Production operator failed: {e}")
+                return self._demo_operator_implementation(signal, category, operator_name)
+        else:
+            # Use demo implementation
+            return self._demo_operator_implementation(signal, category, operator_name)
+    
+    def _demo_operator_implementation(self, signal: np.ndarray, category: str, operator_name: str) -> Optional[np.ndarray]:
+        """Demo implementations of common operators"""
+        
+        if category == 'TRANSFORM':
+            if operator_name == 'fft':
+                # Return magnitude spectrum
+                fft_result = np.fft.fft(signal)
+                return np.abs(fft_result[:len(fft_result)//2])
+            
+            elif operator_name in ['filter_lowpass', 'filter_highpass']:
+                # Simple filtering using convolution
+                from scipy import signal as scipy_signal
+                if operator_name == 'filter_lowpass':
+                    b, a = scipy_signal.butter(4, 0.1, btype='low')
+                else:
+                    b, a = scipy_signal.butter(4, 0.1, btype='high')
+                try:
+                    return scipy_signal.filtfilt(b, a, signal)
+                except:
+                    # Fallback simple filter
+                    kernel = np.ones(10) / 10  # Simple moving average
+                    return np.convolve(signal, kernel, mode='same')
+            
+            elif operator_name == 'envelope':
+                # Signal envelope using Hilbert transform
+                try:
+                    from scipy.signal import hilbert
+                    return np.abs(hilbert(signal))
+                except:
+                    # Fallback envelope
+                    return np.abs(signal)
+        
+        elif category == 'AGGREGATE':
+            if operator_name == 'statistics':
+                # Return statistical features as array
+                stats = np.array([
+                    np.mean(signal),
+                    np.std(signal),
+                    np.sqrt(np.mean(signal**2)),  # RMS
+                    np.max(signal),
+                    np.min(signal)
+                ])
+                return stats
+            
+            elif operator_name == 'spectral_features':
+                # Spectral features
+                fft_mag = np.abs(np.fft.fft(signal))[:len(signal)//2]
+                freqs = np.fft.fftfreq(len(signal), 1/self.sampling_rate)[:len(signal)//2]
+                
+                spectral_features = np.array([
+                    np.sum(fft_mag),  # Total power
+                    freqs[np.argmax(fft_mag)],  # Dominant frequency
+                    np.sum(freqs * fft_mag) / np.sum(fft_mag),  # Spectral centroid
+                    np.sqrt(np.sum((freqs - np.sum(freqs * fft_mag) / np.sum(fft_mag))**2 * fft_mag) / np.sum(fft_mag))  # Spectral spread
+                ])
+                return spectral_features
+            
+            elif operator_name == 'time_features':
+                # Time domain features
+                time_features = np.array([
+                    np.mean(np.abs(signal)),  # Mean absolute value
+                    np.sqrt(np.mean(signal**2)),  # RMS
+                    np.max(signal) - np.min(signal),  # Peak-to-peak
+                    len(signal[1:][np.diff(signal > 0)])  # Zero crossings
+                ])
+                return time_features
+        
+        elif category == 'EXPAND':
+            if operator_name == 'windowing':
+                # Simple windowing - return first half
+                window_size = len(signal) // 2
+                return signal[:window_size]
+            
+            elif operator_name == 'overlapping_windows':
+                # Return overlapping windows as 2D array
+                window_size = min(256, len(signal) // 4)
+                step_size = window_size // 2
+                windows = []
+                for i in range(0, len(signal) - window_size, step_size):
+                    windows.append(signal[i:i + window_size])
+                return np.array(windows) if windows else signal.reshape(1, -1)
+        
+        # Default: return original signal
+        print(f"⚠️ Demo implementation not available for {category}.{operator_name}")
+        return signal
+    
+    def _plot_signal(self, signal: np.ndarray, title: str):
+        """Plot signal in time and frequency domain"""
+        
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=self.figsize)
+        
+        # Time domain
+        t = np.linspace(0, len(signal) / self.sampling_rate, len(signal))
+        ax1.plot(t, signal, 'b-', linewidth=1)
+        ax1.set_xlabel('Time (s)')
+        ax1.set_ylabel('Amplitude')
+        ax1.set_title(f'{title} - Time Domain')
+        ax1.grid(True, alpha=0.3)
+        
+        # Show only first 0.2 seconds for clarity
+        if len(t) > self.sampling_rate * 0.2:
+            ax1.set_xlim(0, 0.2)
+        
+        # Frequency domain
+        f = np.fft.fftfreq(len(signal), 1/self.sampling_rate)[:len(signal)//2]
+        fft_signal = np.fft.fft(signal)
+        magnitude = np.abs(fft_signal[:len(signal)//2])
+        
+        ax2.plot(f, magnitude, 'r-', linewidth=1)
+        ax2.set_xlabel('Frequency (Hz)')
+        ax2.set_ylabel('Magnitude')
+        ax2.set_title(f'{title} - Frequency Domain')
+        ax2.grid(True, alpha=0.3)
+        ax2.set_xlim(0, min(500, max(f)))
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def _plot_operator_result(self, input_signal: np.ndarray, output_signal: np.ndarray, operator_name: str):
+        """Plot operator input and output"""
+        
+        if len(output_signal.shape) > 1:
+            # 2D output (e.g., windowed signal)
+            fig, axes = plt.subplots(2, 2, figsize=self.figsize)
+            
+            # Input signal time domain
+            t_in = np.linspace(0, len(input_signal) / self.sampling_rate, len(input_signal))
+            axes[0, 0].plot(t_in, input_signal, 'b-', linewidth=1)
+            axes[0, 0].set_title('Input Signal - Time Domain')
+            axes[0, 0].set_xlabel('Time (s)')
+            axes[0, 0].set_ylabel('Amplitude')
+            axes[0, 0].grid(True, alpha=0.3)
+            
+            # Input signal frequency domain
+            f_in = np.fft.fftfreq(len(input_signal), 1/self.sampling_rate)[:len(input_signal)//2]
+            fft_in = np.abs(np.fft.fft(input_signal)[:len(input_signal)//2])
+            axes[0, 1].plot(f_in, fft_in, 'b-', linewidth=1)
+            axes[0, 1].set_title('Input Signal - Frequency Domain')
+            axes[0, 1].set_xlabel('Frequency (Hz)')
+            axes[0, 1].set_ylabel('Magnitude')
+            axes[0, 1].grid(True, alpha=0.3)
+            axes[0, 1].set_xlim(0, min(500, max(f_in)))
+            
+            # Output as 2D plot (spectrogram-like)
+            im = axes[1, 0].imshow(output_signal, aspect='auto', cmap='viridis')
+            axes[1, 0].set_title(f'{operator_name} Output (2D)')
+            axes[1, 0].set_xlabel('Sample')
+            axes[1, 0].set_ylabel('Window/Feature')
+            plt.colorbar(im, ax=axes[1, 0])
+            
+            # Output summary statistics
+            axes[1, 1].bar(range(min(10, output_signal.shape[1])), 
+                          np.mean(output_signal, axis=0)[:10])
+            axes[1, 1].set_title('Output Features (Mean across windows)')
+            axes[1, 1].set_xlabel('Feature Index')
+            axes[1, 1].set_ylabel('Mean Value')
+            axes[1, 1].grid(True, alpha=0.3)
+            
+        else:
+            # 1D output
+            fig, axes = plt.subplots(2, 2, figsize=self.figsize)
+            
+            # Input signal
+            t_in = np.linspace(0, len(input_signal) / self.sampling_rate, len(input_signal))
+            axes[0, 0].plot(t_in, input_signal, 'b-', linewidth=1, label='Input')
+            axes[0, 0].set_title('Input Signal')
+            axes[0, 0].set_xlabel('Time (s)')
+            axes[0, 0].set_ylabel('Amplitude')
+            axes[0, 0].grid(True, alpha=0.3)
+            axes[0, 0].legend()
+            
+            # Output signal
+            if len(output_signal) == len(input_signal):
+                # Same length - time domain plot
+                t_out = t_in
+                axes[0, 1].plot(t_out, output_signal, 'r-', linewidth=1, label='Output')
+                axes[0, 1].set_xlabel('Time (s)')
+            else:
+                # Different length - could be frequency domain or features
+                axes[0, 1].plot(output_signal, 'r-', linewidth=1, label='Output')
+                axes[0, 1].set_xlabel('Index')
+                
+            axes[0, 1].set_title(f'{operator_name} Output')
+            axes[0, 1].set_ylabel('Value')
+            axes[0, 1].grid(True, alpha=0.3)
+            axes[0, 1].legend()
+            
+            # Comparison (overlay if same length)
+            if len(output_signal) == len(input_signal):
+                axes[1, 0].plot(t_in, input_signal, 'b-', alpha=0.7, label='Input', linewidth=1)
+                axes[1, 0].plot(t_in, output_signal, 'r-', alpha=0.9, label='Output', linewidth=2)
+                axes[1, 0].set_title('Input vs Output Comparison')
+                axes[1, 0].set_xlabel('Time (s)')
+                axes[1, 0].set_ylabel('Amplitude')
+                axes[1, 0].legend()
+                axes[1, 0].grid(True, alpha=0.3)
+            else:
+                # Show histograms for different lengths
+                axes[1, 0].hist(input_signal, bins=30, alpha=0.7, label='Input', density=True)
+                if len(output_signal) > 1:
+                    axes[1, 0].hist(output_signal, bins=min(30, len(output_signal)), alpha=0.7, label='Output', density=True)
+                axes[1, 0].set_title('Distribution Comparison')
+                axes[1, 0].set_xlabel('Value')
+                axes[1, 0].set_ylabel('Density')
+                axes[1, 0].legend()
+                axes[1, 0].grid(True, alpha=0.3)
+            
+            # Statistics comparison
+            input_stats = [np.mean(input_signal), np.std(input_signal), np.sqrt(np.mean(input_signal**2))]
+            output_stats = [np.mean(output_signal), np.std(output_signal), np.sqrt(np.mean(output_signal**2))]
+            
+            x = np.arange(3)
+            width = 0.35
+            axes[1, 1].bar(x - width/2, input_stats, width, label='Input', alpha=0.7)
+            axes[1, 1].bar(x + width/2, output_stats, width, label='Output', alpha=0.7)
+            axes[1, 1].set_title('Statistics Comparison')
+            axes[1, 1].set_xlabel('Metric')
+            axes[1, 1].set_ylabel('Value')
+            axes[1, 1].set_xticks(x)
+            axes[1, 1].set_xticklabels(['Mean', 'Std', 'RMS'])
+            axes[1, 1].legend()
+            axes[1, 1].grid(True, alpha=0.3)
+        
+        plt.suptitle(f'Operator: {operator_name}', fontsize=16, fontweight='bold')
+        plt.tight_layout()
+        plt.show()
+    
+    def create_standalone_demo(self):
+        """Create standalone demo for non-Jupyter environments"""
+        
+        print("🎮 PHMGA OPERATOR PLAYGROUND - STANDALONE DEMO")
+        print("=" * 55)
+        
+        # Generate demo signals
+        print("\n📡 Generating demo signals...")
+        signals = {}
+        for signal_type in ['bearing_normal', 'bearing_fault', 'sine', 'noise']:
+            signals[signal_type] = self.signal_generator.generate_signal(
+                signal_type, duration=1.0, sampling_rate=10000,
+                frequency=60, amplitude=1.0, noise_level=0.1
+            )
+        
+        # Show signal info
+        for name, signal in signals.items():
+            print(f"   • {name}: {len(signal)} samples, RMS: {np.sqrt(np.mean(signal**2)):.3f}")
+        
+        # Demonstrate operators
+        print("\n⚙️ Demonstrating operators...")
+        
+        test_signal = signals['bearing_fault']
+        
+        operators_to_demo = [
+            ('TRANSFORM', 'fft'),
+            ('AGGREGATE', 'statistics'),
+            ('AGGREGATE', 'spectral_features')
+        ]
+        
+        for category, op_name in operators_to_demo:
+            print(f"\n   Applying {category}.{op_name}...")
+            result = self._apply_demo_operator(test_signal, category, op_name)
+            
+            if result is not None:
+                print(f"      Input shape: {test_signal.shape}")
+                print(f"      Output shape: {result.shape}")
+                if len(result) <= 10:
+                    print(f"      Result: {result}")
+                else:
+                    print(f"      Result (first 5): {result[:5]}...")
+        
+        print("\n🎓 Demo completed! Use create_jupyter_interface() for interactive experience.")
+        return signals
+
+
+def create_operator_playground(interface_type: str = 'jupyter') -> OperatorPlayground:
+    """Create operator playground with specified interface type"""
+    
+    playground = OperatorPlayground()
+    
+    if interface_type == 'jupyter':
+        try:
+            playground.create_jupyter_interface()
+        except ImportError:
+            print("⚠️ Jupyter widgets not available, falling back to standalone demo")
+            playground.create_standalone_demo()
+    else:
+        playground.create_standalone_demo()
+    
+    return playground
+
+
+if __name__ == "__main__":
+    # Create and run playground demo
+    playground = create_operator_playground('standalone')
+    
+    print("\n💡 To use in Jupyter notebook:")
+    print("   from operator_playground import create_operator_playground")
+    print("   playground = create_operator_playground('jupyter')")

@@ -107,6 +107,16 @@ By completing Part 5, you will understand:
 
 ## 🚀 Quick Start
 
+**📖 First Time?** Read the [Setup Guide](SETUP_GUIDE.md) for detailed instructions and troubleshooting.
+
+### Immediate Start (Recommended)
+```bash
+cd tutorials_research/Part5_PHM_Case1/
+jupyter notebook 05_Tutorial.ipynb
+```
+
+The tutorial auto-detects your setup and runs in the appropriate mode.
+
 ### Basic Usage
 ```python
 from modules.phmga_system import PHMGASystem, PHMGAConfig
@@ -114,12 +124,13 @@ from modules.phmga_system import PHMGASystem, PHMGAConfig
 # Create tutorial-friendly configuration
 config = PHMGAConfig.for_tutorial()
 
-# Initialize production-integrated system
+# Initialize system (production or demo mode)
 phmga_system = PHMGASystem(config)
 
 # Get system status
 status = phmga_system.get_processing_summary()
-print(f"Available operators: {len(OP_REGISTRY)}")
+print(f"Mode: {'Production' if status['production_mode'] else 'Demo'}")
+print(f"Available operators: {status['available_operators']}")
 ```
 
 ### Interactive Tutorial
@@ -175,11 +186,27 @@ print(f"DAG depth: {get_dag_depth(result.dag_state)}")
 - **`README.md`**: This file - system overview and usage
 - **Architecture diagrams**: Visual system representations
 
+## 🎛️ Dual Mode Operation
+
+This tutorial runs in two modes to maximize educational value and accessibility:
+
+### 🏭 Production Mode
+- **When**: Complete `src/` directory available with PHMGA components
+- **Features**: Real LangGraph workflows, actual agents, production operators
+- **Benefits**: Full industrial system experience
+
+### 🎓 Demo Mode  
+- **When**: Production components unavailable (automatic fallback)
+- **Features**: Educational mock components, concept demonstrations
+- **Benefits**: Immediate learning without setup complexity
+
+**🎯 Key Point**: Both modes provide complete educational value!
+
 ## 🔄 Two-Phase PHMGA Workflow
 
 ### Phase 1: DAG Builder Workflow
 ```python
-# Real LangGraph workflow from src/phm_outer_graph.py
+# LangGraph workflow (real or mock depending on mode)
 builder_graph = build_builder_graph()
 
 # Iterative construction: plan → execute → reflect
@@ -191,7 +218,7 @@ while depth < max_depth and needs_revision:
 
 ### Phase 2: Analysis Executor Workflow
 ```python
-# Real LangGraph workflow from src/phm_outer_graph.py
+# LangGraph workflow (real or mock depending on mode)
 executor_graph = build_executor_graph()
 
 # Linear execution: inquire → prepare → train → report

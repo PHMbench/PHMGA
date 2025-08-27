@@ -1,4 +1,4 @@
-# 📚 Research-Oriented PHMGA Tutorial Series
+# 📚 Multi-agent system for autonomous industrial signal processing | Research-Oriented PHMGA Tutorial Series
 
 Welcome to the **Research-Oriented PHMGA Tutorial Series** - a comprehensive learning path designed specifically for researchers and academics who want to leverage LLM agents for their paper writing and research workflows.
 

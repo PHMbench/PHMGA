@@ -26,7 +26,11 @@ from . import decision_schemas
 from . import multi_schemas
 
 # Import other tools that might be useful
-from .comparator_tool import compare_processed_nodes
+# Note: comparator_tool import is deferred to avoid circular dependency
+def compare_processed_nodes(*args, **kwargs):
+    """Lazy import wrapper for compare_processed_nodes to avoid circular imports."""
+    from .comparator_tool import compare_processed_nodes as _compare_processed_nodes
+    return _compare_processed_nodes(*args, **kwargs)
 
 # Define what is exposed when a user does 'from src.tools import *'
 __all__ = [

@@ -1,724 +1,511 @@
 """
 PHMGA DAG Structure Implementation
 
-Demonstrates how the PHMGA system uses Directed Acyclic Graphs
-for signal processing pipelines and fault diagnosis workflows.
+Simplified demonstration of how DAGs can be applied to 
+Prognostics and Health Management (PHM) signal processing workflows.
 """
 
-import sys
-from typing import List, Dict, Any, Optional, Tuple, Union
-from dataclasses import dataclass, field
+from typing import List, Dict, Any, Optional
+from dataclasses import dataclass
 from enum import Enum
-import numpy as np
 import time
-from abc import ABC, abstractmethod
+import random
+import math
+
+# Smart import handling
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
 
 from dag_fundamentals import ResearchDAG, DAGNode, NodeType
 
 
-class SignalProcessingNodeType(Enum):
-    """Specialized node types for signal processing"""
+# ====================================
+# NUMPY-COMPATIBLE UTILITY FUNCTIONS  
+# ====================================
+
+def random_seed(seed):
+    """Set random seed for reproducibility"""
+    if NUMPY_AVAILABLE:
+        np.random.seed(seed)
+    else:
+        random.seed(seed)
+
+
+def random_randn(*shape):
+    """Generate random normal distribution numbers"""
+    if NUMPY_AVAILABLE:
+        if len(shape) == 1:
+            return np.random.randn(shape[0])
+        return np.random.randn(*shape)
+    else:
+        # Simple normal distribution approximation using Box-Muller transform
+        if len(shape) == 1:
+            return [random.gauss(0, 1) for _ in range(shape[0])]
+        # For simplicity, just return list for multi-dim
+        total = 1
+        for s in shape:
+            total *= s
+        return [random.gauss(0, 1) for _ in range(total)]
+
+
+def linspace(start, stop, num):
+    """Generate linearly spaced numbers"""
+    if NUMPY_AVAILABLE:
+        return np.linspace(start, stop, num)
+    else:
+        if num == 1:
+            return [start]
+        step = (stop - start) / (num - 1)
+        return [start + i * step for i in range(num)]
+
+
+def sin(x):
+    """Sine function compatible with arrays"""
+    if NUMPY_AVAILABLE and hasattr(x, '__iter__'):
+        return np.sin(x)
+    elif hasattr(x, '__iter__'):
+        return [math.sin(val) for val in x]
+    else:
+        return math.sin(x)
+
+
+def array(data):
+    """Create array from data"""
+    if NUMPY_AVAILABLE:
+        return np.array(data)
+    else:
+        return list(data)
+
+
+def mean(data, **kwargs):
+    """Calculate mean"""
+    if NUMPY_AVAILABLE and hasattr(data, 'mean'):
+        return data.mean(**kwargs)
+    else:
+        if hasattr(data, '__iter__'):
+            return sum(data) / len(data) if len(data) > 0 else 0
+        return data
+
+
+def std(data, **kwargs):
+    """Calculate standard deviation"""
+    if NUMPY_AVAILABLE and hasattr(data, 'std'):
+        return data.std(**kwargs)
+    else:
+        if hasattr(data, '__iter__'):
+            if len(data) <= 1:
+                return 0
+            mean_val = mean(data)
+            variance = sum((x - mean_val) ** 2 for x in data) / len(data)
+            return math.sqrt(variance)
+        return 0
+
+
+def abs_func(data):
+    """Absolute value function"""
+    if NUMPY_AVAILABLE and hasattr(data, '__iter__'):
+        return np.abs(data)
+    elif hasattr(data, '__iter__'):
+        return [abs(x) for x in data]
+    else:
+        return abs(data)
+
+
+def max_func(data):
+    """Maximum value function"""
+    if NUMPY_AVAILABLE and hasattr(data, 'max'):
+        return data.max()
+    elif hasattr(data, '__iter__'):
+        return max(data) if len(data) > 0 else 0
+    else:
+        return data
+
+
+def sqrt(data):
+    """Square root function"""
+    if NUMPY_AVAILABLE and hasattr(data, '__iter__'):
+        return np.sqrt(data)
+    elif hasattr(data, '__iter__'):
+        return [math.sqrt(x) for x in data if x >= 0]
+    else:
+        return math.sqrt(data) if data >= 0 else 0
+
+
+class PHMProcessType(Enum):
+    """Simple PHM processing types"""
     SIGNAL_INPUT = "signal_input"
-    PREPROCESSING = "preprocessing" 
-    FEATURE_EXTRACTION = "feature_extraction"
-    TRANSFORMATION = "transformation"
+    PREPROCESSING = "preprocessing"
+    FEATURE_EXTRACTION = "feature_extraction" 
     CLASSIFICATION = "classification"
-    DIAGNOSIS_OUTPUT = "diagnosis_output"
-    VALIDATION = "validation"
-
-
-class OperatorCategory(Enum):
-    """Categories of signal processing operators in PHMGA"""
-    TIME_DOMAIN = "time_domain"
-    FREQUENCY_DOMAIN = "frequency_domain" 
-    TIME_FREQUENCY = "time_frequency"
-    STATISTICAL = "statistical"
-    FILTERING = "filtering"
-    MACHINE_LEARNING = "machine_learning"
+    DIAGNOSIS = "diagnosis"
 
 
 @dataclass
-class SignalMetadata:
-    """Metadata for signal data in PHMGA workflows"""
-    sampling_rate: float
-    duration: float
-    channels: int
-    signal_type: str = "vibration"
-    fault_labels: Optional[List[str]] = None
-    quality_score: float = 1.0
+class PHMConfig:
+    """Simple PHM analysis configuration"""
+    analysis_type: str = "bearing_fault"
+    sampling_rate: float = 10000.0
+    signal_length: int = 1000
+    fault_types: List[str] = None
     
     def __post_init__(self):
-        if self.fault_labels is None:
-            self.fault_labels = ["normal", "inner_race", "outer_race", "ball"]
+        if self.fault_types is None:
+            self.fault_types = ["normal", "inner_fault", "outer_fault", "ball_fault"]
 
-
-@dataclass 
-class OperatorSpec:
-    """Specification for signal processing operators"""
-    operator_name: str
-    category: OperatorCategory
-    input_shape: Tuple[int, ...]
-    output_shape: Tuple[int, ...]
-    parameters: Dict[str, Any] = field(default_factory=dict)
-    computational_cost: float = 1.0  # Relative cost metric
-    memory_requirement: float = 1.0  # Relative memory metric
-
-
-class SignalProcessingNode(DAGNode):
+class SimplePHMDAG(ResearchDAG):
     """
-    Specialized DAG node for signal processing operations.
+    Simplified DAG for PHM (Prognostics and Health Management) workflows.
     
-    Extends the base DAGNode with signal processing specific
-    functionality and metadata.
+    Demonstrates core DAG concepts applied to bearing fault diagnosis
+    with a clean, educational focus.
     """
     
-    def __init__(self, node_id: str, operator_spec: OperatorSpec, 
-                 operation: callable = None):
-        # Convert to standard node type
-        if operator_spec.category in [OperatorCategory.TIME_DOMAIN, 
-                                    OperatorCategory.FREQUENCY_DOMAIN,
-                                    OperatorCategory.TIME_FREQUENCY]:
-            node_type = NodeType.PROCESSING
-        elif operator_spec.category == OperatorCategory.MACHINE_LEARNING:
-            node_type = NodeType.DECISION
-        else:
-            node_type = NodeType.PROCESSING
+    def __init__(self, config: PHMConfig):
+        super().__init__(f"phm_{config.analysis_type}", f"PHM Analysis: {config.analysis_type}")
+        self.config = config
+        self._build_simple_pipeline()
+    
+    def _build_simple_pipeline(self):
+        """Build a simple 5-stage PHM pipeline"""
+        
+        def signal_input_operation(inputs):
+            """Generate synthetic vibration signal"""
+            random_seed(42)  # Reproducible results
             
-        super().__init__(node_id, operator_spec.operator_name, node_type, operation)
-        
-        self.operator_spec = operator_spec
-        self.signal_metadata: Optional[SignalMetadata] = None
-        self.performance_metrics = {
-            "execution_time": 0.0,
-            "memory_used": 0.0,
-            "accuracy": 0.0,
-            "throughput": 0.0
-        }
-    
-    def validate_input_compatibility(self, input_shape: Tuple[int, ...]) -> bool:
-        """Validate that input shape is compatible with operator"""
-        expected_shape = self.operator_spec.input_shape
-        
-        # Allow flexible batch dimension (first dimension)
-        if len(input_shape) != len(expected_shape):
-            return False
+            fs = self.config.sampling_rate
+            n_samples = self.config.signal_length
+            t = linspace(0, n_samples/fs, n_samples)
             
-        for i, (actual, expected) in enumerate(zip(input_shape, expected_shape)):
-            if i == 0:  # Skip batch dimension check
-                continue
-            if expected != -1 and actual != expected:  # -1 means any size
-                return False
-                
-        return True
-    
-    def estimate_computational_cost(self, input_size: int) -> float:
-        """Estimate computational cost for given input size"""
-        base_cost = self.operator_spec.computational_cost
-        size_factor = input_size / 1000  # Normalize to 1k samples
-        return base_cost * size_factor
-
-
-class PHMSignalProcessingDAG(ResearchDAG):
-    """
-    Specialized DAG for PHM (Prognostics and Health Management) workflows.
-    
-    Implements signal processing pipelines for bearing fault diagnosis
-    and other PHM applications using the PHMGA architecture.
-    """
-    
-    def __init__(self, analysis_type: str = "bearing_fault_diagnosis"):
-        super().__init__(f"phm_{analysis_type}", f"PHM Analysis: {analysis_type}")
-        self.analysis_type = analysis_type
-        self.signal_metadata: Optional[SignalMetadata] = None
-        self.operator_registry: Dict[str, OperatorSpec] = {}
-        self.execution_plan: List[Dict[str, Any]] = []
-        
-        # Register standard PHM operators
-        self._register_standard_operators()
-        
-        # Build analysis pipeline
-        self._build_analysis_pipeline()
-    
-    def _register_standard_operators(self):
-        """Register standard PHMGA signal processing operators"""
-        
-        # Time domain operators
-        self.operator_registry["mean"] = OperatorSpec(
-            "Mean", OperatorCategory.TIME_DOMAIN,
-            input_shape=(-1, -1), output_shape=(-1, 1),
-            parameters={"axis": 1}
-        )
-        
-        self.operator_registry["rms"] = OperatorSpec(
-            "RMS", OperatorCategory.TIME_DOMAIN,
-            input_shape=(-1, -1), output_shape=(-1, 1),
-            computational_cost=1.2
-        )
-        
-        self.operator_registry["kurtosis"] = OperatorSpec(
-            "Kurtosis", OperatorCategory.STATISTICAL,
-            input_shape=(-1, -1), output_shape=(-1, 1),
-            computational_cost=2.0
-        )
-        
-        # Frequency domain operators  
-        self.operator_registry["fft"] = OperatorSpec(
-            "FFT", OperatorCategory.FREQUENCY_DOMAIN,
-            input_shape=(-1, -1), output_shape=(-1, -1),
-            computational_cost=3.0, memory_requirement=2.0
-        )
-        
-        self.operator_registry["power_spectrum"] = OperatorSpec(
-            "Power Spectrum", OperatorCategory.FREQUENCY_DOMAIN,
-            input_shape=(-1, -1), output_shape=(-1, -1),
-            computational_cost=3.5
-        )
-        
-        # Time-frequency operators
-        self.operator_registry["stft"] = OperatorSpec(
-            "STFT", OperatorCategory.TIME_FREQUENCY,
-            input_shape=(-1, -1), output_shape=(-1, -1, -1),
-            parameters={"window": "hann", "nperseg": 256, "noverlap": 128},
-            computational_cost=5.0, memory_requirement=4.0
-        )
-        
-        self.operator_registry["wavelet"] = OperatorSpec(
-            "Wavelet Transform", OperatorCategory.TIME_FREQUENCY,
-            input_shape=(-1, -1), output_shape=(-1, -1, -1),
-            parameters={"wavelet": "db4", "levels": 6},
-            computational_cost=4.0, memory_requirement=3.0
-        )
-        
-        # Machine learning operators
-        self.operator_registry["svm_classifier"] = OperatorSpec(
-            "SVM Classifier", OperatorCategory.MACHINE_LEARNING,
-            input_shape=(-1, -1), output_shape=(-1, 4),  # 4 fault classes
-            parameters={"C": 1.0, "kernel": "rbf"},
-            computational_cost=2.5
-        )
-        
-        self.operator_registry["feature_selector"] = OperatorSpec(
-            "Feature Selection", OperatorCategory.MACHINE_LEARNING,
-            input_shape=(-1, -1), output_shape=(-1, -1),
-            parameters={"k_best": 20, "score_func": "f_classif"},
-            computational_cost=1.5
-        )
-    
-    def _build_analysis_pipeline(self):
-        """Build the complete PHM analysis pipeline"""
-        
-        if self.analysis_type == "bearing_fault_diagnosis":
-            self._build_bearing_fault_pipeline()
-        elif self.analysis_type == "vibration_analysis":
-            self._build_vibration_analysis_pipeline()
-        else:
-            self._build_generic_phm_pipeline()
-    
-    def _build_bearing_fault_pipeline(self):
-        """Build bearing fault diagnosis pipeline"""
-        
-        # Create operations for each processing step
-        operations = self._create_processing_operations()
-        
-        # Stage 1: Signal Input
-        input_node = SignalProcessingNode(
-            "signal_input",
-            OperatorSpec("Signal Input", OperatorCategory.TIME_DOMAIN, 
-                        input_shape=(None,), output_shape=(-1, -1)),
-            operations["signal_input"]
-        )
-        self.add_node(input_node)
-        
-        # Stage 2: Preprocessing (parallel)
-        preprocessing_nodes = []
-        for preprocess_op in ["normalization", "detrending", "filtering"]:
-            node = SignalProcessingNode(
-                preprocess_op,
-                OperatorSpec(preprocess_op.title(), OperatorCategory.FILTERING,
-                           input_shape=(-1, -1), output_shape=(-1, -1)),
-                operations[preprocess_op]
-            )
-            preprocessing_nodes.append(node.node_id)
-            self.add_node(node)
-            self.add_edge("signal_input", node.node_id)
-        
-        # Stage 3: Feature Extraction (parallel streams)
-        feature_nodes = []
-        
-        # Time domain features
-        time_features = ["mean", "rms", "kurtosis", "skewness", "crest_factor"]
-        for feature in time_features:
-            node = SignalProcessingNode(
-                f"time_{feature}",
-                self.operator_registry.get(feature, 
-                    OperatorSpec(feature.title(), OperatorCategory.TIME_DOMAIN,
-                               input_shape=(-1, -1), output_shape=(-1, 1))),
-                operations.get(feature, operations["generic_feature"])
-            )
-            feature_nodes.append(node.node_id)
-            self.add_node(node)
-            # Connect to all preprocessing nodes
-            for prep_node in preprocessing_nodes:
-                self.add_edge(prep_node, node.node_id)
-        
-        # Frequency domain features
-        freq_features = ["fft", "power_spectrum", "spectral_centroid"]
-        for feature in freq_features:
-            node = SignalProcessingNode(
-                f"freq_{feature}",
-                self.operator_registry.get(feature,
-                    OperatorSpec(feature.title(), OperatorCategory.FREQUENCY_DOMAIN,
-                               input_shape=(-1, -1), output_shape=(-1, -1))),
-                operations.get(feature, operations["generic_feature"])
-            )
-            feature_nodes.append(node.node_id)
-            self.add_node(node)
-            for prep_node in preprocessing_nodes:
-                self.add_edge(prep_node, node.node_id)
-        
-        # Time-frequency features
-        tf_features = ["stft", "wavelet"]
-        for feature in tf_features:
-            node = SignalProcessingNode(
-                f"tf_{feature}",
-                self.operator_registry[feature],
-                operations.get(feature, operations["generic_feature"])
-            )
-            feature_nodes.append(node.node_id)
-            self.add_node(node)
-            for prep_node in preprocessing_nodes:
-                self.add_edge(prep_node, node.node_id)
-        
-        # Stage 4: Feature Aggregation
-        aggregation_node = SignalProcessingNode(
-            "feature_aggregation",
-            OperatorSpec("Feature Aggregation", OperatorCategory.STATISTICAL,
-                        input_shape=(-1, -1), output_shape=(-1, -1)),
-            operations["feature_aggregation"]
-        )
-        self.add_node(aggregation_node)
-        for feature_node in feature_nodes:
-            self.add_edge(feature_node, "feature_aggregation")
-        
-        # Stage 5: Feature Selection
-        selection_node = SignalProcessingNode(
-            "feature_selection",
-            self.operator_registry["feature_selector"],
-            operations["feature_selection"]
-        )
-        self.add_node(selection_node)
-        self.add_edge("feature_aggregation", "feature_selection")
-        
-        # Stage 6: Classification
-        classifier_node = SignalProcessingNode(
-            "classification",
-            self.operator_registry["svm_classifier"],
-            operations["classification"]
-        )
-        self.add_node(classifier_node)
-        self.add_edge("feature_selection", "classification")
-        
-        # Stage 7: Diagnosis Output
-        output_node = SignalProcessingNode(
-            "diagnosis_output",
-            OperatorSpec("Diagnosis Output", OperatorCategory.MACHINE_LEARNING,
-                        input_shape=(-1, 4), output_shape=(-1, 1)),
-            operations["diagnosis_output"]
-        )
-        self.add_node(output_node)
-        self.add_edge("classification", "diagnosis_output")
-        
-        # Stage 8: Validation (parallel)
-        validation_node = SignalProcessingNode(
-            "result_validation",
-            OperatorSpec("Result Validation", OperatorCategory.STATISTICAL,
-                        input_shape=(-1, 1), output_shape=(-1, 1)),
-            operations["validation"]
-        )
-        self.add_node(validation_node)
-        self.add_edge("diagnosis_output", "result_validation")
-    
-    def _create_processing_operations(self) -> Dict[str, callable]:
-        """Create actual processing operations for demonstration"""
-        
-        operations = {}
-        
-        def signal_input(inputs):
-            """Generate demo vibration signal data"""
-            np.random.seed(42)  # Reproducible results
+            # Simulate bearing vibration with fault frequencies
+            signal_base = sin([2 * math.pi * 60 * val for val in t])  # Shaft frequency
+            signal_fault = [0.3 * math.sin(2 * math.pi * 157 * val) for val in t]  # Bearing fault frequency
+            noise = [0.1 * val for val in random_randn(len(t))]  # Noise
             
-            # Simulate bearing vibration signals
-            fs = 10000  # 10 kHz sampling rate
-            duration = 1.0  # 1 second
-            t = np.linspace(0, duration, int(fs * duration))
-            
-            # Base signal with bearing fault frequencies
-            signal = np.sin(2 * np.pi * 60 * t)  # Shaft frequency
-            signal += 0.3 * np.sin(2 * np.pi * 157 * t)  # Inner race fault
-            signal += 0.2 * np.sin(2 * np.pi * 236 * t)  # Outer race fault
-            signal += 0.1 * np.random.randn(len(t))  # Noise
-            
-            # Create batch of signals
-            batch_size = 10
-            signals = np.array([signal + 0.1 * np.random.randn(len(t)) 
-                              for _ in range(batch_size)])
+            # Combine signals
+            signal = [base + fault + n for base, fault, n in zip(signal_base, signal_fault, noise)]
             
             return {
-                "signals": signals,
+                "raw_signal": signal,
                 "sampling_rate": fs,
-                "duration": duration,
-                "signal_shape": signals.shape,
-                "metadata": SignalMetadata(fs, duration, 1)
+                "signal_length": len(signal),
+                "signal_type": self.config.analysis_type
             }
         
-        def normalization(inputs):
-            """Normalize signal data"""
-            signals = inputs.get("signals", np.array([]))
-            if signals.size == 0:
-                return {"normalized_signals": np.array([])}
+        def preprocessing_operation(inputs):
+            """Basic signal preprocessing"""
+            time.sleep(0.1)  # Simulate processing time
+            signal = inputs.get("signal_input", {}).get("raw_signal", [])
             
-            # Z-score normalization
-            normalized = (signals - np.mean(signals, axis=1, keepdims=True)) / (
-                np.std(signals, axis=1, keepdims=True) + 1e-8)
+            # Simple preprocessing: normalize and filter
+            if len(signal) > 0:
+                signal_mean = mean(signal)
+                signal_std = std(signal)
+                normalized = [(x - signal_mean) / (signal_std + 1e-8) for x in signal]
+                
+                # Simple moving average filter  
+                window_size = 5
+                filtered = []
+                for i in range(len(normalized)):
+                    start = max(0, i - window_size // 2)
+                    end = min(len(normalized), i + window_size // 2 + 1)
+                    window_avg = sum(normalized[start:end]) / (end - start)
+                    filtered.append(window_avg)
+            else:
+                filtered = signal
             
-            return {"normalized_signals": normalized}
+            return {
+                "processed_signal": filtered,
+                "preprocessing_applied": ["normalization", "moving_average_filter"]
+            }
         
-        def detrending(inputs):
-            """Remove trend from signals"""
-            signals = inputs.get("signals", np.array([]))
-            if signals.size == 0:
-                return {"detrended_signals": np.array([])}
+        def feature_extraction_operation(inputs):
+            """Extract key features from signal"""
+            time.sleep(0.15)
+            signal = inputs.get("preprocessing", {}).get("processed_signal", [])
             
-            # Simple detrending (remove mean)
-            detrended = signals - np.mean(signals, axis=1, keepdims=True)
-            
-            return {"detrended_signals": detrended}
-        
-        def filtering(inputs):
-            """Apply filtering to signals"""
-            signals = inputs.get("signals", np.array([]))
-            if signals.size == 0:
-                return {"filtered_signals": np.array([])}
-            
-            # Simple low-pass filter simulation
-            from scipy.signal import butter, filtfilt
-            b, a = butter(4, 0.3)  # 4th order Butterworth filter
-            
-            filtered = np.array([filtfilt(b, a, sig) for sig in signals])
-            
-            return {"filtered_signals": filtered}
-        
-        def generic_feature(inputs):
-            """Generic feature extraction"""
-            # Find the first signal-like array in inputs
-            signal_data = None
-            for key, value in inputs.items():
-                if isinstance(value, np.ndarray) and value.ndim >= 2:
-                    signal_data = value
-                    break
-                elif isinstance(value, dict):
-                    for k, v in value.items():
-                        if isinstance(v, np.ndarray) and v.ndim >= 2:
-                            signal_data = v
-                            break
-            
-            if signal_data is None:
-                return {"features": np.random.randn(10, 1)}  # Dummy features
+            if len(signal) == 0:
+                return {"features": random_randn(5)}
             
             # Extract simple statistical features
-            features = np.array([
-                np.mean(signal_data, axis=1),
-                np.std(signal_data, axis=1),
-                np.max(signal_data, axis=1) - np.min(signal_data, axis=1)
-            ]).T
+            signal_squared = [x**2 for x in signal]
+            signal_abs = abs_func(signal)
+            signal_mean = mean(signal)
+            signal_std = std(signal)
             
-            return {"features": features}
-        
-        def feature_aggregation(inputs):
-            """Aggregate features from multiple sources"""
-            all_features = []
-            
-            for key, value in inputs.items():
-                if isinstance(value, dict) and "features" in value:
-                    features = value["features"]
-                    if isinstance(features, np.ndarray):
-                        all_features.append(features)
-            
-            if not all_features:
-                return {"aggregated_features": np.random.randn(10, 20)}
-            
-            # Concatenate all features
-            aggregated = np.concatenate(all_features, axis=1)
-            
-            return {"aggregated_features": aggregated}
-        
-        def feature_selection(inputs):
-            """Select best features for classification"""
-            features = inputs.get("feature_aggregation", {}).get("aggregated_features", 
-                                                               np.random.randn(10, 20))
-            
-            # Simple feature selection - select top half
-            n_features = features.shape[1]
-            selected_indices = np.argsort(np.var(features, axis=0))[-n_features//2:]
-            selected_features = features[:, selected_indices]
+            features = {
+                "rms": sqrt(mean(signal_squared)),
+                "peak": max_func(signal_abs), 
+                "kurtosis": mean([((x - signal_mean)/signal_std)**4 for x in signal]) if signal_std > 0 else 0,
+                "crest_factor": max_func(signal_abs) / sqrt(mean(signal_squared)) if mean(signal_squared) > 0 else 0,
+                "energy": sum(signal_squared)
+            }
             
             return {
-                "selected_features": selected_features,
-                "selected_indices": selected_indices,
-                "n_features_selected": len(selected_indices)
+                "extracted_features": features,
+                "feature_vector": list(features.values()),
+                "feature_names": list(features.keys())
             }
         
-        def classification(inputs):
-            """Classify fault types"""
-            features = inputs.get("feature_selection", {}).get("selected_features",
-                                                              np.random.randn(10, 10))
+        def classification_operation(inputs):
+            """Classify fault type based on features"""
+            time.sleep(0.1)
+            features = inputs.get("feature_extraction", {}).get("feature_vector", [])
             
-            # Simulate classification probabilities
-            n_samples = features.shape[0]
-            n_classes = 4  # normal, inner, outer, ball
+            if len(features) == 0:
+                features = random_randn(5)
             
-            # Generate realistic-looking probabilities
-            logits = np.random.randn(n_samples, n_classes)
-            probabilities = np.exp(logits) / np.sum(np.exp(logits), axis=1, keepdims=True)
+            # Simulate classification with simple thresholds
+            # Simple alternative to numpy.random.dirichlet
+            abs_features = [abs(f) + 0.1 for f in features[:4]]  # Take first 4 for 4 fault classes
+            total = sum(abs_features)
+            fault_probs = [f / total for f in abs_features]
+            predicted_class = fault_probs.index(max(fault_probs))
             
             return {
-                "class_probabilities": probabilities,
-                "predicted_classes": np.argmax(probabilities, axis=1),
-                "confidence_scores": np.max(probabilities, axis=1)
+                "fault_probabilities": {
+                    fault: prob for fault, prob in zip(self.config.fault_types, fault_probs)
+                },
+                "predicted_fault": self.config.fault_types[predicted_class],
+                "confidence": fault_probs[predicted_class]
             }
         
-        def diagnosis_output(inputs):
-            """Generate final diagnosis"""
-            classification_result = inputs.get("classification", {})
-            predicted_classes = classification_result.get("predicted_classes", np.array([0]))
-            confidence_scores = classification_result.get("confidence_scores", np.array([0.5]))
+        def diagnosis_operation(inputs):
+            """Generate final diagnosis report"""
+            classification = inputs.get("classification", {})
+            predicted_fault = classification.get("predicted_fault", "unknown")
+            confidence = classification.get("confidence", 0.5)
             
-            # Map class indices to fault names
-            fault_names = ["Normal", "Inner Race Fault", "Outer Race Fault", "Ball Fault"]
+            # Generate diagnosis recommendations
+            if confidence > 0.8:
+                severity = "High confidence"
+                recommendation = "Monitor closely, schedule maintenance"
+            elif confidence > 0.6:
+                severity = "Medium confidence" 
+                recommendation = "Continue monitoring, verify with additional data"
+            else:
+                severity = "Low confidence"
+                recommendation = "Collect more data for reliable diagnosis"
             
-            diagnoses = []
-            for class_idx, confidence in zip(predicted_classes, confidence_scores):
-                diagnosis = {
-                    "fault_type": fault_names[class_idx],
-                    "confidence": float(confidence),
-                    "severity": "High" if confidence > 0.8 else "Medium" if confidence > 0.6 else "Low",
-                    "recommendation": "Monitor closely" if confidence > 0.7 else "Further analysis needed"
-                }
-                diagnoses.append(diagnosis)
-            
-            return {"diagnoses": diagnoses}
-        
-        def validation(inputs):
-            """Validate diagnosis results"""
-            diagnoses = inputs.get("diagnosis_output", {}).get("diagnoses", [])
-            
-            validation_results = {
-                "total_samples": len(diagnoses),
-                "high_confidence_count": sum(1 for d in diagnoses if d.get("confidence", 0) > 0.8),
-                "average_confidence": np.mean([d.get("confidence", 0) for d in diagnoses]),
-                "fault_distribution": {},
-                "validation_passed": True
+            return {
+                "final_diagnosis": predicted_fault,
+                "confidence_level": confidence,
+                "severity_assessment": severity,
+                "maintenance_recommendation": recommendation,
+                "diagnosis_timestamp": time.time()
             }
-            
-            # Count fault types
-            for diagnosis in diagnoses:
-                fault_type = diagnosis.get("fault_type", "Unknown")
-                validation_results["fault_distribution"][fault_type] = (
-                    validation_results["fault_distribution"].get(fault_type, 0) + 1
-                )
-            
-            return validation_results
         
-        # Populate operations dictionary
-        operations.update({
-            "signal_input": signal_input,
-            "normalization": normalization,
-            "detrending": detrending,
-            "filtering": filtering,
-            "generic_feature": generic_feature,
-            "feature_aggregation": feature_aggregation,
-            "feature_selection": feature_selection,
-            "classification": classification,
-            "diagnosis_output": diagnosis_output,
-            "validation": validation
-        })
+        # Create DAG nodes
+        nodes = [
+            DAGNode("signal_input", "Signal Acquisition", NodeType.INPUT, signal_input_operation),
+            DAGNode("preprocessing", "Signal Preprocessing", NodeType.PROCESSING, preprocessing_operation),  
+            DAGNode("feature_extraction", "Feature Extraction", NodeType.PROCESSING, feature_extraction_operation),
+            DAGNode("classification", "Fault Classification", NodeType.DECISION, classification_operation),
+            DAGNode("diagnosis", "Diagnosis Report", NodeType.OUTPUT, diagnosis_operation)
+        ]
         
-        # Add specific feature operations
-        for feature_name in ["mean", "rms", "kurtosis", "fft", "power_spectrum", "stft", "wavelet"]:
-            operations[feature_name] = generic_feature
+        # Add nodes to DAG
+        for node in nodes:
+            self.add_node(node)
         
-        return operations
+        # Create pipeline connections
+        edges = [
+            ("signal_input", "preprocessing"),
+            ("preprocessing", "feature_extraction"), 
+            ("feature_extraction", "classification"),
+            ("classification", "diagnosis")
+        ]
+        
+        for from_node, to_node in edges:
+            self.add_edge(from_node, to_node)
+
+
+class ParallelPHMDAG(ResearchDAG):
+    """
+    PHM DAG with parallel feature extraction branches.
     
-    def _build_vibration_analysis_pipeline(self):
-        """Build generic vibration analysis pipeline"""
-        # Simplified pipeline for demo
-        pass
+    Demonstrates fan-out/fan-in pattern in signal processing.
+    """
     
-    def _build_generic_phm_pipeline(self):
-        """Build generic PHM pipeline"""
-        # Simplified pipeline for demo
-        pass
+    def __init__(self, config: PHMConfig):
+        super().__init__(f"parallel_phm_{config.analysis_type}", 
+                        f"Parallel PHM Analysis: {config.analysis_type}")
+        self.config = config
+        self._build_parallel_pipeline()
     
-    def get_execution_plan(self) -> List[Dict[str, Any]]:
-        """Generate execution plan with resource estimates"""
-        if not self.execution_order:
-            self.topological_sort()
+    def _build_parallel_pipeline(self):
+        """Build parallel feature extraction pipeline"""
         
-        execution_plan = []
+        def signal_input_operation(inputs):
+            """Generate synthetic signal data"""
+            random_seed(42)
+            t_vals = linspace(0, 1, 1000)
+            signal = [math.sin(2 * math.pi * 60 * t) for t in t_vals]
+            noise = random_randn(1000)
+            signal = [s + 0.1 * n for s, n in zip(signal, noise)]
+            return {"signal": signal}
         
-        for node_id in self.execution_order:
-            node = self.nodes[node_id]
-            if isinstance(node, SignalProcessingNode):
-                plan_item = {
-                    "node_id": node_id,
-                    "operator": node.operator_spec.operator_name,
-                    "category": node.operator_spec.category.value,
-                    "estimated_cost": node.operator_spec.computational_cost,
-                    "memory_requirement": node.operator_spec.memory_requirement,
-                    "dependencies": list(node.dependencies),
-                    "parallel_group": self._get_parallel_group(node_id)
+        def time_domain_features(inputs):
+            """Extract time domain features"""
+            time.sleep(0.1)
+            signal = inputs.get("signal_input", {}).get("signal", [])
+            return {
+                "time_features": {
+                    "rms": sqrt(mean([x**2 for x in signal])) if len(signal) > 0 else 0,
+                    "peak": max_func(abs_func(signal)) if len(signal) > 0 else 0
                 }
-                execution_plan.append(plan_item)
+            }
         
-        return execution_plan
-    
-    def _get_parallel_group(self, node_id: str) -> int:
-        """Determine which nodes can execute in parallel"""
-        # Simple grouping based on dependencies
-        if not self.nodes[node_id].dependencies:
-            return 0  # Input nodes
+        def frequency_domain_features(inputs):
+            """Extract frequency domain features"""
+            time.sleep(0.15)
+            signal = inputs.get("signal_input", {}).get("signal", [])
+            if len(signal) > 0:
+                # Simplified spectral energy calculation (without FFT)
+                signal_energy = sum([x**2 for x in signal])
+                return {"freq_features": {"spectral_energy": signal_energy}}
+            return {"freq_features": {"spectral_energy": 0}}
         
-        max_dep_group = 0
-        for dep in self.nodes[node_id].dependencies:
-            if dep in [n["node_id"] for n in self.execution_plan]:
-                dep_group = next(n["parallel_group"] for n in self.execution_plan 
-                               if n["node_id"] == dep)
-                max_dep_group = max(max_dep_group, dep_group)
+        def statistical_features(inputs):
+            """Extract statistical features"""
+            time.sleep(0.08)
+            signal = inputs.get("signal_input", {}).get("signal", [])
+            if len(signal) > 0:
+                signal_mean = mean(signal)
+                signal_std = std(signal)
+                return {
+                    "stat_features": {
+                        "mean": signal_mean,
+                        "std": signal_std,
+                        "kurtosis": mean([((x - signal_mean)/signal_std)**4 for x in signal]) if signal_std > 0 else 0
+                    }
+                }
+            return {"stat_features": {"mean": 0, "std": 0, "kurtosis": 0}}
         
-        return max_dep_group + 1
-    
-    def optimize_execution(self) -> Dict[str, Any]:
-        """Optimize DAG execution based on resource constraints"""
-        plan = self.get_execution_plan()
+        def feature_fusion(inputs):
+            """Combine all extracted features"""
+            time_feats = inputs.get("time_features", {}).get("time_features", {})
+            freq_feats = inputs.get("freq_features", {}).get("freq_features", {})
+            stat_feats = inputs.get("stat_features", {}).get("stat_features", {})
+            
+            all_features = {**time_feats, **freq_feats, **stat_feats}
+            return {"fused_features": all_features}
         
-        optimization_results = {
-            "original_sequential_cost": sum(item["estimated_cost"] for item in plan),
-            "parallel_groups": {},
-            "critical_path": [],
-            "memory_peaks": [],
-            "optimization_suggestions": []
-        }
+        def final_diagnosis(inputs):
+            """Make diagnosis from fused features"""
+            features = inputs.get("feature_fusion", {}).get("fused_features", {})
+            
+            # Simple diagnosis logic
+            if len(features) > 0:
+                feature_values = list(features.values())
+                avg_magnitude = mean(abs_func(feature_values))
+                
+                if avg_magnitude > 0.5:
+                    diagnosis = "Potential fault detected"
+                else:
+                    diagnosis = "Normal operation"
+            else:
+                diagnosis = "Insufficient data"
+            
+            return {"diagnosis": diagnosis, "feature_summary": features}
         
-        # Group by parallel execution possibility
-        parallel_groups = {}
-        for item in plan:
-            group = item["parallel_group"]
-            if group not in parallel_groups:
-                parallel_groups[group] = []
-            parallel_groups[group].append(item)
+        # Create nodes
+        nodes = [
+            DAGNode("signal_input", "Signal Input", NodeType.INPUT, signal_input_operation),
+            DAGNode("time_features", "Time Domain Features", NodeType.PROCESSING, time_domain_features),
+            DAGNode("freq_features", "Frequency Features", NodeType.PROCESSING, frequency_domain_features),
+            DAGNode("stat_features", "Statistical Features", NodeType.PROCESSING, statistical_features),
+            DAGNode("feature_fusion", "Feature Fusion", NodeType.AGGREGATION, feature_fusion),
+            DAGNode("final_diagnosis", "Final Diagnosis", NodeType.OUTPUT, final_diagnosis)
+        ]
         
-        optimization_results["parallel_groups"] = parallel_groups
+        for node in nodes:
+            self.add_node(node)
         
-        # Calculate optimized execution time (parallel)
-        group_costs = [max(item["estimated_cost"] for item in group) 
-                      for group in parallel_groups.values()]
-        optimization_results["optimized_parallel_cost"] = sum(group_costs)
+        # Fan-out to parallel feature extraction
+        for feature_node in ["time_features", "freq_features", "stat_features"]:
+            self.add_edge("signal_input", feature_node)
         
-        # Calculate speedup
-        speedup = optimization_results["original_sequential_cost"] / optimization_results["optimized_parallel_cost"]
-        optimization_results["speedup_factor"] = speedup
+        # Fan-in to fusion
+        for feature_node in ["time_features", "freq_features", "stat_features"]:
+            self.add_edge(feature_node, "feature_fusion")
         
-        # Memory analysis
-        for group_id, group_items in parallel_groups.items():
-            memory_usage = sum(item["memory_requirement"] for item in group_items)
-            optimization_results["memory_peaks"].append({
-                "group": group_id,
-                "memory_usage": memory_usage
-            })
-        
-        # Generate optimization suggestions
-        max_memory_group = max(optimization_results["memory_peaks"], 
-                             key=lambda x: x["memory_usage"])
-        if max_memory_group["memory_usage"] > 8.0:  # Threshold
-            optimization_results["optimization_suggestions"].append(
-                "Consider memory optimization for high-memory operations"
-            )
-        
-        if speedup < 2.0:
-            optimization_results["optimization_suggestions"].append(
-                "Limited parallelization benefit - consider algorithmic optimizations"
-            )
-        
-        return optimization_results
+        # Final diagnosis
+        self.add_edge("feature_fusion", "final_diagnosis")
 
 
-def demonstrate_phm_dag():
-    """Demonstrate PHM DAG structure and execution"""
+# Convenience functions
+
+def create_simple_phm_workflow(analysis_type: str = "bearing_fault") -> SimplePHMDAG:
+    """Create a simple 5-stage PHM analysis workflow"""
+    config = PHMConfig(
+        analysis_type=analysis_type,
+        sampling_rate=10000.0,
+        signal_length=1000,
+        fault_types=["normal", "inner_fault", "outer_fault", "ball_fault"]
+    )
+    return SimplePHMDAG(config)
+
+
+def create_parallel_phm_workflow(analysis_type: str = "vibration_analysis") -> ParallelPHMDAG:
+    """Create a parallel feature extraction PHM workflow"""
+    config = PHMConfig(analysis_type=analysis_type)
+    return ParallelPHMDAG(config)
+
+
+def demonstrate_phm_dag_patterns():
+    """Demonstrate PHM DAG patterns for educational purposes"""
     
-    print("⚙️ PHMGA DAG STRUCTURE DEMONSTRATION")
+    print("🔧 PHM DAG PATTERNS DEMONSTRATION")
     print("=" * 50)
     
-    print("\\n🔧 Creating Bearing Fault Diagnosis DAG...")
-    phm_dag = PHMSignalProcessingDAG("bearing_fault_diagnosis")
+    # Pattern 1: Simple Linear PHM Pipeline
+    print("\n🔄 Pattern 1: Simple Linear PHM Pipeline")
+    simple_dag = create_simple_phm_workflow("bearing_fault_diagnosis")
+    print(f"   • Nodes: {len(simple_dag.nodes)} (linear sequence)")
+    print(f"   • Workflow: Signal → Preprocessing → Features → Classification → Diagnosis")
     
-    print(f"✅ Created PHM DAG with {len(phm_dag.nodes)} nodes")
-    print(f"📋 Operator registry: {len(phm_dag.operator_registry)} operators")
+    results = simple_dag.execute()
+    stats = simple_dag.get_statistics()
+    print(f"   • Execution: {stats['success_rate']:.1%} success rate")
     
-    # Show DAG structure
-    print("\\n📊 DAG Structure:")
-    print(phm_dag.visualize_structure())
+    if 'diagnosis' in results:
+        diagnosis = results['diagnosis']
+        print(f"   • Result: {diagnosis.get('final_diagnosis', 'Unknown')}")
+        print(f"   • Confidence: {diagnosis.get('confidence_level', 0):.2f}")
     
-    # Show execution plan
-    print("\\n🗺️ Execution Plan:")
-    execution_plan = phm_dag.get_execution_plan()
-    for i, item in enumerate(execution_plan):
-        print(f"   {i+1}. {item['operator']} ({item['category']}) - Group {item['parallel_group']}")
-        print(f"      Cost: {item['estimated_cost']:.1f}, Memory: {item['memory_requirement']:.1f}")
+    # Pattern 2: Parallel Feature Extraction
+    print("\n⚡ Pattern 2: Parallel Feature Extraction")
+    parallel_dag = create_parallel_phm_workflow("multi_domain_analysis")
+    print(f"   • Nodes: {len(parallel_dag.nodes)} (parallel branches)")
+    print(f"   • Structure: Input → [Time|Frequency|Statistical] → Fusion → Diagnosis")
     
-    # Show optimization analysis
-    print("\\n🚀 Execution Optimization Analysis:")
-    optimization = phm_dag.optimize_execution()
-    print(f"   • Sequential cost: {optimization['original_sequential_cost']:.1f}")
-    print(f"   • Parallel cost: {optimization['optimized_parallel_cost']:.1f}")
-    print(f"   • Speedup factor: {optimization['speedup_factor']:.1f}x")
-    print(f"   • Parallel groups: {len(optimization['parallel_groups'])}")
+    parallel_results = parallel_dag.execute()
+    parallel_stats = parallel_dag.get_statistics()
+    print(f"   • Execution: {parallel_stats['success_rate']:.1%} success rate")
     
-    if optimization['optimization_suggestions']:
-        print("\\n💡 Optimization Suggestions:")
-        for suggestion in optimization['optimization_suggestions']:
-            print(f"   • {suggestion}")
+    if 'final_diagnosis' in parallel_results:
+        parallel_diagnosis = parallel_results['final_diagnosis']
+        print(f"   • Result: {parallel_diagnosis.get('diagnosis', 'Unknown')}")
     
-    # Execute the DAG
-    print("\\n🚀 Executing PHM Analysis Pipeline...")
-    try:
-        start_time = time.time()
-        results = phm_dag.execute()
-        execution_time = time.time() - start_time
-        
-        print(f"✅ Pipeline completed in {execution_time:.2f} seconds")
-        
-        # Show diagnosis results
-        if "diagnosis_output" in results:
-            diagnoses = results["diagnosis_output"].get("diagnoses", [])
-            print(f"\\n🔍 Diagnosis Results ({len(diagnoses)} samples):")
-            for i, diagnosis in enumerate(diagnoses[:3]):  # Show first 3
-                print(f"   Sample {i+1}: {diagnosis['fault_type']} "
-                     f"(confidence: {diagnosis['confidence']:.2f}, "
-                     f"severity: {diagnosis['severity']})")
-        
-        # Show validation results
-        if "result_validation" in results:
-            validation = results["result_validation"]
-            print(f"\\n✅ Validation Results:")
-            print(f"   • Average confidence: {validation.get('average_confidence', 0):.2f}")
-            print(f"   • High confidence samples: {validation.get('high_confidence_count', 0)}")
-            print(f"   • Fault distribution: {validation.get('fault_distribution', {})}")
-        
-    except Exception as e:
-        print(f"❌ Pipeline execution failed: {e}")
-        import traceback
-        traceback.print_exc()
+    # Show timing comparison
+    simple_time = sum(node.execution_time for node in simple_dag.nodes.values())
+    parallel_time = max([node.execution_time for node in parallel_dag.nodes.values() 
+                        if node.node_id != "signal_input"])
+    
+    print(f"\n⚡ Parallelization Benefit:")
+    print(f"   • Linear pipeline: {simple_time:.2f}s total")
+    print(f"   • Parallel pipeline: {parallel_time:.2f}s (max branch)")
+    if simple_time > 0 and parallel_time > 0:
+        speedup = simple_time / parallel_time
+        print(f"   • Theoretical speedup: {speedup:.1f}x")
+    
+    print(f"\n📊 Both PHM patterns ready for visualization!")
+    print("Use DAGVisualizer to plot these workflows and see the differences.")
+    print("Example: simple_dag.plot_dag() or quick_plot(parallel_dag)")
 
 
 if __name__ == "__main__":
-    demonstrate_phm_dag()
+    demonstrate_phm_dag_patterns()
