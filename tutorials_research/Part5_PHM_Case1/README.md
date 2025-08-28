@@ -1,6 +1,6 @@
 # Part 5: Complete PHMGA System - Production Integration Tutorial
 
-## 🎯 Overview
+<!-- ## 🎯 Overview
 
 This tutorial demonstrates the **complete production PHMGA system** by integrating real components from the `src/` directory with educational guidance. Unlike previous parts that used simplified implementations, Part 5 shows how to work with the actual production system used for industrial bearing fault diagnosis.
 
@@ -36,7 +36,7 @@ This tutorial demonstrates the **complete production PHMGA system** by integrati
     ├── initialize_state() - Case initialization
     ├── save_state/load_state() - State persistence
     └── generate_final_report() - Reporting
-```
+``` -->
 
 ## Abstract
 
@@ -55,7 +55,7 @@ Validation on bearing fault diagnosis datasets demonstrates that this framework 
 **Contributions.**
 
 1. We **fuse an LLM agent** with a **neuro‑symbolically specified operator library**, bridging high‑level reasoning and precise numerical computation.
-2. We propose a **multi‑agent loop**—**Planner, Executor, Reviewer**—that builds and refines a **DAG‑shaped decision chain** (nodes = operators, edges = dataflow) with transparent semantics.
+2. We propose a **multi‑agent loop**—**Planner, Executor, Reviewer**—that builds and refines a **Directed Acyclic Graph (DAG) ‑shaped decision chain** (nodes = operators, edges = dataflow) with transparent semantics.
 3. We deliver **evidence** on two public bearing datasets, including **zero‑shot cross‑condition generalization** under variable speed.
 
 **What’s new vs. expert systems / end‑to‑end DL / raw LLMs.** Our framework retains interpretability (like expert systems) but is *adaptive*; retains learning benefits (like DL) but is *auditable*; and anchors an LLM’s free‑form reasoning **to formal operator specs**, mitigating hallucination.
@@ -64,13 +64,13 @@ Validation on bearing fault diagnosis datasets demonstrates that this framework 
 |-----------|--------------|----------------|-----------------|------|
 | Autonomous Planning | ✓✓ | ✗ | ✓ | ✓ |
 | Interpretability | ✓✓ | ✓✓ | ~ | ~ |
-| Dynamic Adaptation | ✓✓ | ✗ | ✓ | ~ |
+| Dynamic Adaptation | ✓✓ | ✗ | ✓ | ✓ |
 | Domain Knowledge | ✓✓ | ✓✓ | ✗ | ✗ |
 | Tool Usage | ✓✓ | / | / | ✗ |
 
 Legend: ✓✓ (core strength), ✓ (capable), ~ (limited), ✗ (insufficient), / (not applicable)
 
-## React
+## method
 
 ### React
 <p align="center">

@@ -12,7 +12,7 @@ Unlike traditional tutorials that use abstract examples, this series focuses on 
 - Building complex research pipelines using DAG architectures
 - Integrating everything into production-ready systems like PHMGA
 
-**No Mock Implementations** - Every example uses real LLM providers, actual APIs, and working code you can adapt to your research.
+
 
 ## 🚀 Quick Start
 
