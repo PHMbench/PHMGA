@@ -347,7 +347,18 @@ def apply_windowing(signals: Dict[str, np.ndarray], labels: Dict[str, str], wind
     return windowed_signals, windowed_labels
 
 def initialize_state(
-    user_instruction: str, metadata_path: str, h5_path: str, ref_ids: list[int], test_ids: list[int], case_name: str, use_window: bool = True
+    user_instruction: str,
+    metadata_path: str,
+    h5_path: str,
+    ref_ids: list[int],
+    test_ids: list[int],
+    case_name: str,
+    use_window: bool = True,
+    *,
+    allow_test_labels_for_reporting: bool = False,
+    train_backend: str = "shallow",
+    model_config_path: str | None = None,
+    save_dir: str | None = None,
 ) -> PHMState:
     """
     根据初始输入，创建并初始化整个系统的状态（PHMState）。
@@ -364,8 +375,6 @@ def initialize_state(
     if not ref_signals or not test_signals:
         raise ValueError("Failed to load reference or test signals.")
 
-    all_labels = {**ref_labels, **test_labels}
-    
     # --- 确定通道数 ---
     # 从第一个加载的信号中推断出通道数
     first_sig_array = next(iter(ref_signals.values()))
@@ -390,7 +399,8 @@ def initialize_state(
             shape=first_sig_shape,
             meta={
                 "channel": channel_name,
-                "labels": all_labels,  # 所有标签信息都附加到每个通道节点
+                "labels_ref": ref_labels,  # 训练/搜索可见
+                "labels_tst": test_labels,  # 默认不可见（仅允许报告阶段读取）
                 "fs": ref_metadata['Sample_rate'].iloc[0]  # 采样频率
             }
         )
@@ -414,6 +424,12 @@ def initialize_state(
         reference_signal=next(iter(nodes.values())),
         test_signal=next(iter(nodes.values())),
         dag_state=dag_state,
+        labels_ref=ref_labels,
+        labels_tst=test_labels,
+        allow_test_labels_for_reporting=allow_test_labels_for_reporting,
+        train_backend=train_backend,
+        model_config_path=model_config_path,
+        save_dir=save_dir,
     )
 
 
