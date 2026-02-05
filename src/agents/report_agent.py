@@ -44,7 +44,14 @@ def report_agent(
 def report_agent_node(state: PHMState) -> Dict[str, str]:
     """Adapter using :class:`PHMState` for the outer graph."""
     try:  # generate final DAG image
-        save_path = os.path.join("/home/lq/LQcode/2_project/PHMBench/PHMGA/save", "final_dag.png")
+        base_save_dir = (
+            getattr(state, "save_dir", None)
+            or os.environ.get("PHM_SAVE_DIR")
+            or os.environ.get("PHM_DATA_DIR")
+            or os.path.join(os.getcwd(), "save")
+        )
+        case_name = getattr(state, "case_name", "") or "case"
+        save_path = os.path.join(base_save_dir, case_name, "final_dag.png")
         state.tracker().write_png(save_path)
     except Exception:
         pass

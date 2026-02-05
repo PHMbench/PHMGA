@@ -13,7 +13,6 @@ from src.tools.signal_processing_schemas import get_operator
 from src.tools.multi_schemas import MultiVariableOp
 
 
-DATA_DIR = os.environ.get("PHM_DATA_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
 MAX_STEPS = 20
 
 
@@ -161,9 +160,15 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     llm = get_llm(None)
     
     # Get the base save directory from environment, fallback to a default
-    base_save_dir = os.environ.get("PHM_SAVE_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
+    base_save_dir = (
+        getattr(state, "save_dir", None)
+        or os.environ.get("PHM_SAVE_DIR")
+        or os.environ.get("PHM_DATA_DIR")
+        or os.path.join(os.getcwd(), "save")
+    )
     # Construct a case-specific directory
-    case_save_dir = os.path.join(base_save_dir, state.case_name, "nodes")
+    case_name = state.case_name or "case"
+    case_save_dir = os.path.join(base_save_dir, case_name, "nodes")
 
     # 采用不可变模式：创建当前节点和叶子的副本
     new_nodes = state.dag_state.nodes.copy()
@@ -172,7 +177,13 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     for idx, step in enumerate(state.detailed_plan[:MAX_STEPS], start=1):
         op_name = step.get("op_name")
         params = step.get("params", {})
-        parent_ids_str = step.get("parent") # This might be a string like "ch1" or "ch2,ch1"
+        parent_ids_str = step.get("parent")  # This might be a string like "ch1" or "ch2,ch1"
+        # Backward-compat: older plans may embed parent inside params.
+        if not parent_ids_str and isinstance(params, dict):
+            parent_ids_str = params.get("parent")
+            if "parent" in params:
+                params = params.copy()
+                params.pop("parent", None)
 
         if not parent_ids_str:
             state.dag_state.error_log.append(f"Missing parent in step {step}")
@@ -216,7 +227,8 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
             # For multi-parent nodes, we can concatenate channel names
             channel = ",".join(sorted([new_nodes[pid].meta.get("channel", "unknown") for pid in parent_ids]))
             
-            op_abbr = op_name
+            # Backward-compatible naming: abbreviate simple tokens (no underscore) to 3 chars.
+            op_abbr = op_name[:3] if "_" not in op_name and len(op_name) > 3 else op_name
             # Create a more robust ID for multi-parent nodes
             parent_id_abbr = "_".join(sorted(parent_ids))
             new_id = f"{op_abbr}_{idx:02d}_{parent_id_abbr}"
@@ -294,11 +306,14 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     temp_tracker.update(new_dag_state)
     
     # Save the graph image to a case-specific directory
-    case_graph_dir = os.path.join(base_save_dir, state.case_name, "graphs")
+    case_graph_dir = os.path.join(base_save_dir, case_name, "graphs")
     os.makedirs(case_graph_dir, exist_ok=True)
     png_path = os.path.join(case_graph_dir, f"dag_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
     temp_tracker.write_png(png_path)
     new_dag_state.graph_path = png_path + ".png"
+
+    # Backward-compat: also mutate state in-place for callers/tests that expect it.
+    state.dag_state = new_dag_state
 
     return {"dag_state": new_dag_state, "executed_steps": executed_steps}
 
@@ -390,4 +405,3 @@ if __name__ == "__main__":
     assert updated_dag.leaves == ["fft_01_ch1", "fft_02_ch2", "fft_03_ch3", "cross_correlation_04_ch1_ch2"]
     
     print("✅ Execute Agent test passed!")
-

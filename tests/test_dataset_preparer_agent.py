@@ -12,7 +12,14 @@ def test_dataset_preparer_agent(tmp_path):
     tst_path = tmp_path / "tst.npy"
     np.save(ref_path, sig)
     np.save(tst_path, sig + 1)
-    ch1 = InputData(node_id="ch1", data={"signal": sig}, results={"ref": sig, "tst": sig}, parents=[], shape=sig.shape)
+    ch1 = InputData(
+        node_id="ch1",
+        data={"signal": sig},
+        results={"ref": sig, "tst": sig},
+        parents=[],
+        shape=sig.shape,
+        meta={"labels_ref": {"s1": 0}, "labels_tst": {"s1": 0}},
+    )
     proc = ProcessedData(
         node_id="fft_01_ch1",
         parents=["ch1"],

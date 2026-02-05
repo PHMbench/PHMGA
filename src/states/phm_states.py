@@ -304,6 +304,19 @@ class PHMState(BaseModel):
     accuracy: Optional[float] = None
     ml_results: Dict[str, Any] = Field(default_factory=dict)
 
+    # --- Data boundary / training control (SPEC redlines) ---
+    labels_ref: Dict[str, Any] = Field(default_factory=dict, description="Train/val-visible labels.")
+    labels_tst: Dict[str, Any] = Field(default_factory=dict, description="Test labels (default not visible).")
+    allow_test_labels_for_reporting: bool = Field(
+        default=False, description="If true, allow using labels_tst for reporting-only metrics."
+    )
+
+    # --- Backend selection / model config ---
+    train_backend: str = Field(default="shallow", description="Training backend: shallow|tspn|both.")
+    model_config_path: str | None = Field(default=None, description="Path to model_config.yaml for TSPN.")
+    save_dir: str | None = Field(default=None, description="Base directory to save artifacts.")
+    run_dir: str | None = Field(default=None, description="Resolved run directory for this execution.")
+
     _tracker_instance: Optional[Any] = PrivateAttr(default=None)
 
     def tracker(self) -> "DAGTracker":
@@ -313,5 +326,4 @@ class PHMState(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
-
 

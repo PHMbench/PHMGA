@@ -5,8 +5,14 @@ try:
 except Exception:  # pragma: no cover - optional dependency may be missing
     graph = None
 
-# MODIFIED: Import the new decoupled graph builders
-from .phm_outer_graph import build_builder_graph, build_executor_graph
+try:  # pragma: no cover - optional dependency may be missing (e.g., langgraph)
+    # Decoupled graph builders
+    from .phm_outer_graph import build_builder_graph, build_executor_graph
+except Exception:
+    build_builder_graph = None  # type: ignore
+    build_executor_graph = None  # type: ignore
+
+# LLM helper does not depend on langgraph
 from .model import get_llm
 
 # MODIFIED: Expose the new graph builders in the public API

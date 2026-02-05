@@ -24,7 +24,7 @@ def reflect_agent(
     stage: Optional[str] = None,
     dag_blueprint: Optional[Dict[str, Any]] = None,
     issues_summary: Optional[str] = None,
-    state: "PHMState", # 添加 state 以访问 DAG 信息
+    state: "PHMState" | None = None,  # Optional for backward compatibility in offline tests
 ) -> Dict[str, str]:
     """Quality check the DAG and return a decision with reason."""
     # --- 诊断性打印 ---
@@ -38,7 +38,7 @@ def reflect_agent(
         return {"decision": "halt", "reason": "INVALID_INPUT"}
 
     # 1. 计算DAG的深度，作为LLM决策的上下文之一
-    depth = get_dag_depth(state.dag_state)
+    depth = get_dag_depth(state.dag_state) if state is not None else 0
     print(f"\n--- Current DAG Depth for Reflection: {depth} ---\n")
 
     # 2. 准备给LLM的上下文，包括深度信息
@@ -61,10 +61,10 @@ def reflect_agent(
             "stage": stage,
             "dag_blueprint": json.dumps(dag_blueprint, ensure_ascii=False),
             "issues_summary": contextual_issues, # 使用包含深度信息的上下文
-            "min_depth": state.min_depth,
-            "min_width": state.min_width,
-            "max_depth": state.max_depth,
-            "current_depth": get_dag_depth(state.dag_state)
+            "min_depth": state.min_depth if state is not None else 0,
+            "min_width": state.min_width if state is not None else 0,
+            "max_depth": state.max_depth if state is not None else 999,
+            "current_depth": get_dag_depth(state.dag_state) if state is not None else depth,
         }
     )
     # 漂亮地打印出LLM的响应以供调试

@@ -50,6 +50,11 @@ def run_case(config_path: str):
             ref_ids=config['ref_ids'],
             test_ids=config['test_ids'],
             case_name=config['name']
+            ,
+            allow_test_labels_for_reporting=bool(config.get("allow_test_labels_for_reporting", False)),
+            train_backend=str(config.get("train_backend", "shallow")),
+            model_config_path=config.get("model_config_path"),
+            save_dir=config.get("save_dir"),
         )
 
         # --- Part 1: Run DAG Builder Workflow ---
@@ -100,18 +105,22 @@ def run_case(config_path: str):
     # At this point, `built_state` is guaranteed to be a valid state object,
     # either loaded from file or newly created.
 
-    # # --- Part 2: Run DAG Executor Workflow ---
-    # print("\n--- [Part 2] Starting DAG Executor Workflow ---")
-    # executor_app = build_executor_graph()
-    # thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}} # Use a new thread for the executor
-    
-    # final_state = built_state.model_copy(deep=True)
-    # for event in executor_app.stream(built_state, config=thread_config):
-    #     for node_name, state_update in event.items():
-    #         print(f"--- Executor Node Executed: {node_name} ---")
-    #         if state_update is not None:
-    #             for key, value in state_update.items():
-    #                 setattr(final_state, key, value)
+    # --- Part 2: Run DAG Executor Workflow (optional) ---
+    if bool(config.get("run_executor", False)):
+        print("\n--- [Part 2] Starting DAG Executor Workflow ---")
+        executor_app = build_executor_graph()
+        thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}}  # Use a new thread for the executor
+
+        final_state = built_state.model_copy(deep=True)
+        for event in executor_app.stream(built_state, config=thread_config):
+            for node_name, state_update in event.items():
+                print(f"--- Executor Node Executed: {node_name} ---")
+                if state_update is not None:
+                    for key, value in state_update.items():
+                        setattr(final_state, key, value)
+
+        # --- Part 3: Generate Final Report ---
+        generate_final_report(final_state, config['report_path'])
 
     # # --- Part 3: Visualize Feature Evolution ---
     # root_node = next(iter(final_state.dag_state.nodes.values()))

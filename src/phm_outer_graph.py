@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Any, Dict
+
 from langgraph.graph import StateGraph, END, START
 
 from .agents.dataset_preparer_agent import dataset_preparer_agent
+from .agents.deep_model_train_agent import deep_model_train_agent
 from .agents.execute_agent import execute_agent
 from .agents.inquirer_agent import inquirer_agent
 from .agents.plan_agent import plan_agent
@@ -48,10 +51,33 @@ def build_executor_graph() -> StateGraph:
     """
     builder = StateGraph(PHMState)
 
+    def _train_models(state: PHMState) -> dict:
+        backend = (getattr(state, "train_backend", None) or "shallow").lower()
+        ml_results: Dict[str, Any] = dict(getattr(state, "ml_results", {}) or {})
+
+        if backend in {"shallow", "both"}:
+            shallow = shallow_ml_agent(datasets=state.datasets)
+            # Backward-compatible top-level fields for report prompt.
+            ml_results.update(shallow)
+            ml_results["shallow"] = shallow
+
+        if backend in {"tspn", "both"}:
+            tmp_state = state.model_copy(deep=False)
+            tmp_state.ml_results = ml_results
+            out = deep_model_train_agent(tmp_state)
+            if "ml_results" in out:
+                ml_results = out["ml_results"]
+            updates = {"ml_results": ml_results}
+            if "run_dir" in out:
+                updates["run_dir"] = out["run_dir"]
+            return updates
+
+        return {"ml_results": ml_results}
+
     # Define the nodes for the execution pipeline
     builder.add_node("inquire", lambda state: inquirer_agent(state, metrics=["cosine", "euclidean"]))
     builder.add_node("prepare", dataset_preparer_agent)
-    builder.add_node("train", lambda state: {"ml_results": shallow_ml_agent(datasets=state.datasets)})
+    builder.add_node("train", _train_models)
     builder.add_node("report", report_agent_node)
 
     # Define the linear flow of the execution graph
@@ -64,3 +90,15 @@ def build_executor_graph() -> StateGraph:
     return builder.compile()
 
 
+# Backward-compatible alias for older tests/examples.
+def build_outer_graph() -> StateGraph:  # pragma: no cover
+    """
+    Legacy entry-point kept for compatibility.
+
+    The codebase now exposes two decoupled graphs:
+    - build_builder_graph(): iteratively constructs a DAG
+    - build_executor_graph(): executes a finalized DAG
+
+    For legacy callers, we return the builder graph.
+    """
+    return build_builder_graph()

@@ -117,7 +117,13 @@ def plan_agent(state: PHMState) -> dict:
 
         # 3. 手动预处理（例如，处理空的 params）
         for step_data in plan_dict.get("plan", []):
-            if "params" in step_data and step_data["params"] == '':
+            # Backward-compat: some older prompts put parent inside params.
+            if "parent" not in step_data:
+                params = step_data.get("params")
+                if isinstance(params, dict) and "parent" in params:
+                    step_data["parent"] = params.pop("parent")
+
+            if step_data.get("params") in ("", None):
                 step_data["params"] = {}
         
         # 4. 使用 Plan.model_validate() 验证和转换
@@ -273,4 +279,3 @@ if __name__ == "__main__":
     # 依次运行测试
     # run_test_with_fake_llm(state)
     run_test_with_real_llm(state)
-
