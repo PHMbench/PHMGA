@@ -1,0 +1,59 @@
+# Minimal TSPN model_config.yaml (edited by outer agent; immutable truth for runs)
+model:
+  name: tspn
+  device: cpu
+  # These must match your current dataset/dag fused view:
+  # - in_dim = L (signal length)
+  # - in_channels = C (number of channels in dag_state.channels)
+  num_classes: 5
+  in_dim: 4096
+  in_channels: 2
+
+  out_channels: 3
+  scale: 4
+  skip_connection: true
+
+  # Default init for all WF tokens (can be overridden per-op via params)
+  wf_init:
+    f_c_mu: 0.0
+    f_c_sigma: 0.1
+    f_b_mu: 0.0
+    f_b_sigma: 0.1
+
+  layers:
+    - gate_temperature: 1.0
+      ops:
+        - token: I
+        - token: WF
+        - token: HT
+        - token: FFT
+
+  features: [Mean, Std, RMS]
+
+  # Soft delete (gate ~= 1e-6) by stable op_uid: "L{layer}:{token}:{occurrence}"
+  disabled_ops: {}
+  # Example:
+  # disabled_ops:
+  #   "L1:FFT:0": 1.0e-6
+
+train:
+  seed: 42
+  epochs: 10
+  batch_size: 32
+  lr: 1.0e-3
+  weight_decay: 0.0
+  val_ratio: 0.2
+  patience: 10
+
+  # Smoke-run/debug mode
+  debug: false
+  debug_max_samples: 16
+  debug_epochs: 1
+
+explain:
+  topk_ops: 3
+  save_wavefilters: true
+
+meta:
+  note: "Outer-loop agent edits this file only (Immutable Config)."
+
