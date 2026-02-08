@@ -366,57 +366,7 @@ class EmpiricalModeDecompositionOp(ExpandOp):
         return np.stack(imf_results, axis=0)
 
 
-if __name__ == "__main__":
-    print("--- Testing expand_schemas.py ---")
-    
-    # Create a dummy signal: Batch=1, Length=8192, Channels=1
-    fs = 2048
-    L = 8192
-    t = np.linspace(0, L/fs, L, endpoint=False)
-    dummy_signal = np.sin(2 * np.pi * 50 * t) + 0.5 * np.sin(2 * np.pi * 150 * t)
-    dummy_signal = dummy_signal[np.newaxis, :, np.newaxis] # Shape it to (1, 8192, 1)
-
-    # 1. Test PatchOp
-    print("\n1. Testing PatchOp...")
-    patch_op = PatchOp(patch_size=1024, stride=512)
-    patches = patch_op.execute(dummy_signal)
-    print(f"Input shape: {dummy_signal.shape}")
-    print(f"PatchOp output shape: {patches.shape}")
-    assert patches.shape == (1, 15, 1024, 1)
-
-    # 2. Test STFTOp
-    print("\n2. Testing STFTOp...")
-    stft_op = STFTOp(fs=fs, nperseg=256, noverlap=128)
-    stft_result = stft_op.execute(dummy_signal)
-    print(f"STFTOp output shape: {stft_result.shape}")
-    assert stft_result.shape[0] == 1 and stft_result.shape[3] == 1
-
-    # 3. Test VariableQTransformOp
-    print("\n3. Testing VariableQTransformOp...")
-    vqt_op = VariableQTransformOp(fs=fs, hop_length=256, fmin=20, n_bins=48)
-    vqt_result = vqt_op.execute(dummy_signal)
-    print(f"VQT output shape: {vqt_result.shape}")
-    assert vqt_result.shape == (1, 48, 33, 1)
-
-    # 4. Test TimeDelayEmbeddingOp
-    print("\n4. Testing TimeDelayEmbeddingOp...")
-    tde_op = TimeDelayEmbeddingOp(dimension=3, delay=4)
-    tde_result = tde_op.execute(dummy_signal)
-    print(f"TimeDelayEmbeddingOp output shape: {tde_result.shape}")
-    assert tde_result.shape == (1, 8192 - (3-1)*4, 3, 1)
-
-    # 5. Test EmpiricalModeDecompositionOp
-    print("\n5. Testing EmpiricalModeDecompositionOp...")
-    emd_op = EmpiricalModeDecompositionOp()
-    emd_result = emd_op.execute(dummy_signal)
-    print(f"EMD output shape: {emd_result.shape}")
-    assert emd_result.shape[0] == 1 and emd_result.shape[1] == dummy_signal.shape[1]
-
-    # 6. Test VariationalModeDecompositionOp
-    print("\n6. Testing VariationalModeDecompositionOp...")
-    vmd_op = VariationalModeDecompositionOp(K=5)
-    vmd_result = vmd_op.execute(dummy_signal)
-    print(f"VMD output shape: {vmd_result.shape}")
-    assert vmd_result.shape == (1, 8192, 5, 1)
-
-    print("\n--- expand_schemas.py tests passed! ---")
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(
+        "This module is library code. Use the pytest suite for validation instead of inline demos."
+    )

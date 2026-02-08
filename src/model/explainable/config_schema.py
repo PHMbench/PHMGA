@@ -63,6 +63,10 @@ class TrainConfig(BaseModel):
     val_ratio: float = Field(default=0.2, gt=0.0, lt=1.0)
     patience: int = Field(default=10, ge=1, description="Early stopping patience on val metric.")
 
+    # Regularization on operator gates (encourage sparsity / avoid redundancy).
+    l1_gate: float = Field(default=0.0, ge=0.0, description="L1 penalty weight on gate values.")
+    entropy_gate: float = Field(default=0.0, ge=0.0, description="Entropy penalty weight on gate probabilities.")
+
     # Smoke-run/debug knobs (must never be enabled by default in production).
     debug: bool = False
     debug_max_samples: int = Field(default=16, ge=1)
@@ -96,4 +100,3 @@ class TSPNConfig(BaseModel):
 
 def validate_config_dict(data: Dict[str, Any]) -> TSPNConfig:
     return TSPNConfig.model_validate(data)
-

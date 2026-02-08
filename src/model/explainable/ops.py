@@ -76,16 +76,23 @@ class HilbertEnvelope(nn.Module):
 class FFTMagnitude(nn.Module):
     """FFT magnitude with length-preserving projection.
 
-    The magnitude spectrum length is F=L//2+1. We interpolate it back to L so
-    the operator contract stays (B, L, C). This is a pragmatic choice to keep
-    a consistent tensor contract for downstream nn modules.
+    The magnitude spectrum length is F=L//2+1. We project it back to length L
+    so the operator contract stays (B, L, C).
+
+    Alignment strategies
+    --------------------
+    - ``interp`` (recommended): linear interpolation that stretches the
+      [0, fs/2] axis to L bins (more intuitive physically).
+    - ``mirror``: mirror the rfft magnitude to a length-L "full spectrum"
+      view (may introduce artificial high-frequency symmetry).
     """
 
     op_token: str = "FFT"
 
-    def __init__(self, *, channels: int):
+    def __init__(self, *, channels: int, align_strategy: str = "interp"):
         super().__init__()
         self.channels = int(channels)
+        self.align_strategy = str(align_strategy).strip().lower()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.ndim != 3:
@@ -93,9 +100,27 @@ class FFTMagnitude(nn.Module):
         B, L, C = x.shape
         mag = torch.abs(torch.fft.rfft(x, dim=1, norm="ortho"))  # (B, F, C)
         mag_bcf = mag.permute(0, 2, 1)  # (B, C, F)
-        # Interpolate to length L
-        mag_bcl = F.interpolate(mag_bcf, size=L, mode="linear", align_corners=False)
-        return mag_bcl.permute(0, 2, 1)  # (B, L, C)
+        if self.align_strategy in {"interp", "interpolate"}:
+            # Interpolate to length L
+            mag_bcl = F.interpolate(mag_bcf, size=L, mode="linear", align_corners=False)
+            return mag_bcl.permute(0, 2, 1)  # (B, L, C)
+
+        if self.align_strategy in {"mirror", "mirroring"}:
+            # Mirror rfft magnitude to a length-L representation.
+            # For odd L: rfft bins F=(L+1)//2 and 2*F-1==L
+            # For even L: rfft bins F=L//2+1 and 2*F-2==L
+            if L % 2 == 0:
+                tail = mag_bcf[..., 1:-1].flip(-1)
+            else:
+                tail = mag_bcf[..., 1:].flip(-1)
+            full = torch.cat([mag_bcf, tail], dim=-1)
+            if full.shape[-1] != L:
+                raise ValueError(
+                    f"FFTMagnitude mirror alignment produced length {full.shape[-1]} != L={L}"
+                )
+            return full.permute(0, 2, 1)
+
+        raise ValueError(f"Unknown FFT align_strategy: {self.align_strategy!r}")
 
 
 class WaveFilters(nn.Module):
@@ -156,8 +181,7 @@ def make_op(token: str, *, channels: int, **kwargs) -> nn.Module:
     if token == "HT":
         return HilbertEnvelope(channels=channels)
     if token == "FFT":
-        return FFTMagnitude(channels=channels)
+        return FFTMagnitude(channels=channels, **kwargs)
     if token == "WF":
         return WaveFilters(channels=channels, **kwargs)
     raise ValueError(f"Unknown TSPN op token: {token}")
-

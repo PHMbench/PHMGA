@@ -24,7 +24,23 @@ def _best_effort_load_dotenv() -> None:
     try:  # pragma: no cover
         from dotenv import load_dotenv
 
-        load_dotenv()
+        # python-dotenv may assert in some non-file contexts (e.g., `python - <<'PY'`).
+        candidates = [
+            Path.cwd() / ".env",
+            Path(__file__).resolve().parents[2] / ".env",  # repo root
+        ]
+        for path in candidates:
+            try:
+                if path.exists() and load_dotenv(dotenv_path=path, override=False):
+                    return
+            except Exception:
+                continue
+
+        # Fallback: try the default search behavior (may work in file-based execution).
+        try:
+            load_dotenv(override=False)
+        except Exception:
+            pass
         return
     except Exception:
         pass

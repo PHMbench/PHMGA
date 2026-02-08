@@ -295,67 +295,7 @@ class TransferFunctionOp(MultiVariableOp):
         return {"frequencies": f, "transfer_function": H}
 
 
-if __name__ == "__main__":
-    print("--- Testing multi_schemas.py ---")
-
-    # Create two dummy signals
-    fs = 100
-    L = 100
-    t = np.linspace(0, L/fs, L, endpoint=False)
-    sig1 = np.sin(2 * np.pi * 10 * t)[np.newaxis, :, np.newaxis]
-    sig2 = np.cos(2 * np.pi * 10 * t)[np.newaxis, :, np.newaxis] # 90 degree phase shift
-
-    # 1. Test ArithmeticOp
-    print("\n1. Testing ArithmeticOp (subtract)...")
-    arith_op = ArithmeticOp(operation="subtract")
-    arith_result = arith_op.execute({"signal1": sig1, "signal2": sig2})
-    print(f"Input shape: {sig1.shape}")
-    print(f"ArithmeticOp output shape: {arith_result.shape}")
-    assert arith_result.shape == sig1.shape
-
-    # 2. Test PhaseDifferenceOp
-    print("\n2. Testing PhaseDifferenceOp...")
-    # Get complex FFTs first (not just magnitude)
-    fft1 = np.fft.rfft(sig1, axis=-2)
-    fft2 = np.fft.rfft(sig2, axis=-2)
-    
-    phase_op = PhaseDifferenceOp()
-    phase_result = phase_op.execute({"fft1": fft1, "fft2": fft2})
-    print(f"PhaseDifferenceOp output shape: {phase_result.shape}")
-    assert phase_result.shape == fft1.shape
-    # The phase difference at the 10Hz bin should be close to -pi/2 (-1.57)
-    phase_at_10hz = phase_result[0, 10, 0]
-    print(f"Phase difference at 10Hz: {phase_at_10hz:.2f} radians")
-    assert np.isclose(phase_at_10hz, -np.pi/2, atol=0.1)
-
-    # 3. Test ConvolutionOp
-    print("\n3. Testing ConvolutionOp...")
-    # Use a simple moving average kernel
-    kernel = np.ones(5) / 5
-    conv_op = ConvolutionOp(mode="same")
-    conv_result = conv_op.execute({"signal": sig1, "kernel": kernel})
-    print(f"ConvolutionOp output shape: {conv_result.shape}")
-    assert conv_result.shape == sig1.shape
-
-    # 4. Test DynamicTimeWarpingOp
-    print("\n4. Testing DynamicTimeWarpingOp...")
-    # Create two slightly different signals
-    sig_dtw1 = np.sin(np.linspace(0, 20, 100))
-    sig_dtw2 = np.sin(np.linspace(0, 20, 120)) # Different length
-    dtw_op = DynamicTimeWarpingOp()
-    dtw_result = dtw_op.execute({"signal1": sig_dtw1, "signal2": sig_dtw2})
-    print(f"DTW distance: {dtw_result.item():.2f}")
-    assert dtw_result.ndim == 1
-
-    # 5. Test TransferFunctionOp
-    print("\n5. Testing TransferFunctionOp...")
-    # Create a simple system (e.g., a filter)
-    system = ([1.0], [1.0, 0.5])
-    input_sig = np.random.randn(1000)
-    output_sig = signal.lfilter(system[0], system[1], input_sig)
-    tf_op = TransferFunctionOp(fs=100)
-    tf_result = tf_op.execute({"input_signal": input_sig, "output_signal": output_sig})
-    print(f"Transfer function output keys: {tf_result.keys()}")
-    assert "frequencies" in tf_result and "transfer_function" in tf_result
-
-    print("\n--- multi_schemas.py tests passed! ---")
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(
+        "This module is library code. Use the pytest suite for validation instead of inline demos."
+    )

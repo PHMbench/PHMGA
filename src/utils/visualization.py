@@ -127,31 +127,7 @@ def visualize_datasets_umap(
 
 
 if __name__ == "__main__":
-    print("--- Running Visualization Demo ---")
-
-    # 1. Create a mock 'datasets' dictionary, simulating output from dataset_preparer_agent
-    mock_datasets = {
-        "fft_kurtosis_ch1": {
-            "X_train": np.random.rand(50, 10),  # 50 samples, 10 features
-            "y_train": np.zeros(50),             # All class 0
-            "X_test": np.random.rand(50, 10) + 0.5, # 50 samples, 10 features (shifted)
-            "y_test": np.ones(50),               # All class 1
-        },
-        "hilbert_rms_ch2": {
-            "X_train": np.random.rand(60, 5),   # 60 samples, 5 features
-            "y_train": np.array([0] * 30 + [1] * 30), # Mixed classes 0 and 1
-            "X_test": np.random.rand(40, 5),
-            "y_test": np.array([2] * 20 + [3] * 20), # Classes 2 and 3
-        },
-        "empty_node_ch3": { # A node with not enough data
-            "X_train": np.random.rand(1, 20),
-            "y_train": np.array([0]),
-            "X_test": np.array([]).reshape(0, 20), # Empty test set
-            "y_test": np.array([]),
-        }
-    }
-
-    # 2. Call the new visualization function with the mock data
-    visualize_datasets_umap(mock_datasets)
-
-    print("\n--- Demo Finished ---")
+    raise SystemExit(
+        "This module is not intended to be executed as a script. "
+        "Use it from the workflow/reporting code (e.g., dataset_preparer_agent outputs)."
+    )

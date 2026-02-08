@@ -329,68 +329,7 @@ class PrincipalComponentAnalysisOp(TransformOp):
 #         return {"y": y, "e": e, "w": w}
 
 
-if __name__ == "__main__":
-    print("--- Testing transform_schemas.py ---")
-    
-    # Create a dummy signal: Batch=1, Length=2048, Channels=1
-    fs = 1024
-    L = 2048
-    t = np.linspace(0, L/fs, L, endpoint=False)
-    dummy_signal = np.sin(2 * np.pi * 100 * t) + np.random.randn(L) * 0.1
-    dummy_signal = dummy_signal[np.newaxis, :, np.newaxis] # Shape it to (1, 2048, 1)
-
-    # 1. Test DifferentiateOp
-    print("\n1. Testing DifferentiateOp...")
-    diff_op = DifferentiateOp()
-    diff_result = diff_op.execute(dummy_signal)
-    print(f"Input shape: {dummy_signal.shape}")
-    print(f"DifferentiateOp output shape: {diff_result.shape}")
-    assert diff_result.shape == (1, 2047, 1)
-
-    # 2. Test PowerSpectralDensityOp
-    print("\n2. Testing PowerSpectralDensityOp...")
-    psd_op = PowerSpectralDensityOp(fs=fs, nperseg=512)
-    psd_result = psd_op.execute(dummy_signal)
-    print(f"PSD output shape: {psd_result.shape}")
-    assert psd_result.shape == (1, 257, 1)
-
-    # 3. Test PowerToDecibelOp
-    print("\n3. Testing PowerToDecibelOp...")
-    db_op = PowerToDecibelOp()
-    db_result = db_op.execute(psd_result)
-    print(f"PowerToDecibelOp output shape: {db_result.shape}")
-    assert db_result.shape == psd_result.shape
-    assert np.max(db_result) <= 0 # dB of power should be <= 0
-
-    # 4. Test SavitzkyGolayFilterOp
-    print("\n4. Testing SavitzkyGolayFilterOp...")
-    noisy_signal = dummy_signal + np.random.randn(*dummy_signal.shape) * 0.5
-    sg_op = SavitzkyGolayFilterOp(window_length=51, polyorder=3)
-    sg_result = sg_op.execute(noisy_signal)
-    print(f"SavitzkyGolayFilterOp output shape: {sg_result.shape}")
-    assert sg_result.shape == noisy_signal.shape
-    # Check if noise is reduced (variance should be smaller)
-    assert np.var(sg_result) < np.var(noisy_signal)
-
-    # 5. Test PrincipalComponentAnalysisOp
-    print("\n5. Testing PrincipalComponentAnalysisOp...")
-    # Create dummy features
-    features = np.random.rand(100, 10) # 100 samples, 10 features
-    pca_op = PrincipalComponentAnalysisOp(n_components=3)
-    pca_result = pca_op.execute(features)
-    print(f"PCA output shape: {pca_result.shape}")
-    assert pca_result.shape == (100, 3)
-
-    # 6. Test AdaptiveFilterOp
-    print("\n6. Testing AdaptiveFilterOp...")
-    # Create a desired signal and a noisy input
-    d = np.sin(np.linspace(0, 100, 1000))
-    noise = np.random.randn(1000) * 0.1
-    x_in = d + noise
-    af_op = AdaptiveFilterOp(n=1, mu=0.1)
-    af_result = af_op.execute({"d": d, "x": x_in})
-    print(f"Adaptive filter output keys: {af_result.keys()}")
-    assert "y" in af_result and "e" in af_result
-    assert np.isfinite(af_result["e"]).all()
-
-    print("\n--- transform_schemas.py tests passed! ---")
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(
+        "This module is library code. Use the pytest suite for validation instead of inline demos."
+    )

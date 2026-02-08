@@ -225,3 +225,59 @@ class TransparentSignalProcessingNetwork(nn.Module):
                     layer_info["wavefilters"].append(entry)
             out["layers"].append(layer_info)
         return out
+
+    def init_weights_from_metadata(self, metadata: Dict[str, Any]) -> None:
+        """Initialize learnable parameters from DAG/bridge metadata.
+
+        Supported metadata keys
+        -----------------------
+        - ``wf_by_op_uid``: {op_uid: {fc_hz, fb_hz, fs_hz}}
+        """
+        if not isinstance(metadata, dict):
+            return
+        wf_map = metadata.get("wf_by_op_uid")
+        if not isinstance(wf_map, dict) or not wf_map:
+            return
+
+        def _logit(p: "torch.Tensor") -> "torch.Tensor":
+            p = torch.clamp(p, 1e-6, 1.0 - 1e-6)
+            return torch.log(p / (1.0 - p))
+
+        def _softplus_inv(y: "torch.Tensor") -> "torch.Tensor":
+            # Inverse of softplus: x = log(exp(y) - 1)
+            y = torch.clamp(y, 1e-8)
+            return torch.log(torch.expm1(y))
+
+        import torch
+
+        with torch.no_grad():
+            for layer in getattr(self, "signal_layers", []):
+                for uid, module in zip(layer.op_uids, layer.modules_dict.values()):
+                    if not isinstance(module, WaveFilters):
+                        continue
+                    spec = wf_map.get(uid)
+                    if not isinstance(spec, dict):
+                        continue
+                    fs_hz = spec.get("fs_hz")
+                    fc_hz = spec.get("fc_hz")
+                    fb_hz = spec.get("fb_hz")
+                    if fs_hz is None or fc_hz is None or fb_hz is None:
+                        continue
+
+                    fs = float(fs_hz)
+                    if fs <= 0:
+                        continue
+                    fc_norm = float(fc_hz) / fs
+                    fb_norm = float(fb_hz) / fs
+
+                    # Clamp to operator's normalized domain.
+                    fc_norm = min(max(fc_norm, 1e-4), 0.5 - 1e-4)
+                    fb_norm = max(fb_norm, 1e-6)
+
+                    # WaveFilters.fc_norm = 0.5*sigmoid(_fc)  => sigmoid(_fc) = 2*fc_norm
+                    target_sig = torch.full_like(module._fc, 2.0 * fc_norm)
+                    module._fc.copy_(_logit(target_sig))
+
+                    # WaveFilters.fb_norm = softplus(_fb) + 1e-6  => _fb = softplus_inv(fb_norm-1e-6)
+                    target_fb = torch.full_like(module._fb, fb_norm - 1e-6)
+                    module._fb.copy_(_softplus_inv(target_fb))

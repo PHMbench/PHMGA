@@ -18,12 +18,23 @@ from .signal_processing_schemas import (
     MultiVariableOp,
 )
 
-# Import all schema files to trigger the registration of operators
-from . import aggregate_schemas
-from . import transform_schemas
-from . import expand_schemas
-from . import decision_schemas
-from . import multi_schemas
+# Best-effort import schema files to trigger operator registration.
+# Some schema modules may have optional heavy dependencies (e.g. skimage).
+# We must not fail import of the whole package if one optional dependency is missing.
+_SCHEMA_MODULES = [
+    "aggregate_schemas",
+    "transform_schemas",
+    "expand_schemas",
+    "decision_schemas",
+    "multi_schemas",
+]
+
+for _mod in _SCHEMA_MODULES:  # pragma: no cover
+    try:
+        __import__(f"{__name__}.{_mod}")
+    except Exception:
+        # Optional dependency missing or import-time error; skip registration for that module.
+        pass
 
 # Import other tools that might be useful
 from .comparator_tool import compare_processed_nodes
