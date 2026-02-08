@@ -156,6 +156,27 @@ def _execute_single_variable_op(op, parent_id, new_nodes):
 
 
 def execute_agent(state: PHMState) -> Dict[str, Any]:
+    # Optional new mode: run neuro-symbolic (TSPN) training directly and return TrainReport updates.
+    task_type = getattr(state, "task_type", "signal_processing_dag")
+    if str(task_type).strip().lower() == "neuro_symbolic_train":
+        from src.agents.deep_model_train_agent import deep_model_train_agent
+        from src.agents.tspn_bootstrap_agent import tspn_bootstrap_agent
+
+        tmp_state = state
+        updates: Dict[str, Any] = {}
+        if not getattr(tmp_state, "model_config_path", None):
+            boot = tspn_bootstrap_agent(tmp_state)
+            updates.update(boot)
+            tmp_state = tmp_state.model_copy(deep=False)
+            if "model_config_path" in boot:
+                tmp_state.model_config_path = boot["model_config_path"]
+            if "current_model_config" in boot:
+                tmp_state.current_model_config = boot["current_model_config"]
+
+        train_out = deep_model_train_agent(tmp_state)
+        updates.update(train_out)
+        return updates
+
     executed_steps = 0
     llm = get_llm(None)
     
@@ -319,83 +340,10 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-    import numpy as np
-    from langchain_community.chat_models import FakeListChatModel
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from phm_core import PHMState, DAGState, InputData
-
-    os.environ["FAKE_LLM"] = "true"
-    from src import model
-
-    model._FAKE_LLM = FakeListChatModel(responses=["0"])
-
-    # --- 模拟一个与 plan_agent 输出一致的初始状态 ---
-    instruction = "Analyze the bearing signals from multiple channels for potential faults."
-
-    ref_sig = {'id1': np.random.randn(1, 1024, 1),
-                'id2': np.random.randn(1, 1024, 1) * 1.5,
-                'id3': np.random.randn(1, 1024, 1) * 2.0}
-    tst_sig = {'id4': np.random.randn(1, 1024, 1) * 1.2,
-                'id5': np.random.randn(1, 1024, 1) * 1.8,
-                'id6': np.random.randn(1, 1024, 1) * 2.5}
-
-    initial_nodes = {}
-    initial_leaves = []
-    channels = ["ch1", "ch2", "ch3"]
-    for channel_name in channels:
-        node = InputData(
-            node_id=channel_name,
-            results={
-                # "ref": np.random.randn(1, 1024, 1),
-                # "tst": np.random.randn(1, 1024, 1) * 1.5
-                'ref':ref_sig,
-                'tst':tst_sig
-
-            },
-            parents=[],
-            shape=(1, 1024, 1),
-            meta={"channel": channel_name},
-            metadata={"source": "simulated"}
-        )
-        initial_nodes[channel_name] = node
-        initial_leaves.append(channel_name)
-
-    dag = DAGState(
-        user_instruction=instruction, 
-        channels=channels, 
-        nodes=initial_nodes, 
-        leaves=initial_leaves
+    raise SystemExit(
+        "This module is not intended to be executed as a script. "
+        "Use pytest (tests/test_execute_agent.py) or run the workflow via `python main.py case1 --config ...`."
     )
-    
-    state = PHMState(
-        user_instruction=instruction, 
-        reference_signal=initial_nodes["ch1"], 
-        test_signal=initial_nodes["ch1"], 
-        dag_state=dag,
-        detailed_plan=[
-            {"parent": "ch1", "op_name": "fft", "params": {}},
-            {"parent": "ch2", "op_name": "fft", "params": {}},
-            {"parent": "ch3", "op_name": "fft", "params": {}},
-            {"parent": "ch1,ch2", "op_name": "cross_correlation", "params": {}},
-        ]
-    )
-    
-    print("--- Initial DAG State ---")
-    print(f"Nodes: {list(state.dag_state.nodes.keys())}")
-    print(f"Leaves: {state.dag_state.leaves}")
-    print("-------------------------\n")
-
-    # --- 执行 execute_agent 并验证结果 ---
-    result = execute_agent(state)
-    
-    print("\n--- Updated DAG State ---")
-    updated_dag = result["dag_state"]
-    print(f"Nodes: {list(updated_dag.nodes.keys())}")
-    print(f"Leaves: {updated_dag.leaves}")
-    print("-------------------------\n")
 
     # --- 验证 ---
     assert len(updated_dag.nodes) == len(initial_nodes) + len(state.detailed_plan)

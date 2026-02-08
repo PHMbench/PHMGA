@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import json
+import os
 from typing import Any, Dict, Optional
-import networkx as nx
 
 from langchain_core.prompts import ChatPromptTemplate
 
@@ -16,6 +15,8 @@ from src.utils import get_dag_depth
 VALID_DECISIONS = {"finish", "need_patch", "need_replan", "halt"}
 
 
+def _debug_enabled() -> bool:
+    return os.getenv("PHM_DEBUG_REFLECT", "").strip().lower() in {"1", "true", "yes", "y"}
 
 
 def reflect_agent(
@@ -27,19 +28,19 @@ def reflect_agent(
     state: "PHMState" | None = None,  # Optional for backward compatibility in offline tests
 ) -> Dict[str, str]:
     """Quality check the DAG and return a decision with reason."""
-    # --- 诊断性打印 ---
-    print("\n--- Reflect Agent Inputs ---")
-    print(f"Stage: {stage}")
-    print(f"Issues Summary: '{issues_summary}'")
-    print("--------------------------\n")
-    # --- 结束诊断 ---
+    if _debug_enabled():
+        print("\n--- Reflect Agent Inputs ---")
+        print(f"Stage: {stage}")
+        print(f"Issues Summary: '{issues_summary}'")
+        print("--------------------------\n")
 
     if instruction is None or stage is None or dag_blueprint is None:
         return {"decision": "halt", "reason": "INVALID_INPUT"}
 
     # 1. 计算DAG的深度，作为LLM决策的上下文之一
     depth = get_dag_depth(state.dag_state) if state is not None else 0
-    print(f"\n--- Current DAG Depth for Reflection: {depth} ---\n")
+    if _debug_enabled():
+        print(f"\n--- Current DAG Depth for Reflection: {depth} ---\n")
 
     # 2. 准备给LLM的上下文，包括深度信息
     # 即使没有错误，也把深度信息加进去，让LLM判断是否需要继续迭代
@@ -67,24 +68,30 @@ def reflect_agent(
             "current_depth": get_dag_depth(state.dag_state) if state is not None else depth,
         }
     )
-    # 漂亮地打印出LLM的响应以供调试
-    print("\n--- Reflect Agent LLM Response ---")
+    if _debug_enabled():
+        print("\n--- Reflect Agent LLM Response ---")
 
-    # 从LLM响应中提取JSON字符串，移除Markdown代码块
+        # From the LLM response, extract the JSON string and remove Markdown code fences.
+        json_str_dbg = resp.content
+        if "```json" in json_str_dbg:
+            json_str_dbg = json_str_dbg.split("```json")[1].strip()
+        if "```" in json_str_dbg:
+            json_str_dbg = json_str_dbg.split("```")[0].strip()
+
+        try:
+            parsed_json = json.loads(json_str_dbg)
+            print(json.dumps(parsed_json, indent=2, ensure_ascii=False))
+        except json.JSONDecodeError:
+            print(resp.content)
+        print("---------------------------------\n")
+
+    # From the LLM response, extract the JSON string and remove Markdown code fences.
     json_str = resp.content
     if "```json" in json_str:
         json_str = json_str.split("```json")[1].strip()
     if "```" in json_str:
         json_str = json_str.split("```")[0].strip()
 
-    try:
-        # 假设响应内容是JSON字符串
-        parsed_json = json.loads(json_str)
-        print(json.dumps(parsed_json, indent=2, ensure_ascii=False))
-    except json.JSONDecodeError:
-        # 如果不是JSON，则按原样打印原始响应
-        print(resp.content)
-    print("---------------------------------\n")
     try:
         # 使用清理后的字符串进行解析
         data = json.loads(json_str)
@@ -99,7 +106,7 @@ def reflect_agent(
     return {"decision": decision, "reason": reason}
 
 
-def reflect_agent_node(state: PHMState, *, stage: str) -> None:
+def reflect_agent_node(state: PHMState, *, stage: str) -> Dict[str, Any]:
     """Adapter for the outer graph using :class:`PHMState`."""
     try:
         dag_blueprint = json.loads(state.tracker().export_json())
@@ -119,22 +126,7 @@ def reflect_agent_node(state: PHMState, *, stage: str) -> None:
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-    from langchain_community.chat_models import FakeListChatModel
-
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    os.environ["FAKE_LLM"] = "true"
-    from src import model
-    from phm_core import PHMState, DAGState, InputData
-
-    model._FAKE_LLM = FakeListChatModel(responses=['{"decision": "finish", "reason": "ok"}'])
-
-    instruction = "轴承故障诊断"
-    ch1 = InputData(node_id="ch1", data={}, parents=[], shape=(0,))
-    ch2 = InputData(node_id="ch2", data={}, parents=[], shape=(0,))
-    dag = DAGState(user_instruction=instruction, channels=["ch1", "ch2"], nodes={"ch1": ch1, "ch2": ch2}, leaves=["ch1", "ch2"])
-    state = PHMState(user_instruction=instruction, reference_signal=ch1, test_signal=ch2, dag_state=dag)
-    print({"before": state.model_dump(exclude={"reference_signal", "test_signal"})})
-    out = reflect_agent_node(state, stage="POST_PLAN")
-    print({"after": out})
+    raise SystemExit(
+        "This module is not intended to be executed as a script. "
+        "Use pytest (tests/test_reflect_agent.py) or run the workflow via `python main.py case1 --config ...`."
+    )

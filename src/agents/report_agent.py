@@ -9,7 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from src.configuration import Configuration
 from src.model import get_llm
 from src.prompts.report_prompt import REPORT_PROMPT
-from phm_core import PHMState
+from src.states.phm_states import PHMState
 
 
 def report_agent(
@@ -34,11 +34,62 @@ def report_agent(
             "issues_summary": issues_summary or "",
         }
     )
-    # 漂亮地打印出LLM的响应以供调试
-    print("\n--- Report Agent LLM Response ---")
-    print(resp.content)
-    print("--------------------------------\n")
+    if os.getenv("PHM_DEBUG_REPORT", "").strip().lower() in {"1", "true", "yes", "y"}:
+        print("\n--- Report Agent LLM Response ---")
+        print(resp.content)
+        print("--------------------------------\n")
     return {"report_markdown": resp.content}
+
+
+def _template_report(
+    *,
+    instruction: str,
+    dag_overview: Dict[str, Any],
+    similarity_stats: Dict[str, Any],
+    ml_results: Dict[str, Any],
+    issues_summary: Optional[str],
+) -> str:
+    tspn = (ml_results or {}).get("tspn") or {}
+    metrics = tspn.get("metrics") or {}
+    val = metrics.get("val") or {}
+    best = metrics.get("best") or {}
+    lines = []
+    lines.append("# PHMGA Diagnostic Report (Template)")
+    lines.append("")
+    lines.append("## Conclusion")
+    if val:
+        lines.append(f"- Val acc: {val.get('val_acc')}")
+        lines.append(f"- Val macro_f1: {val.get('val_macro_f1')}")
+    if "test_acc" in metrics:
+        lines.append(f"- Test acc: {metrics.get('test_acc')}")
+        lines.append(f"- Test macro_f1: {metrics.get('test_macro_f1')}")
+    if best:
+        lines.append(f"- Best epoch: {best.get('epoch')}")
+    lines.append("")
+    lines.append("## Evidence")
+    if isinstance(dag_overview, dict):
+        nodes = dag_overview.get("nodes")
+        graph = dag_overview.get("graph")
+        if isinstance(nodes, list):
+            n_nodes = len(nodes)
+        elif isinstance(graph, list):
+            n_nodes = len(graph)
+        else:
+            n_nodes = 0
+    else:
+        n_nodes = "n/a"
+    lines.append(f"- DAG nodes: {n_nodes}")
+    lines.append(f"- Similarity stats: {len(similarity_stats) if isinstance(similarity_stats, dict) else 'n/a'}")
+    if tspn.get("artifacts_dir"):
+        lines.append(f"- Artifacts: `{tspn.get('artifacts_dir')}`")
+    if issues_summary:
+        lines.append("")
+        lines.append("## Issues")
+        lines.append(issues_summary)
+    lines.append("")
+    lines.append("## Original Instruction")
+    lines.append(instruction.strip())
+    return "\n".join(lines).strip() + "\n"
 
 
 def report_agent_node(state: PHMState) -> Dict[str, str]:
@@ -57,32 +108,55 @@ def report_agent_node(state: PHMState) -> Dict[str, str]:
         pass
     dag_overview = json.loads(state.tracker().export_json())
     
-    # MODIFIED: Extract similarity stats from the `sim` attribute of leaf nodes
+    # Extract similarity stats from the `sim` attribute of leaf nodes.
     similarity_stats = {}
     for leaf_id in state.dag_state.leaves:
         node = state.dag_state.nodes.get(leaf_id)
         if node and hasattr(node, "sim") and node.sim:
             similarity_stats[leaf_id] = node.sim
-            
-    similarity_stats = json.dumps(similarity_stats, ensure_ascii=False)
 
     ml_results = getattr(state, "ml_results", {}) or {}
     issues_summary = "\n".join(state.dag_state.error_log) or None
-    # calculate the payload for each section
-    print(f"Generating final report with {len(state.dag_state.nodes)} nodes, "
-          f"{len(state.dag_state.leaves)} leaves, "
-          f"{len(similarity_stats)} similarity stats, "
-        #   f"{len(ml_results.get('models', {}))} ML models, "
-        #   f"{len(ml_results.get('ensemble_metrics', {}))} ensemble metrics, "
-          f"issues: {len(state.dag_state.error_log)}")
-    out = report_agent(
-        instruction=state.user_instruction,
-        dag_overview=dag_overview,
-        similarity_stats=similarity_stats,
-        ml_results=ml_results,
-        issues_summary=issues_summary,
-    )
-    return {"final_report": out["report_markdown"]}
+    if os.getenv("PHM_DEBUG_REPORT", "").strip().lower() in {"1", "true", "yes", "y"}:
+        print(
+            f"Generating final report with {len(state.dag_state.nodes)} nodes, "
+            f"{len(state.dag_state.leaves)} leaves, "
+            f"{len(similarity_stats)} similarity stats, "
+            f"issues: {len(state.dag_state.error_log)}"
+        )
+    mode = os.getenv("PHM_REPORT_MODE", "auto").strip().lower()
+    fake_llm = os.getenv("FAKE_LLM", "").strip().lower() in {"1", "true", "yes", "y"}
+    if mode == "template" or (mode == "auto" and fake_llm):
+        return {
+            "final_report": _template_report(
+                instruction=state.user_instruction,
+                dag_overview=dag_overview,
+                similarity_stats=similarity_stats,
+                ml_results=ml_results,
+                issues_summary=issues_summary,
+            )
+        }
+
+    try:
+        out = report_agent(
+            instruction=state.user_instruction,
+            dag_overview=dag_overview,
+            similarity_stats=similarity_stats,
+            ml_results=ml_results,
+            issues_summary=issues_summary,
+        )
+        return {"final_report": out["report_markdown"]}
+    except Exception:
+        # Fallback to template for robustness.
+        return {
+            "final_report": _template_report(
+                instruction=state.user_instruction,
+                dag_overview=dag_overview,
+                similarity_stats=similarity_stats,
+                ml_results=ml_results,
+                issues_summary=issues_summary,
+            )
+        }
 
 
 if __name__ == "__main__":

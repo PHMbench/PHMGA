@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from typing import Any, Dict, List
 
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field, RootModel  # 导入 RootModel
+from pydantic import BaseModel, Field
 
 from src.configuration import Configuration
 from src.model import get_llm
@@ -225,37 +226,10 @@ def run_test_with_real_llm(state: PHMState):
 
 
 if __name__ == "__main__":
-    import os
-    import sys
-    import numpy as np
-    from langchain_community.chat_models import FakeListChatModel
-    from dotenv import load_dotenv
-    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-    from phm_core import PHMState, DAGState, InputData
-    from src.tools import __init__ as init_tools
-
-    # 加载环境变量 (例如 GOOGLE_API_KEY)
-    load_dotenv()
-
-    # --- 模拟一个更真实的初始状态 ---
-    instruction = "Analyze the bearing signals from multiple channels for potential faults."
-    
-    initial_nodes = {}
-    initial_leaves = []
-    channels = ["ch1", "ch2", "ch3"]
-    for channel_name in channels:
-        node = InputData(
-            node_id=channel_name,
-            results={
-                "ref": np.random.randn(1, 1024, 1),
-                "tst": np.random.randn(1, 1024, 1) * 1.5
-            },
-            parents=[],
-            shape=(1, 1024, 1),
-            meta={"channel": channel_name}
-        )
-        initial_nodes[channel_name] = node
-        initial_leaves.append(channel_name)
+    raise SystemExit(
+        "This module is not intended to be executed as a script. "
+        "Use pytest (tests/test_plan_agent.py) or run the workflow via `python main.py case1 --config ...`."
+    )
 
     dag = DAGState(
         user_instruction=instruction, 

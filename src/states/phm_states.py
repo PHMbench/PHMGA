@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import List, Dict, Any, Annotated, Tuple, Optional, TypedDict
+from typing import List, Dict, Any, Tuple, Optional
 import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr
 import uuid
-from langgraph.graph import add_messages
 from typing_extensions import Annotated
 import operator
 from typing import Literal
@@ -14,6 +13,35 @@ from ..schemas.insight_schema import AnalysisInsight
 from ..schemas.plan_schema import AnalysisPlan
 
 Shape = Tuple[int, ...]  # 支持多维形状
+
+
+class TrainReport(BaseModel):
+    """Structured inner-loop training report (aligns with doc/plan/*/AGENT_IO.md)."""
+
+    run_id: str = Field(..., description="Unique run id for this training job.")
+    dataset_id: str = Field(default="", description="Dataset identifier (e.g. case/dataset name).")
+    task_id: str = Field(default="", description="Task identifier (optional).")
+    split_protocol: Dict[str, Any] = Field(default_factory=dict)
+    metrics: Dict[str, Any] = Field(default_factory=dict)
+    confusion_matrix: Dict[str, Any] = Field(default_factory=dict)
+    explain_summary: Dict[str, Any] = Field(default_factory=dict)
+    error_modes: List[Dict[str, Any]] = Field(default_factory=list)
+    artifacts: Dict[str, Any] = Field(default_factory=dict)
+
+    class Config:
+        extra = "forbid"
+
+
+class ConfigPatch(BaseModel):
+    """Outer-loop patch output (white-listed config changes only)."""
+
+    diff_summary: str = ""
+    reason_codes: List[str] = Field(default_factory=list)
+    config_patch: Dict[str, Any] = Field(default_factory=dict)
+
+    class Config:
+        extra = "forbid"
+
 
 class _NodeBase(BaseModel):
     node_id: str = Field(default_factory=lambda: f"n_{uuid.uuid4().hex[:8]}")
@@ -272,6 +300,7 @@ class PHMState(BaseModel):
     needs_revision: bool = False
 
     detailed_plan: List[dict] = Field(default_factory=list)
+    executed_steps: int = Field(default=0, description="Number of steps executed in the last ExecuteAgent run.")
     error_logs: List[str] = Field(default_factory=list)
 
 
@@ -304,6 +333,18 @@ class PHMState(BaseModel):
     accuracy: Optional[float] = None
     ml_results: Dict[str, Any] = Field(default_factory=dict)
 
+    # --- New: inner-loop training report history (for reflection/outer-loop) ---
+    train_history: List[TrainReport] = Field(default_factory=list)
+
+    # --- New: current immutable TSPN config snapshot (dict) ---
+    current_model_config: Dict[str, Any] = Field(default_factory=dict)
+
+    # --- New: real-data backend configuration (e.g., PHM-Vibench data_factory) ---
+    data_cfg: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Data backend configuration (e.g., {backend: vibench, data_dir, metadata_file, dataset_name, ...}).",
+    )
+
     # --- Data boundary / training control (SPEC redlines) ---
     labels_ref: Dict[str, Any] = Field(default_factory=dict, description="Train/val-visible labels.")
     labels_tst: Dict[str, Any] = Field(default_factory=dict, description="Test labels (default not visible).")
@@ -312,6 +353,10 @@ class PHMState(BaseModel):
     )
 
     # --- Backend selection / model config ---
+    task_type: Literal["signal_processing_dag", "neuro_symbolic_train"] = Field(
+        default="signal_processing_dag",
+        description="Execution mode: classic signal-processing DAG build, or neuro-symbolic (TSPN) training.",
+    )
     train_backend: str = Field(default="shallow", description="Training backend: shallow|tspn|both.")
     model_config_path: str | None = Field(default=None, description="Path to model_config.yaml for TSPN.")
     save_dir: str | None = Field(default=None, description="Base directory to save artifacts.")
@@ -326,4 +371,3 @@ class PHMState(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
-
