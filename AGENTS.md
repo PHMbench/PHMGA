@@ -12,6 +12,13 @@
 
 **工作流**: `START` -> `Plan` -> `Execute` -> `Reflect` -> (`Plan` 或 `Report`) -> `END`
 
+## 开发/运行环境（记忆）
+
+- 默认调试环境：`conda activate agent`
+  - 用途：LLM Provider（GLM/DeepSeek/OpenAI-compatible）联通测试、LangGraph 工作流编排与冒烟验证。
+- 训练环境：需额外安装 PyTorch（可与 `agent` 分离）
+  - 用途：TSPN 等 torch-side 可解释网络的训练/微调与解释性产物导出。
+
 ## 1. Planner Agent (规划智能体)
 
 **文件路径**: plan_agent.py

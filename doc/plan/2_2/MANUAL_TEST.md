@@ -1,6 +1,6 @@
 # 人工验收指南（PHMGA）：TSPN + LLM Provider（Gemini/GLM-4.7-Flash/DeepSeek）+ NVTA 工作流
 
-本文件用于你在本机训练环境（例如 `conda activate LQ_signal`）对本次合并内容做人工验收。
+本文件用于你在本机训练环境（推荐：`conda activate agent`）对本次合并内容做人工验收。
 
 > 说明：当前容器环境可能未安装 `torch`，因此 TSPN 训练相关步骤请在本机/训练机执行。
 >
@@ -61,13 +61,30 @@ cp .env.example .env
 - 容器（可能无 `torch`）：
   - ✅ 可跑：`pytest -q`、`python scripts/* --help`、NVTA workflow 的浅层 ML 训练/报告
   - ❌ 不保证可跑：TSPN（需要 `torch`）
-- 本机训练环境（推荐：`conda activate LQ_signal`）：
+- 本机训练环境（推荐：`conda activate agent`）：
   - ✅ 可跑：包含 TSPN 的完整闭环（确保已安装 `torch`）
 
 5) 本机环境的依赖检查（只在本机执行）：
 
 ```bash
 python -c "import torch; print(torch.__version__)"
+```
+
+---
+
+## 0.1 pytest 扩展测试开关（可选）
+
+默认 `pytest -q` 会跳过需要联网或需要外部数据/torch 的测试。你可以用以下环境变量打开：
+
+```bash
+# 1) 启用 torch 相关 smoke/契约测试（TSPN forward/train、DAG->TSPN init 等）
+PHM_ENABLE_TORCH_TESTS=1 pytest -q
+
+# 2) 启用 vibench data_factory 的端到端测试（需要本机可访问 vibench 代码路径与依赖）
+PHM_ENABLE_VIBENCH_TESTS=1 pytest -q
+
+# 3) 启用 GLM 在线联通测试（需要 GLM_API_KEY / GLM_API_BASE 且网络可用）
+PHM_ENABLE_GLM_TESTS=1 pytest -q
 ```
 
 ---
@@ -214,7 +231,7 @@ python main.py case1 --config config/<your_case>.yaml
 ## 6) 常见问题（快速定位）
 
 1) `ModuleNotFoundError: No module named 'torch'`
-   - 说明当前环境未安装 PyTorch；请切到你的训练环境（`conda activate LQ_signal`）并安装 `torch`
+   - 说明当前环境未安装 PyTorch；请切到你的训练环境（`conda activate agent`）并安装 `torch`
 2) GLM/DeepSeek 连接失败
    - 检查 `.env`：`*_API_KEY`、`*_BASE_URL` 是否正确
    - 检查是否已安装 `langchain_openai`（OpenAI-compatible 必需）

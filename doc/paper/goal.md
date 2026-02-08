@@ -25,6 +25,22 @@
 - 训练/搜索阶段只能读取 `labels_ref`；`labels_tst` 仅用于最终评估（如果存在）
 - 多通道融合顺序固定为 `dag_state.channels`（并写入 `channels.json`）
 
+#### 1.1.1 启动阶段：数据初始化 DAG → 自动生成初始 TSPN 配置（减少先验）
+为了把“模型设计先验”降到最低，论文口径需要一个**标准化 bootstrap**：
+
+1) **数据初始化 DAG（deterministic）**
+   - data_factory 读入数据后，先只创建 channel roots：`ch1..chC`
+   - 每个 root 持有 `results['ref'/'tst'] = {sample_id: (1,L,1)}`，并在 `meta` 中保存 `fs/labels_ref/labels_tst`
+2) **从数据与 DAG 统计推断 `model_config.yaml` 的最小合法结构**
+   - `in_dim = L`（从数据推断）
+   - `in_channels = C`（从 DAG channel roots 推断）
+   - `num_classes = |unique(labels_ref)|`（从训练标签推断）
+3) **从 DAG 的“算子语义/拓扑”初始化 TSPN 的 layer/ops（可选但推荐）**
+   - 将 DAG 中出现的信号算子（如 `hilbert/fft/wavefilters/identity`）映射为 torch-side token（`HT/FFT/WF/I`）
+   - 将“DAG 深度层级”作为 TSPN layer 的自然初始化（同一深度出现的 token 放在同一 layer 的并行 ops 里）
+4) **内环训练采用 warm-start（可选）**
+   - 若外环仅做小幅 patch（例如禁用 1 个 op / 调整 WF init），优先从上一次 checkpoint 微调；否则从头训练
+
 #### 1.2 外环：智能体优化（结构/超参/软删除）
 输入：
 - 内环反馈（指标 + 解释性 + 失败原因）
