@@ -3,8 +3,6 @@ from typing import Any, Dict, List, Tuple
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
 from src.states.phm_states import PHMState, DAGState, InputData, ProcessedData
 from src.tools.signal_processing_schemas import get_operator, MultiVariableOp
-import pandas as pd
-import h5py
 import numpy as np
 import os
 import pickle
@@ -17,9 +15,14 @@ os.environ["LANGCHAIN_ENDPOINT"] = ""
 os.environ["LANGCHAIN_API_KEY"] = ""
 os.environ["LANGCHAIN_PROJECT"] = ""
 
-# Load environment variables from .env file
-from dotenv import load_dotenv
-load_dotenv()
+# Load environment variables from `.env` (best-effort; do not override existing env).
+try:  # pragma: no cover
+    from dotenv import load_dotenv
+
+    repo_env = os.path.join(os.getcwd(), ".env")
+    load_dotenv(dotenv_path=repo_env, override=False)
+except Exception:
+    pass
 
 # 导入解耦后的两个图构建器
 # from src.phm_outer_graph import build_builder_graph, build_executor_graph
@@ -275,7 +278,9 @@ def _execute_single_variable_op(
 
 
 
-def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -> Tuple[Dict[str, np.ndarray], Dict[str, str]]:
+def load_signal_data(
+    metadata_path: str, h5_path: str, ids_to_load: list[int]
+) -> Tuple[Dict[str, np.ndarray], Dict[str, str], Any]:
     """
     从真实的 metadata 和 HDF5 文件中加载信号数据和标签。
     返回两个字典:
@@ -285,11 +290,13 @@ def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -
     print(f"Loading data for IDs: {ids_to_load}")
     
     try:
+        import pandas as pd
+        import h5py
         metadata_df = pd.read_excel(metadata_path)
         h5_file = h5py.File(h5_path, 'r')
     except Exception as e:
         print(f"Error loading data files: {e}")
-        return {}, {}
+        return {}, {}, None
 
     signals = {}
     labels = {}
@@ -430,6 +437,95 @@ def initialize_state(
         train_backend=train_backend,
         model_config_path=model_config_path,
         save_dir=save_dir,
+    )
+
+
+def initialize_state_vibench(
+    *,
+    user_instruction: str,
+    case_name: str,
+    data_cfg: Dict[str, Any],
+    allow_test_labels_for_reporting: bool = False,
+    train_backend: str = "tspn",
+    model_config_path: str | None = None,
+    save_dir: str | None = None,
+    max_preview_samples: int = 4,
+) -> PHMState:
+    """Initialize PHMState from PHM-Vibench data_factory (preview-only roots).
+
+    - Roots keep only a small preview for planning/execution debugging.
+    - Real training must use `state.data_cfg` and re-load via data_factory in the trainer.
+    """
+    from src.utils.data_factory_wrapper import PHMVibenchDataFactory
+
+    built = PHMVibenchDataFactory(data_cfg).build()
+
+    def _take_preview(loader) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        out: Dict[str, Any] = {}
+        labs: Dict[str, Any] = {}
+        for batch in loader:
+            x = batch["x"]  # (B,L,C)
+            y = batch["y"]  # (B,)
+            ids = list(batch.get("file_id") or [])
+            for i, sid in enumerate(ids):
+                k = str(sid)
+                if k in out:
+                    continue
+                out[k] = x[i : i + 1].detach().cpu().numpy()  # (1,L,C)
+                labs[k] = str(int(y[i].detach().cpu().item()))
+                if len(out) >= int(max_preview_samples):
+                    return out, labs
+        return out, labs
+
+    ref_preview, labels_ref = _take_preview(built.train_loader)
+    tst_preview, labels_tst = _take_preview(built.test_loader)
+    if not ref_preview:
+        raise ValueError("vibench preview is empty (train split). Check data_cfg.")
+
+    first_arr = next(iter(ref_preview.values()))
+    if getattr(first_arr, "shape", None) is None or len(first_arr.shape) != 3:
+        raise ValueError("Expected preview arrays with shape (1,L,C).")
+    _, L, C = first_arr.shape
+
+    channel_names = [f"ch{i+1}" for i in range(int(C))]
+    nodes: Dict[str, Any] = {}
+    leaves: List[str] = []
+    fs_hz = data_cfg.get("fs_hz")
+
+    for i, ch in enumerate(channel_names):
+        ch_ref = {sid: arr[:, :, i : i + 1] for sid, arr in ref_preview.items()}
+        ch_tst = {sid: arr[:, :, i : i + 1] for sid, arr in tst_preview.items()}
+        node = InputData(
+            node_id=ch,
+            data={},
+            results={"ref": ch_ref, "tst": ch_tst},
+            parents=[],
+            shape=(1, int(L), 1),
+            meta={
+                "channel": ch,
+                "labels_ref": labels_ref,
+                "labels_tst": labels_tst,
+                "fs": fs_hz,
+            },
+        )
+        nodes[ch] = node
+        leaves.append(ch)
+
+    dag_state = DAGState(user_instruction=user_instruction, nodes=nodes, leaves=leaves, channels=channel_names)
+
+    return PHMState(
+        case_name=case_name,
+        user_instruction=user_instruction,
+        reference_signal=next(iter(nodes.values())),
+        test_signal=next(iter(nodes.values())),
+        dag_state=dag_state,
+        labels_ref=labels_ref,
+        labels_tst=labels_tst,
+        allow_test_labels_for_reporting=allow_test_labels_for_reporting,
+        train_backend=train_backend,
+        model_config_path=model_config_path,
+        save_dir=save_dir,
+        data_cfg=data_cfg,
     )
 
 
