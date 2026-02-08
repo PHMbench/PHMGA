@@ -1,7 +1,5 @@
-langgraph
-langgraph-prebuilt
-langgraph-sdk
-langgraph-checkpoint-sqlite
+# LangGraph (pin to pre-v1 to keep compatibility with LangChain 0.1.x stack)
+langgraph>=0.0.45,<1.0.0
 langsmith
 # LangChain packages - pinned for compatibility (all use langchain-core <0.2.0)
 langchain-community>=0.0.34,<0.1.0
@@ -27,7 +25,6 @@ notebook
 tavily-python
 wikipedia
 trustcall
-langgraph-cli[inmem]
 google-generativeai
 google.genai
 networkx
@@ -44,3 +41,5 @@ matplotlib
 
 umap-learn
 seaborn
+pytest>=7,<9
+python-dotenv>=1,<2
