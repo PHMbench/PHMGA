@@ -1,6 +1,7 @@
 import os
 import sys
 from pathlib import Path
+import json
 
 import pytest
 
@@ -118,3 +119,20 @@ def test_full_agent_flow_vibench_tspn_report(tmp_path: Path, monkeypatch: pytest
     assert "PHMGA Diagnostic Report (Template)" in report
     assert "Val acc" in report
     assert "Artifacts" in report
+
+    # Logging artifacts (console + jsonl dual-channel)
+    case_dir = save_dir / "e2e_vibench_dummy"
+    log_dirs = list(case_dir.glob("*/logs"))
+    assert log_dirs, f"No logs directory found under {case_dir}"
+    events_files = [d / "events.jsonl" for d in log_dirs if (d / "events.jsonl").exists()]
+    assert events_files, "No events.jsonl found in run logs"
+    events_path = max(events_files, key=lambda p: p.stat().st_mtime)
+    lines = [ln for ln in events_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert lines, "events.jsonl is empty"
+    entries = [json.loads(ln) for ln in lines]
+    node_events = [e for e in entries if e.get("event") == "builder.node.executed"]
+    nodes = {str(e.get("node")) for e in node_events}
+    assert {"plan", "execute", "reflect"}.issubset(nodes)
+    path_events = [e for e in entries if e.get("event") == "executor.path"]
+    assert path_events, "Missing executor.path routing event"
+    assert any((e.get("payload") or {}).get("path") == "tspn_fast_path" for e in path_events)

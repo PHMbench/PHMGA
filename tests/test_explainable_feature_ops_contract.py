@@ -30,6 +30,16 @@ def test_feature_ops_contract_shape_dtype():
         "ClearanceFactor",
         "ShapeFactor",
         "SpectralKurtosis",
+        "PeakToPeak",
+        "ZeroCrossingRate",
+        "SpectralCentroid",
+        "SpectralSkewness",
+        "SpectralFlatness",
+        "HjorthActivity",
+        "HjorthMobility",
+        "HjorthComplexity",
+        "CrestFactorDelta",
+        "KurtosisDelta",
     ]
 
     for t in tokens:
@@ -38,4 +48,3 @@ def test_feature_ops_contract_shape_dtype():
         assert tuple(y.shape) == (B, C, 1)
         assert y.dtype.is_floating_point
         assert not y.is_complex()
-
