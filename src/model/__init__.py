@@ -118,6 +118,11 @@ def get_llm(
         or getattr(configurable, "llm_provider", None)
         or "gemini"
     ).strip().lower()
+    model_name = (
+        os.getenv("QUERY_GENERATOR_MODEL")
+        or os.getenv("PHM_MODEL")
+        or str(getattr(configurable, "query_generator_model", "") or "").strip()
+    )
 
     # --- OpenAI-compatible (GLM / DeepSeek / gateways) ---
     openai_base_url = (
@@ -126,6 +131,8 @@ def get_llm(
         or os.getenv("OPENAI_API_BASE")
     )
     openai_api_key = getattr(configurable, "openai_api_key", None) or os.getenv("OPENAI_API_KEY")
+    gemini_base = os.getenv("GEMINI_BASE_URL") or os.getenv("GEMINI_BASE")
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
 
     deepseek_base = (
         getattr(configurable, "deepseek_api_base", None)
@@ -136,11 +143,30 @@ def get_llm(
     glm_base = getattr(configurable, "glm_api_base", None) or os.getenv("GLM_API_BASE")
     glm_key = getattr(configurable, "glm_api_key", None) or os.getenv("GLM_API_KEY")
 
-    # Auto-detect if user provided OpenAI-compatible env vars but forgot to set provider.
+    # Auto-detect only when provider is explicitly set to `auto`.
     if provider == "auto":
         provider = "openai_compatible" if (openai_base_url or deepseek_base or glm_base) else "gemini"
 
-    if provider in {"openai", "openai_compatible", "deepseek", "glm"} or openai_base_url or deepseek_base or glm_base:
+    allowed_providers = {"gemini", "openai", "openai_compatible", "deepseek", "glm"}
+    if provider not in allowed_providers:
+        raise ValueError(
+            f"Unsupported LLM_PROVIDER={provider!r}. "
+            "Expected one of: gemini | glm | deepseek | openai_compatible | auto."
+        )
+
+    model_name_lc = model_name.lower()
+    if provider == "glm" and model_name_lc.startswith("gemini"):
+        raise ValueError(
+            "Invalid provider/model combination: LLM_PROVIDER=glm but model looks like a Gemini model. "
+            "Set QUERY_GENERATOR_MODEL=GLM-4.7-Flash (or another GLM model)."
+        )
+    if provider == "gemini" and (model_name_lc.startswith("glm") or "deepseek" in model_name_lc):
+        raise ValueError(
+            "Invalid provider/model combination: LLM_PROVIDER=gemini but model looks OpenAI-compatible. "
+            "Either set LLM_PROVIDER=glm/deepseek/openai_compatible, or use a Gemini model name."
+        )
+
+    if provider in {"openai", "openai_compatible", "deepseek", "glm"}:
         try:
             from langchain_openai import ChatOpenAI  # type: ignore
         except Exception as e:  # pragma: no cover
@@ -156,8 +182,8 @@ def get_llm(
             base_url = glm_base or openai_base_url
             api_key = glm_key or openai_api_key
         else:
-            base_url = openai_base_url or deepseek_base or glm_base
-            api_key = openai_api_key or deepseek_key or glm_key
+            base_url = openai_base_url or deepseek_base or glm_base or gemini_base
+            api_key = openai_api_key or deepseek_key or glm_key or gemini_api_key
 
         if not api_key:
             raise ValueError(
@@ -187,7 +213,7 @@ def get_llm(
             pass
 
         kwargs = {
-            "model": configurable.query_generator_model,
+            "model": model_name,
             "temperature": temperature,
             "max_retries": max_retries,
             "api_key": api_key,
@@ -212,7 +238,7 @@ def get_llm(
 
     api_key = os.getenv("GEMINI_API_KEY")
     return ChatGoogleGenerativeAI(
-        model=configurable.query_generator_model,
+        model=model_name,
         temperature=temperature,
         max_retries=max_retries,
         api_key=api_key,

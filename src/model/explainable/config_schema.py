@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 class OpTokenConfig(BaseModel):
     """One signal-processing operator token (torch-side)."""
 
-    token: str = Field(..., description="Operator token, e.g. I/WF/HT/FFT.")
+    token: str = Field(..., description="Operator token, e.g. I/WF/HT/FFT/NORM/DT/INT/DIFF/STFT/LOG/SQU/SIN.")
     params: Dict[str, Any] = Field(default_factory=dict, description="Token parameters (token-specific).")
 
     class Config:
@@ -41,6 +41,12 @@ class ModelConfig(BaseModel):
     wf_init: Dict[str, float] = Field(
         default_factory=lambda: {"f_c_mu": 0.0, "f_c_sigma": 0.1, "f_b_mu": 0.0, "f_b_sigma": 0.1}
     )
+    norm_init: Dict[str, Any] = Field(default_factory=lambda: {"method": "z_score"})
+    stft_init: Dict[str, Any] = Field(default_factory=lambda: {"n_fft": 256, "hop_length": 128})
+    sin_init: Dict[str, Any] = Field(default_factory=lambda: {"frequency": 1.0})
+    preserve_topology: bool = True
+    allow_duplicate_tokens: bool = True
+    unsupported_policy: Literal["fallback_to_identity", "drop", "error"] = "fallback_to_identity"
 
     layers: List[LayerConfig] = Field(..., min_length=1)
     features: List[str] = Field(default_factory=lambda: ["Mean", "Std", "RMS"])

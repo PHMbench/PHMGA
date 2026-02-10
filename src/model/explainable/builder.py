@@ -155,6 +155,18 @@ def build_tspn_from_config(
             if token == "WF":
                 for k, v in model_cfg.wf_init.items():
                     params.setdefault(k, v)
+            elif token == "NORM":
+                for k, v in (model_cfg.norm_init or {}).items():
+                    params.setdefault(k, v)
+            elif token == "STFT":
+                for k, v in (model_cfg.stft_init or {}).items():
+                    params.setdefault(k, v)
+            elif token == "SIN":
+                for k, v in (model_cfg.sin_init or {}).items():
+                    params.setdefault(k, v)
+            elif token == "FFT":
+                # Keep FFT behavior deterministic unless explicitly overridden.
+                params.setdefault("align_strategy", "interp")
 
             modules[module_key] = make_op(token, channels=out_per, **params)
             uids.append(op_uid)
