@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import traceback
 from typing import Any, Dict
 
 try:  # pragma: no cover
@@ -21,6 +22,7 @@ from .agents.reflect_agent import reflect_agent_node
 from .agents.report_agent import report_agent_node
 from .agents.tspn_bootstrap_agent import tspn_bootstrap_agent
 from .states.phm_states import PHMState
+from .utils.logging_setup import get_current_logger, log_event, timed
 
 
 class _FallbackGraph:
@@ -30,7 +32,7 @@ class _FallbackGraph:
     def stream(self, state: PHMState, config: Any | None = None):
         # Mimic langgraph streaming API: yield {node_name: update_dict}
         for name, fn in self._steps:
-            update = fn(state)
+            update = _run_node(name, fn, state)
             if isinstance(update, dict):
                 # Apply updates in-place so downstream nodes can observe them.
                 fields = getattr(state.__class__, "model_fields", {})
@@ -38,6 +40,50 @@ class _FallbackGraph:
                     if k in fields:
                         setattr(state, k, v)
             yield {name: update}
+
+
+def _summarize_update(update: Any) -> Dict[str, Any]:
+    if not isinstance(update, dict):
+        return {"update_type": type(update).__name__}
+    summary: Dict[str, Any] = {"keys": sorted(update.keys())}
+    lens: Dict[str, int] = {}
+    for key, value in update.items():
+        if isinstance(value, (list, tuple, dict, set)):
+            try:
+                lens[key] = len(value)
+            except Exception:
+                continue
+    if lens:
+        summary["lengths"] = lens
+    return summary
+
+
+def _run_node(name: str, fn: Any, state: PHMState) -> Dict[str, Any]:
+    logger = get_current_logger()
+    with timed(logger, event="node", phase="graph", node=name, message="Node execution"):
+        try:
+            update = fn(state)
+            log_event(
+                logger,
+                level="INFO",
+                event="state_update",
+                phase="graph",
+                node=name,
+                message="Node returned state update.",
+                payload=_summarize_update(update),
+            )
+            return update
+        except Exception as exc:
+            log_event(
+                logger,
+                level="ERROR",
+                event="node.exception",
+                phase="graph",
+                node=name,
+                message=str(exc),
+                payload={"exc_type": type(exc).__name__, "traceback": traceback.format_exc()},
+            )
+            raise
 
 
 def build_builder_graph() -> Any:
@@ -58,9 +104,11 @@ def build_builder_graph() -> Any:
 
     builder = StateGraph(PHMState)  # type: ignore[misc]
 
-    builder.add_node("plan", plan_agent)
-    builder.add_node("execute", execute_agent)
-    builder.add_node("reflect", lambda state: reflect_agent_node(state, stage="POST_EXECUTE"))
+    builder.add_node("plan", lambda state: _run_node("plan", plan_agent, state))
+    builder.add_node("execute", lambda state: _run_node("execute", execute_agent, state))
+    builder.add_node(
+        "reflect", lambda state: _run_node("reflect", lambda s: reflect_agent_node(s, stage="POST_EXECUTE"), state)
+    )
 
     builder.set_entry_point("plan")
     builder.add_edge("plan", "execute")
@@ -135,30 +183,75 @@ def build_executor_graph() -> Any:
         # Deterministic bootstrap from the built DAG to reduce hand-designed priors.
         return tspn_bootstrap_agent(state)
 
-    if not _LANGGRAPH_OK:  # pragma: no cover
-        return _FallbackGraph(
-            [
-                ("inquire", lambda state: inquirer_agent(state, metrics=["cosine", "euclidean"])),
-                ("prepare", dataset_preparer_agent),
-                ("init_dag", _init_dag_for_tspn),
-                ("bootstrap", _bootstrap_tspn_config),
-                ("train", _train_models),
-                ("report", report_agent_node),
-            ]
+    def _executor_path(state: PHMState) -> str:
+        logger = get_current_logger()
+        backend = (getattr(state, "train_backend", None) or "shallow").strip().lower()
+        path = "tspn_fast_path" if backend == "tspn" else "full_path"
+        log_event(
+            logger,
+            level="INFO",
+            event="executor.path",
+            phase="executor",
+            node="route",
+            message="Selected executor path.",
+            payload={"path": path, "train_backend": backend},
         )
+        return path
+
+    if not _LANGGRAPH_OK:  # pragma: no cover
+        class _ExecutorFallbackGraph:
+            def stream(self, state: PHMState, config: Any | None = None):
+                path = _executor_path(state)
+                if path == "tspn_fast_path":
+                    steps = [
+                        ("init_dag", _init_dag_for_tspn),
+                        ("bootstrap", _bootstrap_tspn_config),
+                        ("train", _train_models),
+                        ("report", report_agent_node),
+                    ]
+                else:
+                    steps = [
+                        ("inquire", lambda s: inquirer_agent(s, metrics=["cosine", "euclidean"])),
+                        ("prepare", dataset_preparer_agent),
+                        ("init_dag", _init_dag_for_tspn),
+                        ("bootstrap", _bootstrap_tspn_config),
+                        ("train", _train_models),
+                        ("report", report_agent_node),
+                    ]
+                for name, fn in steps:
+                    update = _run_node(name, fn, state)
+                    if isinstance(update, dict):
+                        fields = getattr(state.__class__, "model_fields", {})
+                        for k, v in update.items():
+                            if k in fields:
+                                setattr(state, k, v)
+                    yield {name: update}
+
+        return _ExecutorFallbackGraph()
 
     builder = StateGraph(PHMState)  # type: ignore[misc]
 
     # Define the nodes for the execution pipeline
-    builder.add_node("inquire", lambda state: inquirer_agent(state, metrics=["cosine", "euclidean"]))
-    builder.add_node("prepare", dataset_preparer_agent)
-    builder.add_node("init_dag", _init_dag_for_tspn)
-    builder.add_node("bootstrap", _bootstrap_tspn_config)
-    builder.add_node("train", _train_models)
-    builder.add_node("report", report_agent_node)
+    builder.add_node("route", lambda state: _run_node("route", lambda s: {}, state))
+    builder.add_node(
+        "inquire", lambda state: _run_node("inquire", lambda s: inquirer_agent(s, metrics=["cosine", "euclidean"]), state)
+    )
+    builder.add_node("prepare", lambda state: _run_node("prepare", dataset_preparer_agent, state))
+    builder.add_node("init_dag", lambda state: _run_node("init_dag", _init_dag_for_tspn, state))
+    builder.add_node("bootstrap", lambda state: _run_node("bootstrap", _bootstrap_tspn_config, state))
+    builder.add_node("train", lambda state: _run_node("train", _train_models, state))
+    builder.add_node("report", lambda state: _run_node("report", report_agent_node, state))
 
-    # Define the linear flow of the execution graph
-    builder.set_entry_point("inquire")
+    # Define the execution flow with runtime routing.
+    builder.set_entry_point("route")
+    builder.add_conditional_edges(
+        "route",
+        _executor_path,
+        {
+            "tspn_fast_path": "init_dag",
+            "full_path": "inquire",
+        },
+    )
     builder.add_edge("inquire", "prepare")
     builder.add_edge("prepare", "init_dag")
     builder.add_edge("init_dag", "bootstrap")

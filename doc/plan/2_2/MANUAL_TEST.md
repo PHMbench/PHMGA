@@ -23,6 +23,25 @@ python scripts/train_shallow_ml_from_npz.py --dataset-dir generated_datasets --o
 python scripts/generate_report_from_state.py --state <STATE_PKL> --ml-results ml_results.pkl --out final_report.md
 ```
 
+快捷运行（新增 scripts 封装）：
+
+```bash
+# 通用入口（默认 conda env: agent）
+scripts/run_case.sh --config config/tspn_case_exp_ottawa.yaml --dry-run
+
+# 预检查（provider/model、数据路径、算子/依赖）
+python main.py preflight --config config/tspn_case_exp_ottawa.yaml
+
+# Ottawa 常规 case
+scripts/run_ottawa.sh --dry-run
+
+# Ottawa TSPN 固定 ref/test ID case
+scripts/run_tspn_ottawa.sh --dry-run
+
+# 参数化切换（无痛换 profile / dataset）
+scripts/run_case.sh --config config/tspn_case_exp_ottawa.yaml --profile tspn_basic --dataset Ottawa --dry-run
+```
+
 产物检查点（成功标准）：
 - `final_report.md`
 - `ml_results.pkl`

@@ -4,7 +4,7 @@
 name: "exp2"
 save_dir: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save" # Add a general save directory
 metadata_path: "/mnt/crucial/LQ/PHM-Vibench/metadata_6_11.xlsx"
-h5_path: "/mnt/crucial/LQ/PHM-Vibench/cache.h5"
+h5_path: "/home/user/data/PHMbenchdata/PHM-Vibench/cache.h5"
 state_save_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/exp2/exp2_built_state.pkl"
 report_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/exp2/exp2_final_report.md"
 

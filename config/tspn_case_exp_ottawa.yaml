@@ -1,0 +1,68 @@
+name: "tspn_exp_ottawa_fixed_ids"
+save_dir: "/home/user/LQ/B_Signal/PHMGA/save"
+state_save_path: "/home/user/LQ/B_Signal/PHMGA/save/tspn_exp_ottawa_fixed_ids/built_state.pkl"
+report_path: "/home/user/LQ/B_Signal/PHMGA/save/tspn_exp_ottawa_fixed_ids/final_report.md"
+                              
+run_executor: true
+train_backend: tspn
+model_config_path: "config/model_tspn_basic.yaml"
+allow_test_labels_for_reporting: false
+
+data:
+  source_mode: fixed_ids
+
+model:
+  profile: tspn_basic
+  config_path: "config/model_tspn_basic.yaml"
+  autofit_dims: true
+  autofit_num_classes: true
+
+metadata_path: "/home/user/LQ/B_Signal/vibench_fix/PHM-Vibench copy 2/data/metadata.xlsx"
+h5_path: "/home/user/data/PHMbenchdata/PHM-Vibench/cache.h5"
+
+ref_ids:
+  - 47007
+  - 47008
+  - 47009
+  - 47016
+  - 47017
+  - 47018
+  - 47019
+  - 47020
+  - 47021
+  - 47028
+  - 47029
+  - 47030
+  - 47031
+  - 47032
+  - 47033
+  - 47040
+  - 47041
+  - 47042
+
+test_ids:
+  - 47010
+  - 47011
+  - 47012
+  - 47013
+  - 47014
+  - 47015
+  - 47022
+  - 47023
+  - 47024
+  - 47025
+  - 47026
+  - 47027
+  - 47034
+  - 47035
+  - 47036
+  - 47037
+  - 47038
+  - 47039
+
+builder:
+  min_depth: 4
+  max_depth: 8
+
+user_instruction: >
+  Analyze Ottawa variable-speed bearing faults with fixed reference/test IDs.

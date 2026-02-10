@@ -161,7 +161,7 @@ def main():
     # 1. 定义初始输入
     user_instruction = "Analyze the bearing signals for potential faults. The reference set contains signals for 5 different states (health, ball, cage, inner, outer). The test set also contains signals for the same 5 states. The goal is to correctly classify each test signal by comparing it to the reference set."
     metadata_path = "/mnt/crucial/LQ/PHM-Vibench/metadata_6_11.xlsx"
-    h5_path = "/mnt/crucial/LQ/PHM-Vibench/cache.h5"
+    h5_path = "/home/user/data/PHMbenchdata/PHM-Vibench/cache.h5"
     ########################################################
     # # ref_ids = [47050, 47044, 47047, 47053, 47056]
     # # test_ids = [47051, 47045, 47048, 47054, 47057]

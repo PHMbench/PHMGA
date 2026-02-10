@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import List, Dict, Any, Tuple, Optional
+import os
 import numpy as np
 from pydantic import BaseModel, Field, PrivateAttr
 import uuid
@@ -232,16 +233,61 @@ class DAGTracker:
             dot.edge(u, v)
         return dot
 
-    def write_png(self, path: str) -> None:
-        """Render the DAG to a PNG image on disk."""
+    def _build_dot_source(self) -> str:
+        """Build DOT source without requiring ``python-graphviz``."""
+        def _escape(text: str) -> str:
+            return text.replace("\\", "\\\\").replace('"', '\\"')
+
+        lines = ["digraph G {"]
+        for nid in self.g.nodes:
+            n = self.state.nodes[nid]
+            if isinstance(n, PHMOperator):
+                label = getattr(n, "op_name", nid)
+                shape = "box"
+                color = "lightblue"
+            else:
+                label = nid
+                shape = "ellipse"
+                color = "lightgray"
+            lines.append(
+                f'  "{_escape(str(nid))}" [label="{_escape(str(label))}", shape="{shape}", style="filled", fillcolor="{color}"];'
+            )
+        for u, v in self.g.edges:
+            lines.append(f'  "{_escape(str(u))}" -> "{_escape(str(v))}";')
+        lines.append("}")
+        return "\n".join(lines) + "\n"
+
+    def write_png(self, path: str) -> bool:
+        """Render the DAG to a PNG image on disk; return success flag."""
+        base = path[:-4] if path.endswith(".png") else path
+        png_path = f"{base}.png"
+        dot_path = f"{base}.dot"
+        dot = None
         try:
             dot = self.to_dot()
-            base = path[:-4] if path.endswith(".png") else path
             dot.render(filename=base, format="png", cleanup=True)
-        except Exception:
-            fname = path if path.endswith(".png") else f"{path}.png"
-            with open(fname, "wb") as f:
-                f.write(b"")
+            if not os.path.exists(png_path) or os.path.getsize(png_path) == 0:
+                raise RuntimeError("Graph render produced empty PNG output.")
+            return True
+        except Exception as exc:
+            dot_source: str
+            try:
+                dot_source = getattr(dot, "source", "") if dot is not None else ""
+            except Exception:
+                dot_source = ""
+            if not dot_source:
+                dot_source = self._build_dot_source()
+            with open(dot_path, "w", encoding="utf-8") as f:
+                f.write(dot_source)
+            try:
+                if os.path.exists(png_path) and os.path.getsize(png_path) == 0:
+                    os.remove(png_path)
+            except Exception:
+                pass
+            self.state.error_log.append(
+                f"Graph PNG export failed: {type(exc).__name__}: {exc}. DOT fallback saved to: {dot_path}"
+            )
+            return False
 
     # ---------- 内部 ---------- #
     def _add_node(self, n):
