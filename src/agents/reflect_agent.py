@@ -11,6 +11,7 @@ from src.configuration import Configuration
 from src.prompts.reflect_prompt import REFLECT_PROMPT
 from src.states.phm_states import PHMState
 from src.utils import get_dag_depth
+from src.utils.logging_setup import get_current_logger, log_event, timed
 
 VALID_DECISIONS = {"finish", "need_patch", "need_replan", "halt"}
 
@@ -28,6 +29,7 @@ def reflect_agent(
     state: "PHMState" | None = None,  # Optional for backward compatibility in offline tests
 ) -> Dict[str, str]:
     """Quality check the DAG and return a decision with reason."""
+    logger = get_current_logger()
     if _debug_enabled():
         print("\n--- Reflect Agent Inputs ---")
         print(f"Stage: {stage}")
@@ -56,18 +58,41 @@ def reflect_agent(
     llm = get_llm(Configuration.from_runnable_config(None))
     prompt = ChatPromptTemplate.from_template(REFLECT_PROMPT)
     chain = prompt | llm
-    resp = chain.invoke(
-        {
-            "instruction": instruction,
-            "stage": stage,
-            "dag_blueprint": json.dumps(dag_blueprint, ensure_ascii=False),
-            "issues_summary": contextual_issues, # 使用包含深度信息的上下文
-            "min_depth": state.min_depth if state is not None else 0,
-            "min_width": state.min_width if state is not None else 0,
-            "max_depth": state.max_depth if state is not None else 999,
-            "current_depth": get_dag_depth(state.dag_state) if state is not None else depth,
-        }
-    )
+    llm_input = {
+        "instruction": instruction,
+        "stage": stage,
+        "dag_blueprint": json.dumps(dag_blueprint, ensure_ascii=False),
+        "issues_summary": contextual_issues, # 使用包含深度信息的上下文
+        "min_depth": state.min_depth if state is not None else 0,
+        "min_width": state.min_width if state is not None else 0,
+        "max_depth": state.max_depth if state is not None else 999,
+        "current_depth": get_dag_depth(state.dag_state) if state is not None else depth,
+    }
+    with timed(logger, event="llm_call", phase="builder", node="reflect", message="reflect_agent LLM invoke"):
+        log_event(
+            logger,
+            level="INFO",
+            event="llm.request",
+            phase="builder",
+            node="reflect",
+            message="Sending reflect prompt to LLM.",
+            payload={
+                "provider": os.getenv("LLM_PROVIDER"),
+                "model": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                "prompt": REFLECT_PROMPT,
+                "inputs": llm_input,
+            },
+        )
+        resp = chain.invoke(llm_input)
+        log_event(
+            logger,
+            level="INFO",
+            event="llm.response",
+            phase="builder",
+            node="reflect",
+            message="Received reflect response from LLM.",
+            payload={"response": getattr(resp, "content", "")},
+        )
     if _debug_enabled():
         print("\n--- Reflect Agent LLM Response ---")
 
@@ -103,6 +128,14 @@ def reflect_agent(
     except Exception as exc:  # pragma: no cover - defensive
         decision = "halt"
         reason = f"PARSE_ERROR: {exc}"
+        log_event(
+            logger,
+            level="ERROR",
+            event="reflect.parse_error",
+            phase="builder",
+            node="reflect",
+            message=reason,
+        )
     return {"decision": decision, "reason": reason}
 
 

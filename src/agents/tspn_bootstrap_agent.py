@@ -9,6 +9,7 @@ import networkx as nx
 import yaml
 
 from src.model.explainable.config_schema import TSPNConfig
+from src.model.explainable.operator_catalog import lookup_operator
 from src.states.phm_states import InputData, PHMState, ProcessedData
 
 
@@ -67,18 +68,10 @@ def _build_depth_index(state: PHMState) -> Dict[str, int]:
 
 
 def _map_method_to_token(method: str) -> Optional[str]:
-    m = (method or "").strip().lower()
-    if not m:
+    mapping = lookup_operator(method)
+    if mapping.status == "unsupported":
         return None
-    if "fft" in m:
-        return "FFT"
-    if "hilbert" in m or m in {"ht"} or "envelope" in m:
-        return "HT"
-    if "wave" in m or "filter" in m or m in {"wf"}:
-        return "WF"
-    if m in {"identity", "i"}:
-        return "I"
-    return None
+    return mapping.token or "I"
 
 
 def tspn_bootstrap_agent(

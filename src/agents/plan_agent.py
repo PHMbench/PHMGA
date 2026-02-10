@@ -13,6 +13,7 @@ from src.prompts.plan_prompt import PLANNER_PROMPT
 from src.states.phm_states import PHMState
 from src.tools.signal_processing_schemas import OP_REGISTRY, get_operator
 from src.utils import get_dag_depth
+from src.utils.logging_setup import get_current_logger, log_event, timed
 
 # 1. 定义期望的输出结构
 class Step(BaseModel):
@@ -43,6 +44,7 @@ class Plan(BaseModel):
 def plan_agent(state: PHMState) -> dict:
     """Call LLM to generate a detailed processing plan using structured output."""
 
+    logger = get_current_logger()
     llm = get_llm(Configuration.from_runnable_config(None))
     
     # --- MODIFIED: Generate a concise, human-readable tool description ---
@@ -92,19 +94,41 @@ def plan_agent(state: PHMState) -> dict:
         
         reflection = state.reflection_history
 
-        resp = chain.invoke(
-            {
-                "instruction": state.user_instruction,
-                "dag_json": dag_json, # Pass the lightweight topology
-                "tools": tools_description,
-                "reflection": json.dumps(reflection, indent=2),
-                "min_depth": state.min_depth,
-                "min_width": state.min_width,
-                "max_depth": state.max_depth,
-                "current_depth": get_dag_depth(state.dag_state),
-
-            }
-        )
+        llm_input = {
+            "instruction": state.user_instruction,
+            "dag_json": dag_json, # Pass the lightweight topology
+            "tools": tools_description,
+            "reflection": json.dumps(reflection, indent=2),
+            "min_depth": state.min_depth,
+            "min_width": state.min_width,
+            "max_depth": state.max_depth,
+            "current_depth": get_dag_depth(state.dag_state),
+        }
+        with timed(logger, event="llm_call", phase="builder", node="plan", message="plan_agent LLM invoke"):
+            log_event(
+                logger,
+                level="INFO",
+                event="llm.request",
+                phase="builder",
+                node="plan",
+                message="Sending plan prompt to LLM.",
+                payload={
+                    "provider": os.getenv("LLM_PROVIDER"),
+                    "model": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                    "prompt": PLANNER_PROMPT,
+                    "inputs": llm_input,
+                },
+            )
+            resp = chain.invoke(llm_input)
+            log_event(
+                logger,
+                level="INFO",
+                event="llm.response",
+                phase="builder",
+                node="plan",
+                message="Received plan response from LLM.",
+                payload={"response": getattr(resp, "content", "")},
+            )
         
         # 1. 从 AIMessage.content 中提取 JSON 字符串
         json_str = resp.content
@@ -150,6 +174,15 @@ def plan_agent(state: PHMState) -> dict:
         detailed_plan = []
         error_logs = state.error_logs + [f"Planner error: {e}"]
         state.error_logs = error_logs
+        log_event(
+            logger,
+            level="ERROR",
+            event="plan.error",
+            phase="builder",
+            node="plan",
+            message=f"Planner failed: {e}",
+            payload={"error_logs_count": len(error_logs)},
+        )
 
     return {"detailed_plan": detailed_plan}
 

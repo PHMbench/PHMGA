@@ -10,6 +10,7 @@ from src.configuration import Configuration
 from src.model import get_llm
 from src.prompts.report_prompt import REPORT_PROMPT
 from src.states.phm_states import PHMState
+from src.utils.logging_setup import get_current_logger, log_event, timed
 
 
 def report_agent(
@@ -22,18 +23,42 @@ def report_agent(
 ) -> Dict[str, str]:
     """Generate a final markdown report via LLM."""
 
+    logger = get_current_logger()
     llm = get_llm(Configuration.from_runnable_config(None))
     prompt = ChatPromptTemplate.from_template(REPORT_PROMPT)
     chain = prompt | llm
-    resp = chain.invoke(
-        {
-            "instruction": instruction,
-            "dag_overview": json.dumps(dag_overview, ensure_ascii=False),
-            "similarity_stats": json.dumps(similarity_stats, ensure_ascii=False),
-            "ml_results": json.dumps(ml_results, ensure_ascii=False),
-            "issues_summary": issues_summary or "",
-        }
-    )
+    llm_input = {
+        "instruction": instruction,
+        "dag_overview": json.dumps(dag_overview, ensure_ascii=False),
+        "similarity_stats": json.dumps(similarity_stats, ensure_ascii=False),
+        "ml_results": json.dumps(ml_results, ensure_ascii=False),
+        "issues_summary": issues_summary or "",
+    }
+    with timed(logger, event="llm_call", phase="report", node="report", message="report_agent LLM invoke"):
+        log_event(
+            logger,
+            level="INFO",
+            event="llm.request",
+            phase="report",
+            node="report",
+            message="Sending report prompt to LLM.",
+            payload={
+                "provider": os.getenv("LLM_PROVIDER"),
+                "model": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                "prompt": REPORT_PROMPT,
+                "inputs": llm_input,
+            },
+        )
+        resp = chain.invoke(llm_input)
+        log_event(
+            logger,
+            level="INFO",
+            event="llm.response",
+            phase="report",
+            node="report",
+            message="Received report response from LLM.",
+            payload={"response": getattr(resp, "content", "")},
+        )
     if os.getenv("PHM_DEBUG_REPORT", "").strip().lower() in {"1", "true", "yes", "y"}:
         print("\n--- Report Agent LLM Response ---")
         print(resp.content)
@@ -60,9 +85,12 @@ def _template_report(
     if val:
         lines.append(f"- Val acc: {val.get('val_acc')}")
         lines.append(f"- Val macro_f1: {val.get('val_macro_f1')}")
+    n_test = metrics.get("n_test")
     if "test_acc" in metrics:
         lines.append(f"- Test acc: {metrics.get('test_acc')}")
         lines.append(f"- Test macro_f1: {metrics.get('test_macro_f1')}")
+    elif n_test in {0, "0"}:
+        lines.append("- Test metrics: unavailable (n_test=0, generalization is not validated)")
     if best:
         lines.append(f"- Best epoch: {best.get('epoch')}")
     lines.append("")
@@ -94,18 +122,40 @@ def _template_report(
 
 def report_agent_node(state: PHMState) -> Dict[str, str]:
     """Adapter using :class:`PHMState` for the outer graph."""
-    try:  # generate final DAG image
-        base_save_dir = (
-            getattr(state, "save_dir", None)
-            or os.environ.get("PHM_SAVE_DIR")
-            or os.environ.get("PHM_DATA_DIR")
-            or os.path.join(os.getcwd(), "save")
+    logger = get_current_logger()
+    base_save_dir = (
+        getattr(state, "save_dir", None)
+        or os.environ.get("PHM_SAVE_DIR")
+        or os.environ.get("PHM_DATA_DIR")
+        or os.path.join(os.getcwd(), "save")
+    )
+    case_name = getattr(state, "case_name", "") or "case"
+    save_path = os.path.join(base_save_dir, case_name, "final_dag.png")
+    export_ok = state.tracker().write_png(save_path)
+    if export_ok:
+        try:
+            size_bytes = os.path.getsize(save_path)
+        except OSError:
+            size_bytes = -1
+        log_event(
+            logger,
+            level="INFO",
+            event="graph.export.success",
+            phase="report",
+            node="report",
+            message="Exported final DAG PNG.",
+            payload={"path": save_path, "size_bytes": size_bytes},
         )
-        case_name = getattr(state, "case_name", "") or "case"
-        save_path = os.path.join(base_save_dir, case_name, "final_dag.png")
-        state.tracker().write_png(save_path)
-    except Exception:
-        pass
+    else:
+        log_event(
+            logger,
+            level="ERROR",
+            event="graph.export.fail",
+            phase="report",
+            node="report",
+            message="Failed to export final DAG PNG. DOT fallback generated.",
+            payload={"png_path": save_path, "dot_path": save_path[:-4] + ".dot"},
+        )
     dag_overview = json.loads(state.tracker().export_json())
     
     # Extract similarity stats from the `sim` attribute of leaf nodes.

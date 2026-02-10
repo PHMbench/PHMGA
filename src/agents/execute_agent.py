@@ -11,6 +11,7 @@ from src.states.phm_states import PHMState, InputData, ProcessedData
 from src.model import get_llm
 from src.tools.signal_processing_schemas import get_operator
 from src.tools.multi_schemas import MultiVariableOp
+from src.utils.logging_setup import get_current_logger, log_event, timed
 
 
 MAX_STEPS = 20
@@ -52,7 +53,33 @@ Your response MUST be a single JSON object containing only the generated value. 
 Do not add any other text or explanations.
 """
             try:
-                resp = llm.invoke(prompt)
+                logger = get_current_logger()
+                with timed(logger, event="llm_call", phase="builder", node="execute", message="auto-parameter generation"):
+                    log_event(
+                        logger,
+                        level="INFO",
+                        event="llm.request",
+                        phase="builder",
+                        node="execute",
+                        message=f"Generating missing parameter: {field_name}",
+                        payload={
+                            "provider": os.getenv("LLM_PROVIDER"),
+                            "model": getattr(llm, "model_name", None) or getattr(llm, "model", None),
+                            "prompt": prompt,
+                            "op_name": getattr(op_cls, "op_name", "N/A"),
+                            "field_name": field_name,
+                        },
+                    )
+                    resp = llm.invoke(prompt)
+                    log_event(
+                        logger,
+                        level="INFO",
+                        event="llm.response",
+                        phase="builder",
+                        node="execute",
+                        message=f"Generated parameter for {field_name}",
+                        payload={"response": getattr(resp, "content", "")},
+                    )
                 # The response should be a JSON string representing the value
                 generated_value = json.loads(resp.content)
                 resolved_params[field_name] = generated_value
@@ -156,6 +183,7 @@ def _execute_single_variable_op(op, parent_id, new_nodes):
 
 
 def execute_agent(state: PHMState) -> Dict[str, Any]:
+    logger = get_current_logger()
     # Optional new mode: run neuro-symbolic (TSPN) training directly and return TrainReport updates.
     task_type = getattr(state, "task_type", "signal_processing_dag")
     if str(task_type).strip().lower() == "neuro_symbolic_train":
@@ -164,6 +192,14 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
 
         tmp_state = state
         updates: Dict[str, Any] = {}
+        log_event(
+            logger,
+            level="INFO",
+            event="execute.neuro_symbolic.start",
+            phase="executor",
+            node="execute",
+            message="Execute in neuro_symbolic_train mode.",
+        )
         if not getattr(tmp_state, "model_config_path", None):
             boot = tspn_bootstrap_agent(tmp_state)
             updates.update(boot)
@@ -175,10 +211,28 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
 
         train_out = deep_model_train_agent(tmp_state)
         updates.update(train_out)
+        log_event(
+            logger,
+            level="INFO",
+            event="execute.neuro_symbolic.finish",
+            phase="executor",
+            node="execute",
+            message="Neuro-symbolic train mode finished.",
+            payload={"update_keys": sorted(updates.keys())},
+        )
         return updates
 
     executed_steps = 0
     llm = get_llm(None)
+    log_event(
+        logger,
+        level="INFO",
+        event="execute.start",
+        phase="builder",
+        node="execute",
+        message="Execute detailed plan.",
+        payload={"n_steps": len(state.detailed_plan)},
+    )
     
     # Get the base save directory from environment, fallback to a default
     base_save_dir = (
@@ -218,6 +272,15 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
             continue
 
         try:
+            log_event(
+                logger,
+                level="INFO",
+                event="execute.step.start",
+                phase="builder",
+                node="execute",
+                message="Execute plan step.",
+                payload={"idx": idx, "op_name": op_name, "parent": parent_ids_str},
+            )
             op_cls = get_operator(op_name)
             
             # Auto-inject 'fs' if required by the operator and not provided in the original plan
@@ -315,8 +378,26 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
             new_leaves.append(node.node_id)
 
             executed_steps += 1
+            log_event(
+                logger,
+                level="INFO",
+                event="execute.step.success",
+                phase="builder",
+                node="execute",
+                message="Step executed successfully.",
+                payload={"idx": idx, "node_id": node.node_id, "shape": shape},
+            )
         except Exception as exc:
             state.dag_state.error_log.append(f"Error executing step {step}: {exc}")
+            log_event(
+                logger,
+                level="ERROR",
+                event="execute.step.fail",
+                phase="builder",
+                node="execute",
+                message=f"Step failed: {exc}",
+                payload={"idx": idx, "step": step},
+            )
             break
 
     # Create the new immutable DAG state
@@ -329,12 +410,48 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     # Save the graph image to a case-specific directory
     case_graph_dir = os.path.join(base_save_dir, case_name, "graphs")
     os.makedirs(case_graph_dir, exist_ok=True)
-    png_path = os.path.join(case_graph_dir, f"dag_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-    temp_tracker.write_png(png_path)
-    new_dag_state.graph_path = png_path + ".png"
+    png_base = os.path.join(case_graph_dir, f"dag_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+    export_ok = temp_tracker.write_png(png_base)
+    png_path = f"{png_base}.png"
+    dot_path = f"{png_base}.dot"
+    if export_ok:
+        try:
+            size_bytes = os.path.getsize(png_path)
+        except OSError:
+            size_bytes = -1
+        new_dag_state.graph_path = png_path
+        log_event(
+            logger,
+            level="INFO",
+            event="graph.export.success",
+            phase="builder",
+            node="execute",
+            message="Exported DAG PNG.",
+            payload={"path": png_path, "size_bytes": size_bytes},
+        )
+    else:
+        new_dag_state.graph_path = dot_path if os.path.exists(dot_path) else png_path
+        log_event(
+            logger,
+            level="ERROR",
+            event="graph.export.fail",
+            phase="builder",
+            node="execute",
+            message="Failed to export DAG PNG. DOT fallback generated.",
+            payload={"png_path": png_path, "dot_path": dot_path},
+        )
 
     # Backward-compat: also mutate state in-place for callers/tests that expect it.
     state.dag_state = new_dag_state
+    log_event(
+        logger,
+        level="INFO",
+        event="execute.finish",
+        phase="builder",
+        node="execute",
+        message="Execute agent finished.",
+        payload={"executed_steps": executed_steps, "n_nodes": len(new_nodes)},
+    )
 
     return {"dag_state": new_dag_state, "executed_steps": executed_steps}
 

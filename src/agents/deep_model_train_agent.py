@@ -11,11 +11,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+import yaml
 
 from src.model.explainable import build_tspn_from_config, load_tspn_config
 from src.model.explainable.config_schema import TSPNConfig
 from src.model.explainable.bridge import DAG2ConfigAdapter
 from src.states.phm_states import InputData, PHMState, TrainReport
+from src.utils.logging_setup import get_current_logger, log_event, timed
+from src.utils.preflight import build_preflight_report, write_preflight_report
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,113 @@ def _safe_copy(src: str | None, dst: Path) -> None:
         shutil.copy2(src, dst)
     except Exception:
         pass
+
+
+def _parse_bool(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _profile_to_model_config_path(profile: str | None) -> str | None:
+    mapping = {
+        "tspn_basic": "config/model_tspn_basic.yaml",
+        "tspn_wf_heavy": "config/model_tspn_basic.yaml",
+    }
+    if not profile:
+        return None
+    return mapping.get(str(profile).strip())
+
+
+def _resolve_model_config_path(state: PHMState, cfg: Dict[str, Any] | None = None) -> str | None:
+    cfg = cfg or {}
+    data_cfg = dict(getattr(state, "data_cfg", {}) or {})
+    profile_path = _profile_to_model_config_path(str(data_cfg.get("model_profile") or ""))
+    candidate = (
+        state.model_config_path
+        or data_cfg.get("model_config_path")
+        or cfg.get("model_config_path")
+        or profile_path
+    )
+    if not candidate:
+        default_path = Path("config") / "model_tspn_basic.yaml"
+        candidate = str(default_path) if default_path.exists() else None
+    return str(candidate) if candidate else None
+
+
+def _write_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def _write_run_preflight_report(state: PHMState, run_dir: Path) -> None:
+    data_cfg = dict(getattr(state, "data_cfg", {}) or {})
+    preflight_cfg: Dict[str, Any] = {
+        "data": data_cfg,
+        "metadata_path": data_cfg.get("metadata_path"),
+        "h5_path": data_cfg.get("h5_path"),
+        "ref_ids": data_cfg.get("ref_ids"),
+        "test_ids": data_cfg.get("test_ids"),
+        "model_config_path": _resolve_model_config_path(state, {}),
+    }
+    report = build_preflight_report(preflight_cfg)
+    write_preflight_report(report, run_dir / "preflight_report.json")
+
+
+def _resolve_tspn_config(
+    *,
+    source_model_config_path: str,
+    inferred_in_dim: int,
+    inferred_in_channels: int,
+    inferred_num_classes: int,
+    autofit_dims: bool,
+    autofit_num_classes: bool,
+) -> Tuple[TSPNConfig, Dict[str, Any]]:
+    source_cfg = load_tspn_config(source_model_config_path)
+    cfg_dict = source_cfg.model_dump()
+    overrides: Dict[str, Any] = {}
+
+    cfg_dims = (int(cfg_dict["model"]["in_dim"]), int(cfg_dict["model"]["in_channels"]))
+    if autofit_dims:
+        cfg_dict["model"]["in_dim"] = int(inferred_in_dim)
+        cfg_dict["model"]["in_channels"] = int(inferred_in_channels)
+        if cfg_dims != (int(inferred_in_dim), int(inferred_in_channels)):
+            overrides["dims"] = {
+                "from": {"in_dim": cfg_dims[0], "in_channels": cfg_dims[1]},
+                "to": {"in_dim": int(inferred_in_dim), "in_channels": int(inferred_in_channels)},
+            }
+    elif cfg_dims != (int(inferred_in_dim), int(inferred_in_channels)):
+        raise ValueError(
+            f"Model/data dimension mismatch: cfg(in_dim={cfg_dims[0]}, in_channels={cfg_dims[1]}) "
+            f"!= data(in_dim={inferred_in_dim}, in_channels={inferred_in_channels})."
+        )
+
+    cfg_num_classes = int(cfg_dict["model"]["num_classes"])
+    if autofit_num_classes:
+        cfg_dict["model"]["num_classes"] = int(inferred_num_classes)
+        if cfg_num_classes != int(inferred_num_classes):
+            overrides["num_classes"] = {"from": cfg_num_classes, "to": int(inferred_num_classes)}
+    elif cfg_num_classes != int(inferred_num_classes):
+        raise ValueError(
+            f"num_classes mismatch: cfg={cfg_num_classes} vs labels={inferred_num_classes}. "
+            "Set model.autofit_num_classes=true or align labels/model config."
+        )
+
+    resolved_cfg = TSPNConfig.model_validate(cfg_dict)
+    resolve_info = {
+        "source_model_config_path": source_model_config_path,
+        "autofit_dims": autofit_dims,
+        "autofit_num_classes": autofit_num_classes,
+        "inferred": {
+            "in_dim": int(inferred_in_dim),
+            "in_channels": int(inferred_in_channels),
+            "num_classes": int(inferred_num_classes),
+        },
+        "overrides": overrides,
+    }
+    return resolved_cfg, resolve_info
 
 
 def _infer_channels_and_length(state: PHMState) -> Tuple[int, int]:
@@ -149,6 +259,16 @@ def _macro_f1(y_true: np.ndarray, y_pred: np.ndarray, num_classes: int) -> float
 
 
 def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dict[str, Any]) -> Dict[str, Any]:
+    logger = get_current_logger()
+    log_event(
+        logger,
+        level="INFO",
+        event="train.vibench.start",
+        phase="train",
+        node="train",
+        message="Start vibench TSPN training.",
+        payload={"run_dir": str(run_dir), "backend": "vibench"},
+    )
     # Optional dependency: torch.
     try:
         import torch  # type: ignore
@@ -159,11 +279,6 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
         ml = dict(state.ml_results)
         ml["tspn"] = {"error": err, "artifacts_dir": str(run_dir)}
         return {"ml_results": ml, "run_dir": str(run_dir)}
-
-    try:
-        import yaml  # type: ignore
-    except Exception as e:  # pragma: no cover
-        raise ImportError("PyYAML is required to write model_config.yaml") from e
 
     from src.utils.data_factory_wrapper import PHMVibenchDataFactory
 
@@ -179,7 +294,11 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
     B, L, C = tuple(int(x) for x in x0.shape)
     num_classes = max(2, len(label_to_index))
 
-    # Bridge: DAG -> config + init metadata.
+    source_model_config_path = _resolve_model_config_path(state, {"model_config_path": data_cfg.get("model_config_path")})
+    autofit_dims = _parse_bool(data_cfg.get("autofit_dims"), default=True)
+    autofit_num_classes = _parse_bool(data_cfg.get("autofit_num_classes"), default=True)
+
+    # Bridge: DAG -> init metadata (+ fallback config).
     fs_hz = None
     try:
         fs_hz = float(data_cfg.get("fs_hz")) if data_cfg.get("fs_hz") is not None else None
@@ -206,10 +325,37 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
         scale=int(data_cfg.get("scale") or 4),
         feature_tokens=list(data_cfg.get("features") or ["Mean", "Std", "RMS"]),
         fft_align_strategy=str(data_cfg.get("fft_align_strategy") or "interp"),
+        preserve_dag_topology=bool(data_cfg.get("preserve_topology", True)),
+        allow_duplicate_tokens=bool(data_cfg.get("allow_duplicate_tokens", True)),
+        unsupported_policy=str(data_cfg.get("unsupported_policy") or "fallback_to_identity"),
     )
     bridge = adapter.adapt(state.dag_state)
 
-    cfg_dict = bridge.model_config
+    cfg_dict: Dict[str, Any]
+    resolve_info: Dict[str, Any]
+    if source_model_config_path and Path(source_model_config_path).exists():
+        resolved_cfg, resolve_info = _resolve_tspn_config(
+            source_model_config_path=source_model_config_path,
+            inferred_in_dim=L,
+            inferred_in_channels=C,
+            inferred_num_classes=num_classes,
+            autofit_dims=autofit_dims,
+            autofit_num_classes=autofit_num_classes,
+        )
+        cfg_dict = resolved_cfg.model_dump()
+    else:
+        cfg_dict = dict(bridge.model_config)
+        cfg_dict.setdefault("model", {})
+        cfg_dict["model"]["in_dim"] = int(L)
+        cfg_dict["model"]["in_channels"] = int(C)
+        cfg_dict["model"]["num_classes"] = int(num_classes)
+        resolve_info = {
+            "source_model_config_path": source_model_config_path,
+            "autofit_dims": autofit_dims,
+            "autofit_num_classes": autofit_num_classes,
+            "inferred": {"in_dim": int(L), "in_channels": int(C), "num_classes": int(num_classes)},
+            "overrides": {"mode": "dag_bridge"},
+        }
     init_metadata = bridge.init_metadata
 
     # Training overrides from data_cfg (optional).
@@ -224,10 +370,14 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
     tspn_cfg = TSPNConfig.model_validate(cfg_dict)
     model_cfg_snapshot = tspn_cfg.model_dump()
 
-    # Write artifacts: model_config + init metadata.
+    # Write artifacts: source/resolved config + init metadata + resolve summary.
     model_config_path = run_dir / "model_config.yaml"
     model_config_path.write_text(yaml.safe_dump(model_cfg_snapshot, sort_keys=False), encoding="utf-8")
+    resolved_model_path = run_dir / "model_config.resolved.yaml"
+    resolved_model_path.write_text(yaml.safe_dump(model_cfg_snapshot, sort_keys=False), encoding="utf-8")
+    _write_json(run_dir / "config_resolve.json", resolve_info)
     (run_dir / "init_metadata.json").write_text(json.dumps(init_metadata, indent=2), encoding="utf-8")
+    _write_run_preflight_report(state, run_dir)
 
     # Reproducibility
     seed = int(getattr(tspn_cfg.train, "seed", 42) or 42)
@@ -364,6 +514,28 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
         "num_classes": int(num_classes),
     }
     (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    dataset_manifest = {
+        "source_mode": "vibench",
+        "dataset_name": data_cfg.get("dataset_name"),
+        "task_type": data_cfg.get("task_type"),
+        "task_name": data_cfg.get("task_name"),
+        "split_protocol": "vibench_factory(train/val/test)",
+        "n_train": int(len(getattr(train_loader, "dataset", []))),
+        "n_val": int(len(getattr(val_loader, "dataset", []))),
+        "n_test": int(len(getattr(test_loader, "dataset", []))),
+        "num_classes": int(num_classes),
+        "label_to_index": label_to_index,
+    }
+    _write_json(run_dir / "dataset_manifest.json", dataset_manifest)
+    log_event(
+        logger,
+        level="INFO",
+        event="train.vibench.metrics",
+        phase="train",
+        node="train",
+        message="vibench training metrics generated.",
+        payload={"metrics": metrics},
+    )
 
     pred_path = run_dir / "predictions.csv"
     with pred_path.open("w", newline="", encoding="utf-8") as f:
@@ -395,7 +567,14 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
         confusion_matrix=_confusion(val_true, val_pred, num_classes=num_classes),
         explain_summary=explain_summary,
         error_modes=[],
-        artifacts={"artifacts_dir": str(run_dir), "model_config_path": str(model_config_path)},
+        artifacts={
+            "artifacts_dir": str(run_dir),
+            "model_config_path": str(model_config_path),
+            "model_config_resolved_path": str(resolved_model_path),
+            "dataset_manifest_path": str(run_dir / "dataset_manifest.json"),
+            "config_resolve_path": str(run_dir / "config_resolve.json"),
+            "preflight_report_path": str(run_dir / "preflight_report.json"),
+        },
     )
 
     # Update state-like outputs.
@@ -404,14 +583,14 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
     ml["tspn"] = {
         "metrics": metrics,
         "artifacts_dir": str(run_dir),
-        "model_config_path": str(model_config_path),
+        "model_config_path": str(resolved_model_path),
     }
     return {
         "ml_results": ml,
         "run_dir": str(run_dir),
         "train_history": history,
         "current_model_config": model_cfg_snapshot,
-        "model_config_path": str(model_config_path),
+        "model_config_path": str(resolved_model_path),
     }
 
 
@@ -424,6 +603,7 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
     - test labels are used only when allow_test_labels_for_reporting=true
     """
     cfg = config or {}
+    logger = get_current_logger()
 
     base_save_dir = (
         state.save_dir
@@ -434,38 +614,41 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
     case_name = state.case_name or cfg.get("case_name") or "case"
     run_dir = Path(base_save_dir) / case_name / _now_tag()
     _ensure_dir(run_dir)
+    log_event(
+        logger,
+        level="INFO",
+        event="train.start",
+        phase="train",
+        node="train",
+        message="Start deep_model_train_agent.",
+        payload={"case_name": case_name, "run_dir": str(run_dir)},
+    )
 
     # --- Real-data backend: PHM-Vibench data_factory ---
     data_cfg = dict(getattr(state, "data_cfg", {}) or {})
     if str(data_cfg.get("backend") or "").strip().lower() == "vibench":
-        return _train_with_vibench_factory(state, run_dir=run_dir, data_cfg=data_cfg)
+        with timed(logger, event="train.vibench", phase="train", node="train"):
+            return _train_with_vibench_factory(state, run_dir=run_dir, data_cfg=data_cfg)
 
-    model_config_path = state.model_config_path or cfg.get("model_config_path")
-    if not model_config_path:
-        # Provide a sane default if the user didn't specify one.
-        default_path = Path("config") / "model_tspn_basic.yaml"
-        model_config_path = str(default_path) if default_path.exists() else None
-
+    model_config_path = _resolve_model_config_path(state, cfg)
     if not model_config_path or not Path(model_config_path).exists():
         err = f"TSPN model_config_path not found: {model_config_path!r}"
         state.error_logs.append(err)
         ml = dict(state.ml_results)
         ml["tspn"] = {"error": err, "artifacts_dir": str(run_dir)}
+        log_event(
+            logger,
+            level="ERROR",
+            event="train.config_missing",
+            phase="train",
+            node="train",
+            message=err,
+            payload={"model_config_path": model_config_path},
+        )
         return {"ml_results": ml, "run_dir": str(run_dir)}
 
-    # Copy configs for reproducibility (best-effort).
-    _safe_copy(model_config_path, run_dir / "model_config.yaml")
-
-    tspn_cfg = load_tspn_config(model_config_path)
-    # Keep a snapshot of the immutable model config in state for reflection/outer-loop.
-    model_cfg_snapshot = tspn_cfg.model_dump()
-
-    # Fail-fast shape checks (SPEC).
+    # Infer dims from data.
     C, L = _infer_channels_and_length(state)
-    if int(tspn_cfg.model.in_channels) != int(C):
-        raise ValueError(f"in_channels mismatch: cfg={tspn_cfg.model.in_channels}, data={C}")
-    if int(tspn_cfg.model.in_dim) != int(L):
-        raise ValueError(f"in_dim mismatch: cfg={tspn_cfg.model.in_dim}, data={L}")
 
     # Build label mapping from ref labels only.
     if not state.labels_ref:
@@ -478,6 +661,27 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
 
     label_to_index = _make_label_to_index(state.labels_ref)
     labels_ref_idx = _remap_labels(state.labels_ref, label_to_index)
+    inferred_num_classes = len(label_to_index)
+
+    autofit_dims = _parse_bool(data_cfg.get("autofit_dims"), default=True)
+    autofit_num_classes = _parse_bool(data_cfg.get("autofit_num_classes"), default=True)
+
+    tspn_cfg, resolve_info = _resolve_tspn_config(
+        source_model_config_path=model_config_path,
+        inferred_in_dim=L,
+        inferred_in_channels=C,
+        inferred_num_classes=inferred_num_classes,
+        autofit_dims=autofit_dims,
+        autofit_num_classes=autofit_num_classes,
+    )
+    model_cfg_snapshot = tspn_cfg.model_dump()
+    # Persist config lineage (source + resolved).
+    _safe_copy(model_config_path, run_dir / "model_config.source.yaml")
+    resolved_model_path = run_dir / "model_config.resolved.yaml"
+    resolved_model_path.write_text(yaml.safe_dump(model_cfg_snapshot, sort_keys=False), encoding="utf-8")
+    (run_dir / "model_config.yaml").write_text(yaml.safe_dump(model_cfg_snapshot, sort_keys=False), encoding="utf-8")
+    _write_json(run_dir / "config_resolve.json", resolve_info)
+    _write_run_preflight_report(state, run_dir)
 
     # Build fused views.
     ref = _build_fused_view(state, split="ref", labels_map=labels_ref_idx)
@@ -723,6 +927,26 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
         "n_test": int(test.y.shape[0]) if test is not None and test.y.size else 0,
     }
     (run_dir / "metrics.json").write_text(json.dumps(metrics, indent=2), encoding="utf-8")
+    dataset_manifest = {
+        "source_mode": str(data_cfg.get("source_mode") or "fixed_ids"),
+        "dataset_name": data_cfg.get("dataset_name"),
+        "split_protocol": "fixed_ids(ref->train/val, tst->test)",
+        "n_train": int(train_data.y.shape[0]),
+        "n_val": int(val_data.y.shape[0]),
+        "n_test": int(test.y.shape[0]) if test is not None and test.y.size else 0,
+        "num_classes": int(num_classes),
+        "label_to_index": label_to_index,
+    }
+    _write_json(run_dir / "dataset_manifest.json", dataset_manifest)
+    log_event(
+        logger,
+        level="INFO",
+        event="train.metrics",
+        phase="train",
+        node="train",
+        message="Training metrics generated.",
+        payload={"metrics": metrics},
+    )
 
     metrics_markdown = (
         "| split | acc | macro_f1 |\n"
@@ -740,7 +964,7 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
         "metrics": metrics,
         "metrics_markdown": metrics_markdown,
         "artifacts_dir": str(run_dir),
-        "model_config_path": model_config_path,
+        "model_config_path": str(resolved_model_path),
     }
 
     # Build a minimal TrainReport aligned with AGENT_IO.md for downstream reflection.
@@ -827,6 +1051,10 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
             if bool(tspn_cfg.explain.save_wavefilters)
             else None,
             "model_manifest": str(run_dir / "model_manifest.json"),
+            "dataset_manifest": str(run_dir / "dataset_manifest.json"),
+            "config_resolve": str(run_dir / "config_resolve.json"),
+            "preflight_report": str(run_dir / "preflight_report.json"),
+            "model_config_resolved": str(resolved_model_path),
             "artifacts_dir": str(run_dir),
         },
     )
@@ -839,4 +1067,5 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
         "run_dir": str(run_dir),
         "train_history": history,
         "current_model_config": model_cfg_snapshot,
+        "model_config_path": str(resolved_model_path),
     }
