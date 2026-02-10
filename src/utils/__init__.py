@@ -366,6 +366,7 @@ def initialize_state(
     train_backend: str = "shallow",
     model_config_path: str | None = None,
     save_dir: str | None = None,
+    data_cfg: Dict[str, Any] | None = None,
 ) -> PHMState:
     """
     根据初始输入，创建并初始化整个系统的状态（PHMState）。
@@ -437,6 +438,7 @@ def initialize_state(
         train_backend=train_backend,
         model_config_path=model_config_path,
         save_dir=save_dir,
+        data_cfg=dict(data_cfg or {}),
     )
 
 
