@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
+DOTENV_FILE="${REPO_ROOT}/.env"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  scripts/run_case.sh --config <yaml> [--case case1] [--env agent] [--profile tspn_basic] [--dataset Ottawa] [--no-conda] [--dry-run]
+
+Options:
+  --config <yaml>   Path to case YAML (required)
+  --case <name>     Case module name for main.py (default: case1)
+  --env <name>      Conda env name when conda mode is on (default: agent)
+  --profile <name>  Optional model profile override (export PHM_MODEL_PROFILE)
+  --dataset <name>  Optional dataset override (export PHM_DATASET_NAME)
+  --no-conda        Run with current python directly
+  --dry-run         Print final command only, do not execute
+  -h, --help        Show this message
+USAGE
+}
+
+read_dotenv_value() {
+  local key="$1"
+  [[ -f "${DOTENV_FILE}" ]] || return 0
+  local line
+  line="$(grep -E "^${key}=" "${DOTENV_FILE}" | tail -n 1 || true)"
+  [[ -n "${line}" ]] || return 0
+  local value="${line#*=}"
+  value="${value%\"}"
+  value="${value#\"}"
+  value="${value%\'}"
+  value="${value#\'}"
+  printf '%s' "${value}"
+}
+
+effective_env_value() {
+  local key="$1"
+  local current="${!key:-}"
+  if [[ -n "${current}" ]]; then
+    printf '%s' "${current}"
+    return 0
+  fi
+  read_dotenv_value "${key}"
+}
+
+base_host_from_url() {
+  local url="$1"
+  if [[ -z "${url}" ]]; then
+    return 0
+  fi
+  local host="${url#*://}"
+  host="${host%%/*}"
+  printf '%s' "${host}"
+}
+
+case_name="case1"
+conda_env="agent"
+use_conda=1
+dry_run=0
+config_path=""
+model_profile=""
+dataset_name=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --config)
+      [[ $# -ge 2 ]] || { echo "Error: --config requires a value." >&2; exit 2; }
+      config_path="$2"
+      shift 2
+      ;;
+    --case)
+      [[ $# -ge 2 ]] || { echo "Error: --case requires a value." >&2; exit 2; }
+      case_name="$2"
+      shift 2
+      ;;
+    --env)
+      [[ $# -ge 2 ]] || { echo "Error: --env requires a value." >&2; exit 2; }
+      conda_env="$2"
+      shift 2
+      ;;
+    --profile)
+      [[ $# -ge 2 ]] || { echo "Error: --profile requires a value." >&2; exit 2; }
+      model_profile="$2"
+      shift 2
+      ;;
+    --dataset)
+      [[ $# -ge 2 ]] || { echo "Error: --dataset requires a value." >&2; exit 2; }
+      dataset_name="$2"
+      shift 2
+      ;;
+    --no-conda)
+      use_conda=0
+      shift
+      ;;
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Error: unknown option: $1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+[[ -n "${config_path}" ]] || { echo "Error: --config is required." >&2; usage >&2; exit 2; }
+
+cd "${REPO_ROOT}"
+
+[[ -f "main.py" ]] || { echo "Error: main.py not found in repo root: ${REPO_ROOT}" >&2; exit 2; }
+
+if [[ "${config_path}" = /* ]]; then
+  config_abs="${config_path}"
+else
+  config_abs="${REPO_ROOT}/${config_path}"
+fi
+
+[[ -f "${config_abs}" ]] || { echo "Error: config file not found: ${config_abs}" >&2; exit 2; }
+
+base_cmd=(python main.py "${case_name}" --config "${config_abs}")
+
+provider="$(effective_env_value LLM_PROVIDER)"
+model_name="$(effective_env_value QUERY_GENERATOR_MODEL)"
+if [[ -z "${model_name}" ]]; then
+  model_name="$(effective_env_value PHM_MODEL)"
+fi
+
+base_url=""
+case "${provider}" in
+  glm)
+    base_url="$(effective_env_value GLM_API_BASE)"
+    ;;
+  deepseek)
+    base_url="$(effective_env_value DEEPSEEK_API_BASE)"
+    ;;
+  openai|openai_compatible)
+    base_url="$(effective_env_value OPENAI_BASE_URL)"
+    if [[ -z "${base_url}" ]]; then
+      base_url="$(effective_env_value OPENAI_API_BASE)"
+    fi
+    ;;
+esac
+base_host="$(base_host_from_url "${base_url}")"
+
+if [[ "${use_conda}" -eq 1 ]]; then
+  command -v conda >/dev/null 2>&1 || { echo "Error: conda not found in PATH." >&2; exit 2; }
+  final_cmd=(conda run --no-capture-output -n "${conda_env}" "${base_cmd[@]}")
+else
+  final_cmd=("${base_cmd[@]}")
+fi
+
+printf 'Command:'
+printf ' %q' "${final_cmd[@]}"
+printf '\n'
+echo "LLM_PROVIDER=${provider:-}"
+echo "QUERY_GENERATOR_MODEL=${model_name:-}"
+echo "BASE_HOST=${base_host:-}"
+echo "PHM_MODEL_PROFILE=${model_profile:-}"
+echo "PHM_DATASET_NAME=${dataset_name:-}"
+
+if [[ "${dry_run}" -eq 1 ]]; then
+  exit 0
+fi
+
+if [[ -n "${model_profile}" ]]; then
+  export PHM_MODEL_PROFILE="${model_profile}"
+fi
+if [[ -n "${dataset_name}" ]]; then
+  export PHM_DATASET_NAME="${dataset_name}"
+fi
+
+"${final_cmd[@]}"
