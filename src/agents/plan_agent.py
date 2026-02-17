@@ -41,6 +41,29 @@ class Plan(BaseModel):
     )
 
 
+def _normalize_llm_plan_payload(content: Any) -> Dict[str, Any]:
+    if isinstance(content, dict):
+        return content
+    if isinstance(content, list):
+        return {"plan": content}
+
+    text = str(content or "").strip()
+    if not text:
+        return {"plan": []}
+
+    if "```json" in text:
+        text = text.split("```json", 1)[1].strip()
+    if "```" in text:
+        text = text.split("```", 1)[0].strip()
+
+    parsed = json.loads(text)
+    if isinstance(parsed, list):
+        return {"plan": parsed}
+    if isinstance(parsed, dict):
+        return parsed
+    raise ValueError(f"Unsupported LLM plan payload type: {type(parsed).__name__}")
+
+
 def plan_agent(state: PHMState) -> dict:
     """Call LLM to generate a detailed processing plan using structured output."""
 
@@ -130,18 +153,13 @@ def plan_agent(state: PHMState) -> dict:
                 payload={"response": getattr(resp, "content", "")},
             )
         
-        # 1. 从 AIMessage.content 中提取 JSON 字符串
-        json_str = resp.content
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].strip()
-        if "```" in json_str:
-            json_str = json_str.split("```")[0].strip()
+        # 1. Parse and normalize payload into {"plan": [...]}
+        plan_dict = _normalize_llm_plan_payload(getattr(resp, "content", ""))
 
-        # 2. 使用 json.loads() 解析字符串
-        plan_dict = json.loads(json_str)
-
-        # 3. 手动预处理（例如，处理空的 params）
-        for step_data in plan_dict.get("plan", []):
+        # 2. 手动预处理（例如，处理空的 params）
+        for step_data in (plan_dict.get("plan", []) if isinstance(plan_dict, dict) else []):
+            if not isinstance(step_data, dict):
+                continue
             # Backward-compat: some older prompts put parent inside params.
             if "parent" not in step_data:
                 params = step_data.get("params")
@@ -151,7 +169,7 @@ def plan_agent(state: PHMState) -> dict:
             if step_data.get("params") in ("", None):
                 step_data["params"] = {}
         
-        # 4. 使用 Plan.model_validate() 验证和转换
+        # 3. 使用 Plan.model_validate() 验证和转换
         plan_obj = Plan.model_validate(plan_dict)
         detailed_plan = [step.model_dump() for step in plan_obj.plan]
 
