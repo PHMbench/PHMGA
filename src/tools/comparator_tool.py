@@ -31,14 +31,14 @@ def compare_processed_nodes(
     ref_node = state.dag_state.nodes.get(reference_node_id)
     test_node = state.dag_state.nodes.get(test_node_id)
     if isinstance(ref_node, ProcessedData):
-        ref = np.asarray(ref_node.processed_data)
+        ref = np.asarray(ref_node.results)
     elif isinstance(ref_node, InputData):
         ref = np.asarray(ref_node.data.get("signal", []))
     else:
         raise ValueError("Invalid reference node")
 
     if isinstance(test_node, ProcessedData):
-        test = np.asarray(test_node.processed_data)
+        test = np.asarray(test_node.results)
     elif isinstance(test_node, InputData):
         test = np.asarray(test_node.data.get("signal", []))
     else:
