@@ -441,8 +441,6 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
             payload={"png_path": png_path, "dot_path": dot_path},
         )
 
-    # Backward-compat: also mutate state in-place for callers/tests that expect it.
-    state.dag_state = new_dag_state
     log_event(
         logger,
         level="INFO",
