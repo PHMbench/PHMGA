@@ -3,7 +3,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 from phm_core import PHMState, DAGState, InputData, ProcessedData
-from src.agents.inquirer_agent import inquirer_agent
+from src.agents.inquirer_agent import _calc_metric, inquirer_agent
 
 def make_state():
     rng = np.random.default_rng(0)
@@ -28,3 +28,19 @@ def test_inquirer_agent_generates_similarity_nodes():
         node = state.dag_state.nodes[nid]
         val = node.results["sim"]
         assert -1.0 <= val <= 1.0
+
+
+def test_calc_metric_pearson_constant_vector_no_nan():
+    a = np.ones(16, dtype=np.float32)
+    b = np.ones(16, dtype=np.float32)
+    out = _calc_metric(a, b, "pearson")
+    assert np.isfinite(out)
+    assert out == 1.0
+
+
+def test_calc_metric_cosine_zero_vector_no_divzero():
+    a = np.zeros(16, dtype=np.float32)
+    b = np.zeros(16, dtype=np.float32)
+    out = _calc_metric(a, b, "cosine")
+    assert np.isfinite(out)
+    assert out == 0.0

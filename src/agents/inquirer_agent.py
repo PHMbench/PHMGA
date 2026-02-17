@@ -7,11 +7,17 @@ from src.states.phm_states import PHMState, ProcessedData, InputData
 def _calc_metric(a: np.ndarray, b: np.ndarray, metric: str) -> float:
     if metric == "cosine":
         denom = (np.linalg.norm(a) * np.linalg.norm(b))
-        return float(np.dot(a, b) / denom) if denom else 0.0
+        return float(np.dot(a, b) / denom) if denom > 1e-12 else 0.0
     if metric == "euclidean":
         return float(np.linalg.norm(a - b))
     if metric == "pearson":
+        std_a = float(np.std(a))
+        std_b = float(np.std(b))
+        if std_a < 1e-12 or std_b < 1e-12:
+            return 1.0
         r = np.corrcoef(a, b)[0, 1]
+        if np.isnan(r):
+            return 1.0
         return float(1 - r)
     raise ValueError(f"unknown metric {metric}")
 
