@@ -3,7 +3,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import numpy as np
 from src.states.phm_states import PHMState, DAGState, InputData, ProcessedData
-from src.agents.dataset_preparer_agent import dataset_preparer_agent
+from src.agents.dataset_preparer_agent import dataset_preparer_agent, _find_root_label_maps
 
 
 def test_dataset_preparer_agent(tmp_path):
@@ -37,3 +37,36 @@ def test_dataset_preparer_agent(tmp_path):
     ds = out["datasets"]["fft_01_ch1"]
     assert ds["X_train"].shape[0] == sig.size
     assert f"ds_fft_01_ch1" in state.dag_state.nodes
+
+
+def test_find_root_label_maps_cycle_guard():
+    p1 = ProcessedData(
+        node_id="p1",
+        parents=["p2"],
+        source_signal_id="p2",
+        method="fft",
+        processed_data=np.array([1.0]),
+        results={},
+        meta={},
+        shape=(1,),
+    )
+    p2 = ProcessedData(
+        node_id="p2",
+        parents=["p1"],
+        source_signal_id="p1",
+        method="fft",
+        processed_data=np.array([1.0]),
+        results={},
+        meta={},
+        shape=(1,),
+    )
+    errors = []
+    labels_ref, labels_tst = _find_root_label_maps(
+        "p1",
+        {"p1": p1, "p2": p2},
+        max_hops=8,
+        error_sink=errors,
+    )
+    assert labels_ref == {}
+    assert labels_tst == {}
+    assert any("cycle" in msg for msg in errors)

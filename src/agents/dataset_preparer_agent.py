@@ -9,7 +9,11 @@ from src.states.phm_states import PHMState, ProcessedData, DataSetNode, InputDat
 
 
 def _find_root_label_maps(
-    node_id: str, all_nodes: Dict[str, InputData | ProcessedData]
+    node_id: str,
+    all_nodes: Dict[str, InputData | ProcessedData],
+    *,
+    max_hops: int = 1024,
+    error_sink: list[str] | None = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
     Traverse up the DAG from a given node to find its root and return
@@ -19,13 +23,34 @@ def _find_root_label_maps(
     if not current_node:
         return {}, {}
 
+    visited: set[str] = set()
+    hops = 0
+
     # Keep moving to the parent until a node with no parents (the root) is found.
     # This assumes a single-parent lineage for processed nodes, which is typical.
     while current_node.parents:
+        hops += 1
+        if hops > max_hops:
+            if error_sink is not None:
+                error_sink.append(
+                    f"_find_root_label_maps exceeded max_hops={max_hops} while tracing node '{node_id}'."
+                )
+            return {}, {}
         parent_id = current_node.parents[0]
+        if parent_id in visited:
+            if error_sink is not None:
+                error_sink.append(
+                    f"_find_root_label_maps detected parent cycle while tracing node '{node_id}' (at '{parent_id}')."
+                )
+            return {}, {}
+        visited.add(parent_id)
         parent_node = all_nodes.get(parent_id)
         if not parent_node:
             # This should not happen in a well-formed DAG
+            if error_sink is not None:
+                error_sink.append(
+                    f"_find_root_label_maps missing parent '{parent_id}' while tracing node '{node_id}'."
+                )
             return {}, {}
         current_node = parent_node
 
@@ -102,7 +127,11 @@ def dataset_preparer_agent(state: PHMState, *, config: Dict | None = None) -> Di
             continue
 
         # For each processed node, find its corresponding true labels from its root.
-        labels_ref, labels_tst = _find_root_label_maps(node_id, all_nodes)
+        labels_ref, labels_tst = _find_root_label_maps(
+            node_id,
+            all_nodes,
+            error_sink=state.dag_state.error_log,
+        )
         if not labels_ref and not labels_tst:
             print(f"Warning: Could not find root labels for node {node_id}. Skipping dataset creation.")
             continue
