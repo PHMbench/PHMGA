@@ -155,7 +155,11 @@ def reflect_agent_node(state: PHMState, *, stage: str) -> Dict[str, Any]:
     )
     needs_revision = result["decision"] != "finish"
     history = state.reflection_history + [result["reason"]]
-    return {"needs_revision": needs_revision, "reflection_history": history}
+    return {
+        "needs_revision": needs_revision,
+        "reflection_history": history,
+        "iteration_count": int(state.iteration_count) + 1,
+    }
 
 
 if __name__ == "__main__":
