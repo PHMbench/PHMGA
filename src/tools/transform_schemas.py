@@ -75,7 +75,9 @@ class CepstrumOp(TransformOp):
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
         spectrum = np.fft.fft(x, axis=-2)
-        log_spec = np.log(np.abs(spectrum) + 1e-9)
+        x_arr = np.asarray(x)
+        eps = np.finfo(x_arr.dtype).eps * 100 if np.issubdtype(x_arr.dtype, np.floating) else np.finfo(np.float32).eps * 100
+        log_spec = np.log(np.abs(spectrum) + eps)
         cepstrum = np.fft.ifft(log_spec, axis=-2).real
         return cepstrum
 
@@ -105,10 +107,23 @@ class FilterOp(TransformOp):
     order: int = Field(5, description="Order of the Butterworth filter.")
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
+        if self.fs <= 0:
+            raise ValueError("FilterOp.fs must be > 0.")
+        if self.order <= 0:
+            raise ValueError("FilterOp.order must be > 0.")
+
         nyquist = 0.5 * self.fs
         if isinstance(self.cutoff, tuple):
+            if len(self.cutoff) != 2:
+                raise ValueError("FilterOp.cutoff must contain exactly two values for band-pass.")
+            low, high = float(self.cutoff[0]), float(self.cutoff[1])
+            if not (0 < low < high < nyquist):
+                raise ValueError(f"Band cutoff must satisfy 0 < low < high < nyquist({nyquist}).")
             normal_cutoff = (self.cutoff[0] / nyquist, self.cutoff[1] / nyquist)
         else:
+            cutoff = float(self.cutoff)
+            if not (0 < cutoff < nyquist):
+                raise ValueError(f"Cutoff must satisfy 0 < cutoff < nyquist({nyquist}).")
             normal_cutoff = self.cutoff / nyquist
         
         b, a = scipy.signal.butter(self.order, normal_cutoff, btype=self.filter_type, analog=False)
@@ -141,6 +156,8 @@ class ResampleOp(TransformOp):
     num: int = Field(..., description="The new number of samples.")
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
+        if self.num <= 0:
+            raise ValueError("ResampleOp.num must be > 0.")
         # resample is applied along the time axis
         y = scipy.signal.resample(x, self.num, axis=-2)
         return y
@@ -175,7 +192,13 @@ class DenoiseWaveletOp(TransformOp):
                 threshold = sigma * np.sqrt(2 * np.log(len(channel_signal)))
                 
                 new_coeffs = map(lambda c: pywt.threshold(c, value=threshold, mode=self.mode), coeffs)
-                denoised[i, :, j] = pywt.waverec(list(new_coeffs), self.wavelet, mode='symmetric')
+                reconstructed = pywt.waverec(list(new_coeffs), self.wavelet, mode='symmetric')
+                target_len = channel_signal.shape[0]
+                if reconstructed.shape[0] < target_len:
+                    reconstructed = np.pad(reconstructed, (0, target_len - reconstructed.shape[0]), mode="constant")
+                elif reconstructed.shape[0] > target_len:
+                    reconstructed = reconstructed[:target_len]
+                denoised[i, :, j] = reconstructed
         return denoised
 
 @register_op
@@ -269,6 +292,16 @@ class SavitzkyGolayFilterOp(TransformOp):
     polyorder: int = Field(..., description="The order of the polynomial used to fit the samples.")
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
+        if self.window_length <= 0:
+            raise ValueError("SavitzkyGolayFilterOp.window_length must be > 0.")
+        if self.window_length % 2 == 0:
+            raise ValueError("SavitzkyGolayFilterOp.window_length must be an odd integer.")
+        if self.window_length <= self.polyorder:
+            raise ValueError("SavitzkyGolayFilterOp.window_length must be > polyorder.")
+        if x.shape[-2] < self.window_length:
+            raise ValueError(
+                f"SavitzkyGolayFilterOp.window_length ({self.window_length}) must be <= signal length ({x.shape[-2]})."
+            )
         return scipy.signal.savgol_filter(x, self.window_length, self.polyorder, axis=-2)
 
 @register_op
