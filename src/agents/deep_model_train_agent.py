@@ -403,6 +403,7 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
     epochs = int(tspn_cfg.train.debug_epochs if tspn_cfg.train.debug else tspn_cfg.train.epochs)
     l1_gate = float(getattr(tspn_cfg.train, "l1_gate", 0.0) or 0.0)
     entropy_gate = float(getattr(tspn_cfg.train, "entropy_gate", 0.0) or 0.0)
+    grad_clip_norm = float(getattr(tspn_cfg.train, "grad_clip_norm", 1.0) or 0.0)
 
     opt = torch.optim.AdamW(
         model.parameters(),
@@ -795,6 +796,7 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
 
     l1_gate = float(getattr(tspn_cfg.train, "l1_gate", 0.0) or 0.0)
     entropy_gate = float(getattr(tspn_cfg.train, "entropy_gate", 0.0) or 0.0)
+    grad_clip_norm = float(getattr(tspn_cfg.train, "grad_clip_norm", 1.0) or 0.0)
 
     def _gate_regularization() -> "torch.Tensor":
         if l1_gate == 0.0 and entropy_gate == 0.0:
@@ -822,6 +824,8 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
                 loss = loss + _gate_regularization()
             opt.zero_grad()
             loss.backward()
+            if grad_clip_norm > 0.0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=grad_clip_norm)
             opt.step()
             losses.append(float(loss.detach().cpu()))
 

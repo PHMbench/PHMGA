@@ -245,8 +245,9 @@ class TransparentSignalProcessingNetwork(nn.Module):
 
         def _softplus_inv(y: "torch.Tensor") -> "torch.Tensor":
             # Inverse of softplus: x = log(exp(y) - 1)
-            y = torch.clamp(y, 1e-8)
-            return torch.log(torch.expm1(y))
+            y = torch.clamp(y, 1e-6)
+            result = torch.log(torch.expm1(y))
+            return torch.clamp(result, -20.0, 20.0)
 
         import torch
 
