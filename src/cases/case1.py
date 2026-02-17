@@ -144,6 +144,7 @@ def run_case(config_path: str):
     builder_cfg = config.get('builder', {})
     min_depth = builder_cfg.get('min_depth', 0)
     max_depth = builder_cfg.get('max_depth', float('inf'))
+    max_iterations = int(builder_cfg.get("max_iterations", 50))
     source_mode = _resolve_source_mode(config)
     model_opts = _resolve_model_options(config)
     data_cfg = dict(config.get("data") or {})
@@ -184,6 +185,7 @@ def run_case(config_path: str):
         built_state.model_config_path = model_opts["model_config_path"]
         built_state.data_cfg = data_cfg
         built_state.save_dir = config.get("save_dir")
+        built_state.max_builder_iterations = max_iterations
     else:
         log_event(
             run_logger,
@@ -226,6 +228,7 @@ def run_case(config_path: str):
                     data_cfg=data_cfg,
                 )
             initial_phm_state.data_cfg = data_cfg
+            initial_phm_state.max_builder_iterations = max_iterations
 
         # --- Part 1: Run DAG Builder Workflow ---
         log_event(run_logger, level="INFO", event="case.part1.start", phase="builder", message="Starting DAG builder workflow.")
@@ -235,7 +238,32 @@ def run_case(config_path: str):
         iteration = 0
 
         while True:
+            if int(getattr(built_state, "iteration_count", 0) or 0) >= max_iterations:
+                log_event(
+                    run_logger,
+                    level="WARNING",
+                    event="builder.stop.max_iterations",
+                    phase="builder",
+                    message="Reached builder max iterations safety limit.",
+                    payload={
+                        "iteration_count": int(getattr(built_state, "iteration_count", 0) or 0),
+                        "max_iterations": max_iterations,
+                    },
+                )
+                built_state.needs_revision = False
+                break
             iteration += 1
+            if iteration > max_iterations:
+                log_event(
+                    run_logger,
+                    level="WARNING",
+                    event="builder.stop.max_iterations",
+                    phase="builder",
+                    message="Reached builder max iterations safety limit.",
+                    payload={"iteration": iteration - 1, "max_iterations": max_iterations},
+                )
+                built_state.needs_revision = False
+                break
             log_event(
                 run_logger,
                 level="INFO",

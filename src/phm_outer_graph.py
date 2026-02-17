@@ -91,6 +91,13 @@ def build_builder_graph() -> Any:
     Constructs the graph responsible for iteratively building the computational DAG.
     This graph uses a plan-execute-reflect loop to generate a valid DAG.
     """
+    def _should_continue(state: PHMState) -> str:
+        if not bool(getattr(state, "needs_revision", False)):
+            return END
+        iteration_count = int(getattr(state, "iteration_count", 0) or 0)
+        max_iterations = int(getattr(state, "max_builder_iterations", 50) or 50)
+        return "plan" if iteration_count < max_iterations else END
+
     if not _LANGGRAPH_OK:  # pragma: no cover
         # Fallback for environments with incompatible langgraph/langchain_core versions.
         # The caller (case runner) controls the outer loop; we run plan->execute->reflect once per `.stream()`.
@@ -117,8 +124,7 @@ def build_builder_graph() -> Any:
     # The reflection step decides whether to loop back to planning or to finish.
     builder.add_conditional_edges(
         "reflect",
-        # MODIFIED: Use direct attribute access instead of .get() for Pydantic models
-        lambda state: "plan" if state.needs_revision else END,
+        _should_continue,
         {
             "plan": "plan",
             END: END,
@@ -135,6 +141,11 @@ def build_executor_graph() -> Any:
     """
     def _train_models(state: PHMState) -> dict:
         backend = (getattr(state, "train_backend", None) or "shallow").lower()
+        allowed_backends = {"shallow", "tspn", "both"}
+        if backend not in allowed_backends:
+            raise ValueError(
+                f"Invalid train_backend '{backend}'. Expected one of: {sorted(allowed_backends)}"
+            )
         ml_results: Dict[str, Any] = dict(getattr(state, "ml_results", {}) or {})
 
         if backend in {"shallow", "both"}:
