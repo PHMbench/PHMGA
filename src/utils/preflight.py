@@ -16,39 +16,9 @@ def _exists(path_value: str | None) -> bool:
 
 
 def _provider_model_check(env: Dict[str, str]) -> Dict[str, Any]:
-    provider = (env.get("LLM_PROVIDER") or "gemini").strip().lower()
-    model = (env.get("QUERY_GENERATOR_MODEL") or env.get("PHM_MODEL") or "").strip()
-    model_lc = model.lower()
-    problems: List[str] = []
-    warnings: List[str] = []
+    from src.configuration import Configuration
 
-    if provider == "glm":
-        if model_lc.startswith("gemini"):
-            problems.append("LLM_PROVIDER=glm but model looks like a Gemini model.")
-        if not env.get("GLM_API_BASE"):
-            problems.append("Missing GLM_API_BASE.")
-        if not env.get("GLM_API_KEY"):
-            problems.append("Missing GLM_API_KEY.")
-    elif provider == "gemini":
-        if model_lc.startswith("glm") or "deepseek" in model_lc:
-            problems.append("LLM_PROVIDER=gemini but model looks OpenAI-compatible.")
-        if not env.get("GEMINI_API_KEY"):
-            warnings.append("GEMINI_API_KEY is not set.")
-    elif provider in {"deepseek", "openai", "openai_compatible"}:
-        if not (env.get("OPENAI_API_KEY") or env.get("DEEPSEEK_API_KEY") or env.get("GLM_API_KEY")):
-            problems.append("OpenAI-compatible provider selected but no API key found.")
-    elif provider == "auto":
-        warnings.append("LLM_PROVIDER=auto may route unexpectedly when multiple BASE URLs are set.")
-    else:
-        problems.append(f"Unsupported LLM_PROVIDER={provider!r}.")
-
-    return {
-        "provider": provider,
-        "model": model,
-        "ok": not problems,
-        "errors": problems,
-        "warnings": warnings,
-    }
+    return Configuration.validate_provider_env(env=env, strict=False)
 
 
 def _dependency_status(pkg: str) -> bool:
@@ -141,7 +111,12 @@ def build_preflight_report(config: Dict[str, Any], *, env: Dict[str, str] | None
 
     provider_check = _provider_model_check(env_map)
     checks["llm"] = provider_check
-    errors.extend(provider_check["errors"])
+    checks["provider_checks"] = provider_check
+    fake_llm = str(env_map.get("FAKE_LLM", "")).strip().lower() in {"1", "true", "yes", "y"}
+    if fake_llm:
+        warnings.extend([f"[FAKE_LLM] {msg}" for msg in provider_check["errors"]])
+    else:
+        errors.extend(provider_check["errors"])
     warnings.extend(provider_check["warnings"])
 
     required_ops = list(((config.get("preflight") or {}).get("required_ops") or []))
@@ -180,4 +155,3 @@ def write_preflight_report(report: Dict[str, Any], output_path: str | Path) -> N
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-

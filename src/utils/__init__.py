@@ -7,6 +7,7 @@ import numpy as np
 import os
 import pickle
 import uuid
+import hashlib
 import networkx as nx
 
 # 禁用 LangSmith
@@ -291,39 +292,42 @@ def load_signal_data(
     
     try:
         import pandas as pd
-        import h5py
         metadata_df = pd.read_excel(metadata_path)
-        h5_file = h5py.File(h5_path, 'r')
     except Exception as e:
-        print(f"Error loading data files: {e}")
+        print(f"Error loading metadata file: {e}")
         return {}, {}, None
 
     signals = {}
     labels = {}
-    for sample_id in ids_to_load:
-        sample_info = metadata_df[metadata_df['Id'] == sample_id]
-        if sample_info.empty:
-            print(f"Warning: ID {sample_id} not found in metadata.")
-            continue
+    try:
+        import h5py
+        with h5py.File(h5_path, "r") as h5_file:
+            for sample_id in ids_to_load:
+                sample_info = metadata_df[metadata_df['Id'] == sample_id]
+                if sample_info.empty:
+                    print(f"Warning: ID {sample_id} not found in metadata.")
+                    continue
 
-        label = sample_info['Label'].iloc[0]
-        sample_length = int(sample_info['Sample_lenth'].iloc[0])
-        num_channels = int(sample_info['Channel'].iloc[0])
+                label = sample_info['Label'].iloc[0]
+                sample_length = int(sample_info['Sample_lenth'].iloc[0])
+                num_channels = int(sample_info['Channel'].iloc[0])
 
-        try:
-            signal_data = h5_file[str(sample_id)][()]
-            signal_data = np.squeeze(signal_data)
-            
-            if signal_data.shape == (sample_length, num_channels):
-                signals[str(sample_id)] = signal_data.reshape(1, sample_length, num_channels)
-                labels[str(sample_id)] = label
-            else:
-                print(f"Warning: Shape mismatch for ID {sample_id}. Expected {(sample_length, num_channels)}, got {signal_data.shape}")
+                try:
+                    signal_data = h5_file[str(sample_id)][()]
+                    signal_data = np.squeeze(signal_data)
+                    
+                    if signal_data.shape == (sample_length, num_channels):
+                        signals[str(sample_id)] = signal_data.reshape(1, sample_length, num_channels)
+                        labels[str(sample_id)] = label
+                    else:
+                        print(f"Warning: Shape mismatch for ID {sample_id}. Expected {(sample_length, num_channels)}, got {signal_data.shape}")
 
-        except KeyError:
-            print(f"Warning: ID {sample_id} not found in HDF5 file.")
-    
-    h5_file.close()
+                except KeyError:
+                    print(f"Warning: ID {sample_id} not found in HDF5 file.")
+    except Exception as e:
+        print(f"Error loading HDF5 file: {e}")
+        return {}, {}, None
+
     return signals, labels, metadata_df
 
 
@@ -556,9 +560,19 @@ def save_state(state, filepath: str):
     """
     try:
         print(f"\n--- Saving state to {filepath} ---")
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        with open(filepath, "wb") as f:
+        abs_path = os.path.abspath(filepath)
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        with open(abs_path, "wb") as f:
             pickle.dump(state, f)
+        digest = hashlib.sha256()
+        with open(abs_path, "rb") as f:
+            while True:
+                chunk = f.read(1024 * 1024)
+                if not chunk:
+                    break
+                digest.update(chunk)
+        with open(f"{abs_path}.sha256", "w", encoding="utf-8") as f:
+            f.write(digest.hexdigest())
         print("...done.")
         return True
     except Exception as e:
@@ -570,8 +584,30 @@ def load_state(filepath: str):
     使用pickle从磁盘加载状态对象。
     """
     try:
-        print(f"\n--- Loading state from {filepath} ---")
-        with open(filepath, "rb") as f:
+        abs_path = os.path.abspath(filepath)
+        print(f"\n--- Loading state from {abs_path} ---")
+        sidecar = f"{abs_path}.sha256"
+        allow_unverified = str(os.getenv("PHM_ALLOW_UNVERIFIED_STATE", "")).strip().lower() in {"1", "true", "yes", "y"}
+        if os.path.exists(sidecar):
+            with open(sidecar, "r", encoding="utf-8") as f:
+                expected = f.read().strip()
+            digest = hashlib.sha256()
+            with open(abs_path, "rb") as f:
+                while True:
+                    chunk = f.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+            actual = digest.hexdigest()
+            if actual != expected:
+                raise ValueError("State checksum verification failed.")
+        elif not allow_unverified:
+            raise ValueError(
+                f"State checksum sidecar missing: {sidecar}. "
+                "Set PHM_ALLOW_UNVERIFIED_STATE=1 to bypass for local debugging."
+            )
+
+        with open(abs_path, "rb") as f:
             state = pickle.load(f)
         print("...done.")
         print(f"Successfully loaded state with {len(state.dag_state.nodes)} nodes.")

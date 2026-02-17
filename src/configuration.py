@@ -1,6 +1,6 @@
 import os
 from pydantic import BaseModel, Field
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from langchain_core.runnables import RunnableConfig
 
@@ -108,3 +108,54 @@ class Configuration(BaseModel):
         values = {k: v for k, v in raw_values.items() if v is not None}
 
         return cls(**values)
+
+    @classmethod
+    def validate_provider_env(
+        cls,
+        env: Optional[Dict[str, str]] = None,
+        *,
+        strict: bool = True,
+    ) -> Dict[str, Any]:
+        env_map = dict(os.environ)
+        if env:
+            env_map.update(env)
+
+        provider = (env_map.get("LLM_PROVIDER") or "gemini").strip().lower()
+        model = (env_map.get("QUERY_GENERATOR_MODEL") or env_map.get("PHM_MODEL") or "").strip()
+        model_lc = model.lower()
+
+        errors: list[str] = []
+        warnings: list[str] = []
+
+        if provider == "glm":
+            if model_lc.startswith("gemini"):
+                errors.append("LLM_PROVIDER=glm but model looks like a Gemini model.")
+            if not env_map.get("GLM_API_BASE"):
+                errors.append("Missing GLM_API_BASE.")
+            if not env_map.get("GLM_API_KEY"):
+                errors.append("Missing GLM_API_KEY.")
+        elif provider == "gemini":
+            if model_lc.startswith("glm") or "deepseek" in model_lc:
+                errors.append("LLM_PROVIDER=gemini but model looks OpenAI-compatible.")
+            if not env_map.get("GEMINI_API_KEY"):
+                warnings.append("GEMINI_API_KEY is not set.")
+        elif provider in {"openai", "openai_compatible", "deepseek"}:
+            if not (env_map.get("OPENAI_API_KEY") or env_map.get("DEEPSEEK_API_KEY") or env_map.get("GLM_API_KEY")):
+                errors.append("OpenAI-compatible provider selected but no API key found.")
+            if not (env_map.get("OPENAI_BASE_URL") or env_map.get("OPENAI_API_BASE") or env_map.get("DEEPSEEK_API_BASE") or env_map.get("GLM_API_BASE")):
+                errors.append("OpenAI-compatible provider selected but no BASE URL found.")
+        elif provider == "auto":
+            warnings.append("LLM_PROVIDER=auto may route unexpectedly when multiple BASE URLs are set.")
+        else:
+            errors.append(f"Unsupported LLM_PROVIDER={provider!r}.")
+
+        report = {
+            "provider": provider,
+            "model": model,
+            "ok": len(errors) == 0,
+            "errors": errors,
+            "warnings": warnings,
+        }
+        if strict and errors:
+            raise ValueError("; ".join(errors))
+        return report

@@ -5,7 +5,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
 
@@ -20,6 +20,9 @@ def _ensure_vibench_on_syspath(code_root: str) -> None:
     root = str(Path(code_root).expanduser().resolve())
     if root not in sys.path:
         sys.path.insert(0, root)
+    src_root = str((Path(root) / "src").resolve())
+    if src_root not in sys.path:
+        sys.path.insert(0, src_root)
 
 
 def _ensure_pytorch_lightning_stub() -> None:
@@ -67,6 +70,7 @@ def _write_filtered_metadata(
     data_dir: Path,
     metadata_path: Path,
     dataset_name: str,
+    cache_dir: Optional[Path] = None,
 ) -> str:
     df = _read_metadata_table(metadata_path)
     if "Name" not in df.columns:
@@ -77,11 +81,17 @@ def _write_filtered_metadata(
         candidates = sorted({str(x) for x in df["Name"].dropna().unique().tolist()})
         raise ValueError(f"dataset_name={dataset_name!r} not found in metadata Name. candidates[:20]={candidates[:20]}")
 
-    out_dir = data_dir / ".phmga_cache"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = cache_dir if cache_dir is not None else (data_dir / ".phmga_cache")
+    try:
+        out_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        if cache_dir is not None:
+            raise
+        out_dir = Path(os.environ.get("PHM_DATA_CACHE_DIR", "/tmp/phmga_cache"))
+        out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"metadata_filtered_{dataset_name}.csv"
     filtered.to_csv(out_path, index=False)
-    return str(out_path.relative_to(data_dir))
+    return str(out_path)
 
 
 @dataclass(frozen=True)
@@ -178,18 +188,14 @@ class PHMVibenchDataFactory:
 
         build_data = None
         try:
-            # NOTE:
-            # PHMGA itself is also a top-level package named `src/`.
-            # Importing PHM-Vibench's `src.data_factory` inside the same interpreter
-            # can conflict with PHMGA's `src` module once it is imported/cached.
-            #
-            # We attempt the canonical vibench import first; if it fails, we fall back
-            # to a lightweight loader that uses vibench `reader/` modules + metadata.
-            from src.data_factory import build_data as _build_data  # type: ignore
-
+            from data_factory import build_data as _build_data  # type: ignore
             build_data = _build_data
         except Exception:
-            build_data = None
+            try:
+                from src.data_factory import build_data as _build_data  # type: ignore
+                build_data = _build_data
+            except Exception:
+                build_data = None
 
         data_dir = Path(str(self.cfg["data_dir"]))
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -202,17 +208,30 @@ class PHMVibenchDataFactory:
             raise FileNotFoundError(f"metadata_file not found: {str(metadata_path)!r}")
 
         dataset_name = str(self.cfg.get("dataset_name") or "").strip()
-        rel_meta = ""
+        selected_metadata_path: Path
         if dataset_name:
-            rel_meta = _write_filtered_metadata(
-                data_dir=data_dir, metadata_path=metadata_path, dataset_name=dataset_name
+            cache_dir_value = self.cfg.get("cache_dir")
+            cache_dir = (
+                Path(str(cache_dir_value)).expanduser().resolve()
+                if cache_dir_value is not None
+                else None
+            )
+            selected_metadata_path = Path(
+                _write_filtered_metadata(
+                    data_dir=data_dir,
+                    metadata_path=metadata_path,
+                    dataset_name=dataset_name,
+                    cache_dir=cache_dir,
+                )
             )
         else:
-            rel_meta = (
-                str(metadata_path.relative_to(data_dir))
-                if str(metadata_path).startswith(str(data_dir))
-                else str(metadata_path.name)
-            )
+            selected_metadata_path = metadata_path
+
+        rel_meta = (
+            str(selected_metadata_path.relative_to(data_dir))
+            if str(selected_metadata_path).startswith(str(data_dir))
+            else str(selected_metadata_path)
+        )
 
         task_type = str(self.cfg.get("task_type") or "DG")
         task_name = str(self.cfg.get("task_name") or "Classification")
@@ -243,7 +262,7 @@ class PHMVibenchDataFactory:
         )
 
         # Label mapping from filtered metadata file.
-        df = _read_metadata_table(data_dir / rel_meta)
+        df = _read_metadata_table(selected_metadata_path)
         if "Label" not in df.columns:
             raise ValueError("Metadata file must contain a 'Label' column.")
         uniq = sorted({str(v) for v in df["Label"].dropna().unique().tolist()})
@@ -292,16 +311,33 @@ class PHMVibenchDataFactory:
                 return self._items[int(idx)]
 
         def _load_reader(name: str):
-            p = Path(code_root) / "src" / "data_factory" / "reader" / f"{name}.py"
-            if not p.exists():
-                raise FileNotFoundError(f"vibench reader not found: {str(p)!r}")
-            mod_name = f"phm_vibench_reader_{name}"
-            spec = importlib.util.spec_from_file_location(mod_name, str(p))
-            if spec is None or spec.loader is None:
-                raise ImportError(f"Cannot load vibench reader: {name}")
-            mod = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(mod)  # type: ignore[attr-defined]
-            return mod
+            try:
+                return importlib.import_module(f"data_factory.reader.{name}")
+            except Exception:
+                p = Path(code_root) / "src" / "data_factory" / "reader" / f"{name}.py"
+                if not p.exists():
+                    raise FileNotFoundError(f"vibench reader not found: {str(p)!r}")
+                pkg_name = "phm_vibench_reader_pkg"
+                if pkg_name not in sys.modules:
+                    pkg_mod = ModuleType(pkg_name)
+                    pkg_mod.__path__ = [str(p.parent)]  # type: ignore[attr-defined]
+                    sys.modules[pkg_name] = pkg_mod
+                utils_name = f"{pkg_name}.utils"
+                if utils_name not in sys.modules:
+                    utils_path = p.parent / "utils.py"
+                    utils_spec = importlib.util.spec_from_file_location(utils_name, str(utils_path))
+                    if utils_spec is None or utils_spec.loader is None:
+                        raise ImportError("Cannot load vibench reader utils module.")
+                    utils_mod = importlib.util.module_from_spec(utils_spec)
+                    utils_spec.loader.exec_module(utils_mod)  # type: ignore[attr-defined]
+                    sys.modules[utils_name] = utils_mod
+                mod_name = f"{pkg_name}.{name}"
+                spec = importlib.util.spec_from_file_location(mod_name, str(p))
+                if spec is None or spec.loader is None:
+                    raise ImportError(f"Cannot load vibench reader: {name}")
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)  # type: ignore[attr-defined]
+                return mod
 
         def _evenly_spaced_windows(arr: "np.ndarray") -> List["np.ndarray"]:
             # arr: (L, C)
