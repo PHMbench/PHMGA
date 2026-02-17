@@ -237,6 +237,11 @@ def get_llm(
         ) from e
 
     api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "Missing GEMINI_API_KEY for LLM_PROVIDER=gemini. "
+            "Set GEMINI_API_KEY or switch provider/model to an OpenAI-compatible backend."
+        )
     return ChatGoogleGenerativeAI(
         model=model_name,
         temperature=temperature,
