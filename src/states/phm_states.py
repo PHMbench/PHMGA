@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List, Dict, Any, Tuple, Optional
 import os
 import numpy as np
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, Field, field_validator
 import uuid
 from typing_extensions import Annotated
 import operator
@@ -46,11 +46,29 @@ class ConfigPatch(BaseModel):
 
 class _NodeBase(BaseModel):
     node_id: str = Field(default_factory=lambda: f"n_{uuid.uuid4().hex[:8]}")
-    parents: List[str] | str     # 上游 node_id 列表（源节点为空）
+    parents: List[str] = Field(default_factory=list)     # 上游 node_id 列表（源节点为空）
     stage: Literal["input", "processed", "similarity", "dataset", "output"] = "input"  # 节点阶段
     shape: Shape
     kind: Literal["signal"] = "signal"
     sim: Dict[str, Any] = Field(default_factory=dict, description="Similarity metrics")
+
+    @field_validator("parents", mode="before")
+    @classmethod
+    def normalize_parents(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [value] if value else []
+        if isinstance(value, (list, tuple, set)):
+            out: List[str] = []
+            for item in value:
+                if item is None:
+                    continue
+                text = str(item).strip()
+                if text:
+                    out.append(text)
+            return out
+        raise TypeError("parents must be a string or a list/tuple/set of strings")
 
 
 class InputData(_NodeBase):
@@ -167,21 +185,19 @@ class DAGTracker:
         self.state.nodes[node.node_id] = node
         self.g.add_node(node.node_id)
         
-        parents = node.parents if isinstance(node.parents, list) else [node.parents]
-        
+        parents = list(node.parents)
+
         for p in parents:
             if p and p in self.g:
                 self.g.add_edge(p, node.node_id)
+                if not nx.is_directed_acyclic_graph(self.g):
+                    self.g.remove_edge(p, node.node_id)
+                    self.g.remove_node(node.node_id)
+                    self.state.nodes.pop(node.node_id, None)
+                    raise ValueError(f"Adding edge {p} -> {node.node_id} would create a cycle")
 
-        # --- CRITICAL FIX FOR LEAVES ---
-        # 1. Start with the existing leaves.
-        # 2. Remove any parents of the new node from the leaves list.
-        # 3. Add the new node to the leaves list.
-        # This correctly handles branching and merging.
-        current_leaves = self.state.leaves[:]
-        new_leaves = [leaf for leaf in current_leaves if leaf not in parents]
-        new_leaves.append(node.node_id)
-        self.state.leaves = new_leaves
+        # Recompute leaves from graph topology to avoid stale/missing leaves.
+        self.state.leaves = [nid for nid in self.g.nodes() if self.g.out_degree(nid) == 0]
 
         return node.node_id
 
@@ -194,21 +210,23 @@ class DAGTracker:
         mini = []
         for nid in topo:
             n = self.state.nodes[nid]
-            mini.append(
-                n.dict(
-                    include={
-                        "node_id",
-                        "kind",
-                        "stage",
-                        "op_name",
-                        "rank",
-                        "shape",
-                        "in_shape",
-                        "out_shape",
-                        "parents",
-                    }
-                )
+            node_view = n.model_dump(
+                include={
+                    "node_id",
+                    "kind",
+                    "stage",
+                    "shape",
+                    "parents",
+                }
             )
+            if isinstance(n, ProcessedData):
+                node_view["method"] = n.method
+                node_view["source_signal_id"] = n.source_signal_id
+            for optional in ("op_name", "rank", "in_shape", "out_shape"):
+                value = getattr(n, optional, None)
+                if value is not None:
+                    node_view[optional] = value
+            mini.append(node_view)
         # return json.dumps({"graph": mini, "user_instruction": self.state.user_instruction})
         return json.dumps({"graph": mini})
 
@@ -296,6 +314,39 @@ class DAGTracker:
         for p in n.parents:
             self.g.add_edge(p, n.node_id)
 
+    def transfer_to_langgraph(self) -> nx.DiGraph:
+        """将 DAGState 转换为 LangGraph 可用的 networkx 图."""
+        return self.g
+
+    def save(self, path: str) -> None:
+        """将 DAG 状态保存到指定路径."""
+        import json
+
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(self.state.model_dump(), f, indent=4, ensure_ascii=False)
+
+    def load(self, path: str) -> None:
+        """从指定路径加载 DAG 状态."""
+        import json
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            self.state = DAGState(**data)
+            self.g = nx.DiGraph()
+            for n in self.state.nodes.values():
+                if isinstance(n, dict):
+                    node_stage = n.get("stage", "processed")
+                    if node_stage == "input":
+                        node_obj = InputData(**n)
+                    elif node_stage == "dataset":
+                        node_obj = DataSetNode(**n)
+                    else:
+                        node_obj = ProcessedData(**n)
+                else:
+                    node_obj = n
+                self._add_node(node_obj)
+            self.state.leaves = [nid for nid in self.g.nodes() if self.g.out_degree(nid) == 0]
+
 
 def get_node_data(state: "PHMState", node_id: str):
     """Utility to fetch raw array data from a node."""
@@ -303,28 +354,10 @@ def get_node_data(state: "PHMState", node_id: str):
     if isinstance(node, InputData):
         return np.asarray(node.data.get("signal", []))
     if isinstance(node, ProcessedData):
-        return np.asarray(node.processed_data)
+        if isinstance(node.results, dict):
+            return node.results
+        return np.asarray(node.results) if node.results is not None else None
     return None
-
-# TODO
-    def transfer_to_langgraph(self) -> nx.DiGraph:
-        """将 DAGState 转换为 LangGraph 可用的 networkx 图."""
-        return self.g
-    def save(self, path: str) -> None:
-        """将 DAG 状态保存到指定路径."""
-        import json
-        with open(path, 'w') as f:
-            json.dump(self.state.dict(), f, indent=4)
-    def load(self, path: str) -> None:
-        """从指定路径加载 DAG 状态."""
-        import json
-        with open(path, 'r') as f:
-            data = json.load(f)
-            self.state = DAGState(**data)
-            self.g = nx.DiGraph()
-            for n in self.state.nodes.values():
-                self._add_node(n)
-            self.state.leaves = list(self.state.channels)
 
 
 
@@ -353,6 +386,7 @@ class PHMState(BaseModel):
     reflection_history: List[str] = Field(default_factory=list)
     is_sufficient: bool = False
     iteration_count: int = 0
+    max_builder_iterations: int = 50
 
     processed_reference_signals: Annotated[Dict[str, ProcessedData], lambda x, y: {**x, **y}] = Field(
         default_factory=dict
@@ -408,12 +442,8 @@ class PHMState(BaseModel):
     save_dir: str | None = Field(default=None, description="Base directory to save artifacts.")
     run_dir: str | None = Field(default=None, description="Resolved run directory for this execution.")
 
-    _tracker_instance: Optional[Any] = PrivateAttr(default=None)
-
     def tracker(self) -> "DAGTracker":
-        if self._tracker_instance is None:
-            self._tracker_instance = DAGTracker(self.dag_state)
-        return self._tracker_instance
+        return DAGTracker(self.dag_state)
 
     class Config:
         arbitrary_types_allowed = True
