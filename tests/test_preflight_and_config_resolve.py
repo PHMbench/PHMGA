@@ -24,6 +24,7 @@ def test_preflight_detects_provider_model_mismatch():
     report = build_preflight_report(
         cfg,
         env={
+            "FAKE_LLM": "0",
             "LLM_PROVIDER": "glm",
             "QUERY_GENERATOR_MODEL": "gemini-2.5-pro",
             "GLM_API_BASE": "https://open.bigmodel.cn/api/paas/v4",
@@ -32,6 +33,30 @@ def test_preflight_detects_provider_model_mismatch():
     )
     assert report["ok"] is False
     assert any("Gemini" in item for item in report["errors"])
+    assert "provider_checks" in report["checks"]
+
+
+def test_preflight_fake_llm_downgrades_provider_errors_to_warnings():
+    cfg = {
+        "data": {"source_mode": "fixed_ids"},
+        "metadata_path": __file__,
+        "h5_path": __file__,
+        "ref_ids": [1],
+        "test_ids": [2],
+    }
+    report = build_preflight_report(
+        cfg,
+        env={
+            "FAKE_LLM": "true",
+            "LLM_PROVIDER": "glm",
+            "QUERY_GENERATOR_MODEL": "GLM-4.7-Flash",
+            "GLM_API_BASE": "",
+            "GLM_API_KEY": "",
+        },
+    )
+    assert report["ok"] is True
+    assert not report["errors"]
+    assert any("[FAKE_LLM]" in item for item in report["warnings"])
 
 
 def test_resolve_tspn_config_num_classes_fail_fast_and_autofit():
