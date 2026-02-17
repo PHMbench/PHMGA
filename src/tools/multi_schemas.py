@@ -92,7 +92,11 @@ class DistanceOp(MultiVariableOp):
             return np.sum(np.abs(vec1 - vec2), axis=-1)
         elif self.metric == "cosine":
             # Returns cosine distance, not similarity
-            return 1 - np.sum(vec1 * vec2, axis=-1) / (np.linalg.norm(vec1, axis=-1) * np.linalg.norm(vec2, axis=-1))
+            denom = np.linalg.norm(vec1, axis=-1) * np.linalg.norm(vec2, axis=-1)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                cos_sim = np.divide(np.sum(vec1 * vec2, axis=-1), denom, out=np.zeros_like(denom, dtype=float), where=denom > 1e-12)
+            cos_dist = 1.0 - cos_sim
+            return np.nan_to_num(cos_dist, nan=1.0, posinf=1.0, neginf=1.0)
         else:
             raise ValueError(f"Unknown metric: {self.metric}")
 

@@ -31,6 +31,14 @@ class PatchOp(ExpandOp):
         """
         if x.ndim != 3:
             raise ValueError(f"Input for PatchOp must be 3D (B, L, C), but got {x.ndim}D.")
+        if self.patch_size <= 0:
+            raise ValueError("PatchOp.patch_size must be > 0.")
+        if self.stride <= 0:
+            raise ValueError("PatchOp.stride must be > 0.")
+        if self.patch_size > x.shape[1]:
+            raise ValueError(
+                f"PatchOp.patch_size ({self.patch_size}) must be <= signal length ({x.shape[1]})."
+            )
         
         # We need to transpose to (B, C, L) for windowing, then transpose back.
         x_transposed = x.transpose(0, 2, 1) # -> (B, C, L)

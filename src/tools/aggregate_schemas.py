@@ -313,18 +313,21 @@ class HjorthParametersOp(AggregateOp):
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         if x.ndim < 2:
             raise ValueError(f"Input for HjorthParametersOp must be at least 2D, but got {x.ndim}D.")
+        eps = np.finfo(np.asarray(x).dtype).eps * 100
         
         dx = np.diff(x, axis=-2)
         ddx = np.diff(dx, axis=-2)
         
         # Activity (variance)
         activity = np.var(x, axis=-2)
+        var_dx = np.var(dx, axis=-2)
+        var_ddx = np.var(ddx, axis=-2)
         
         # Mobility
-        mobility = np.sqrt(np.var(dx, axis=-2) / activity)
+        mobility = np.sqrt(var_dx / (activity + eps))
         
         # Complexity
-        complexity = np.sqrt(np.var(ddx, axis=-2) / np.var(dx, axis=-2)) / mobility
+        complexity = np.sqrt(var_ddx / (var_dx + eps)) / (mobility + eps)
         
         # Stack the three parameters
         return np.stack([activity, mobility, complexity], axis=-2)
