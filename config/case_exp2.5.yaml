@@ -2,11 +2,12 @@
 
 # File paths
 name: "exp2.5"
-save_dir: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save" # Add a general save directory
+save_dir: "/home/user/LQ/B_Signal/PHMGA/save" # Add a general save directory
 metadata_path: "/mnt/crucial/LQ/PHM-Vibench/metadata_6_11.xlsx"
 h5_path: "/home/user/data/PHMbenchdata/PHM-Vibench/cache.h5"
-state_save_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/exp2.5/exp2.5_built_state.pkl"
-report_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/exp2.5/exp2.5_final_report.md"
+state_save_path: "/home/user/LQ/B_Signal/PHMGA/save/exp2.5/exp2.5_built_state.pkl"
+report_path: "/home/user/LQ/B_Signal/PHMGA/save/exp2.5/exp2.5_final_report.md"
+run_executor: true
 
 # Data selection
 ref_ids:
