@@ -302,9 +302,6 @@ class DAGTracker:
                     os.remove(png_path)
             except Exception:
                 pass
-            self.state.error_log.append(
-                f"Graph PNG export failed: {type(exc).__name__}: {exc}. DOT fallback saved to: {dot_path}"
-            )
             return False
 
     # ---------- 内部 ---------- #

@@ -35,6 +35,9 @@ _MODEL_PROFILE_MAP = {
     "tspn_basic": "config/model_tspn_basic.yaml",
     "tspn_wf_heavy": "config/model_tspn_basic.yaml",
 }
+_ABLATION_MODES = {"full", "no_reflect", "no_prior"}
+_LLM_PROVIDERS = {"gemini", "openai", "openai_compatible", "deepseek", "glm"}
+_STATE_SAVE_MODES = {"auto", "full", "minimal"}
 
 
 def _apply_state_update(state, update: dict) -> None:
@@ -70,6 +73,25 @@ def _resolve_source_mode(config: dict) -> str:
     return "fixed_ids"
 
 
+def _resolve_state_save_mode(config: dict) -> str:
+    data_cfg = dict(config.get("data") or {})
+    mode = str(data_cfg.get("state_save_mode") or "auto").strip().lower() or "auto"
+    if mode not in _STATE_SAVE_MODES:
+        return "auto"
+    return mode
+
+
+def _missing_root_ref_channels(state) -> list[str]:
+    missing: list[str] = []
+    channels = list(getattr(state.dag_state, "channels", []) or [])
+    for ch in channels:
+        node = state.dag_state.nodes.get(ch)
+        ref = (getattr(node, "results", {}) or {}).get("ref") if node is not None else None
+        if not isinstance(ref, dict) or not ref:
+            missing.append(str(ch))
+    return missing
+
+
 def _resolve_model_options(config: dict) -> dict:
     model_cfg = dict(config.get("model") or {})
     env_profile = os.getenv("PHM_MODEL_PROFILE", "").strip()
@@ -99,7 +121,55 @@ def _apply_runtime_overrides(config: dict) -> dict:
         data_cfg["dataset_name"] = dataset_override
     if data_cfg:
         out["data"] = data_cfg
+    ablation_override = os.getenv("PHM_ABLATION_MODE", "").strip().lower()
+    if ablation_override:
+        ab_cfg = dict(out.get("ablation") or {})
+        ab_cfg["mode"] = ablation_override
+        out["ablation"] = ab_cfg
     return out
+
+
+def _resolve_ablation_mode(config: dict) -> str:
+    ab_cfg = dict(config.get("ablation") or {})
+    mode = str(ab_cfg.get("mode") or "full").strip().lower()
+    if mode not in _ABLATION_MODES:
+        mode = "full"
+    return mode
+
+
+def _bind_llm_from_case(config: dict) -> str:
+    llm_cfg = dict(config.get("llm") or {})
+    if not llm_cfg:
+        return "env"
+
+    provider = str(llm_cfg.get("provider") or "").strip().lower()
+    if provider not in _LLM_PROVIDERS:
+        raise ValueError(
+            f"Invalid llm.provider={provider!r}. "
+            f"Expected one of: {', '.join(sorted(_LLM_PROVIDERS))}."
+        )
+    query_model = str(llm_cfg.get("query_generator_model") or "").strip()
+    if not query_model:
+        raise ValueError("llm.query_generator_model is required when llm block is provided.")
+
+    phm_model = str(llm_cfg.get("phm_model") or query_model).strip()
+    reflection_model = str(llm_cfg.get("reflection_model") or query_model).strip()
+    answer_model = str(llm_cfg.get("answer_model") or query_model).strip()
+
+    os.environ["LLM_PROVIDER"] = provider
+    os.environ["QUERY_GENERATOR_MODEL"] = query_model
+    os.environ["PHM_MODEL"] = phm_model
+    os.environ["REFLECTION_MODEL"] = reflection_model
+    os.environ["ANSWER_MODEL"] = answer_model
+
+    config["llm"] = {
+        "provider": provider,
+        "query_generator_model": query_model,
+        "phm_model": phm_model,
+        "reflection_model": reflection_model,
+        "answer_model": answer_model,
+    }
+    return "case_yaml"
 
 
 def run_case(config_path: str):
@@ -110,6 +180,7 @@ def run_case(config_path: str):
     with open(config_path, 'r', encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
     config = _apply_runtime_overrides(config)
+    llm_source = _bind_llm_from_case(config)
 
     case_name = str(config.get("name") or "case")
     save_dir = str(config.get("save_dir") or os.environ.get("PHM_SAVE_DIR") or (Path.cwd() / "save"))
@@ -122,7 +193,7 @@ def run_case(config_path: str):
         event="case.load_config",
         phase="init",
         message="Loaded case configuration.",
-        payload={"config_path": config_path, "run_id": run_id},
+        payload={"config_path": config_path, "run_id": run_id, "llm_source": llm_source},
     )
 
     preflight = build_preflight_report(config)
@@ -145,14 +216,34 @@ def run_case(config_path: str):
     min_depth = builder_cfg.get('min_depth', 0)
     max_depth = builder_cfg.get('max_depth', float('inf'))
     max_iterations = int(builder_cfg.get("max_iterations", 50))
+    ablation_mode = _resolve_ablation_mode(config)
+    if ablation_mode == "no_reflect":
+        max_iterations = min(max_iterations, 1)
     source_mode = _resolve_source_mode(config)
+    state_save_mode = _resolve_state_save_mode(config)
     model_opts = _resolve_model_options(config)
     data_cfg = dict(config.get("data") or {})
     data_cfg["source_mode"] = source_mode
+    data_cfg["state_save_mode"] = state_save_mode
     data_cfg["model_profile"] = model_opts["profile"]
     data_cfg["autofit_dims"] = model_opts["autofit_dims"]
     data_cfg["autofit_num_classes"] = model_opts["autofit_num_classes"]
     data_cfg["model_config_path"] = model_opts["model_config_path"]
+    data_cfg["ablation_mode"] = ablation_mode
+    data_cfg["disable_prior_init"] = (ablation_mode == "no_prior")
+    log_event(
+        run_logger,
+        level="INFO",
+        event="case.ablation",
+        phase="init",
+        message="Resolved ablation mode.",
+        payload={
+            "ablation_mode": ablation_mode,
+            "max_iterations": max_iterations,
+            "source_mode": source_mode,
+            "state_save_mode": state_save_mode,
+        },
+    )
     if source_mode == "fixed_ids":
         data_cfg.setdefault("metadata_path", config.get("metadata_path"))
         data_cfg.setdefault("h5_path", config.get("h5_path"))
@@ -186,6 +277,24 @@ def run_case(config_path: str):
         built_state.data_cfg = data_cfg
         built_state.save_dir = config.get("save_dir")
         built_state.max_builder_iterations = max_iterations
+        if source_mode == "fixed_ids":
+            missing = _missing_root_ref_channels(built_state)
+            if missing:
+                msg = (
+                    "Loaded built_state.pkl is missing root InputData.results['ref'] "
+                    f"for channels={missing}. fixed_ids requires full state arrays. "
+                    "Use data.state_save_mode=full and rebuild (or remove current built_state.pkl)."
+                )
+                log_event(
+                    run_logger,
+                    level="ERROR",
+                    event="case.state_incompatible",
+                    phase="init",
+                    message=msg,
+                    payload={"state_save_path": state_save_path, "missing_channels": missing},
+                )
+                clear_current_logger()
+                raise ValueError(msg)
     else:
         log_event(
             run_logger,
@@ -356,8 +465,22 @@ def run_case(config_path: str):
         )
 
         # --- Save the built state ---
-        with timed(run_logger, event="case.save_state", phase="builder", payload={"state_save_path": state_save_path}):
-            save_state(built_state, state_save_path)
+        with timed(
+            run_logger,
+            event="case.save_state",
+            phase="builder",
+            payload={
+                "state_save_path": state_save_path,
+                "save_mode": state_save_mode,
+                "source_mode": source_mode,
+            },
+        ):
+            save_state(
+                built_state,
+                state_save_path,
+                save_mode=state_save_mode,
+                source_mode=source_mode,
+            )
 
     # At this point, `built_state` is guaranteed to be a valid state object,
     # either loaded from file or newly created.
