@@ -1,0 +1,57 @@
+matrix:
+  llm:
+    - name: gemini3
+      env:
+        LLM_PROVIDER: gemini
+        QUERY_GENERATOR_MODEL: gemini-3-flash
+        PHM_MODEL: gemini-3-flash
+        REFLECTION_MODEL: gemini-3-flash
+        ANSWER_MODEL: gemini-3-flash
+    - name: glm47
+      env:
+        LLM_PROVIDER: glm
+        QUERY_GENERATOR_MODEL: GLM-4.7-Flash
+        PHM_MODEL: GLM-4.7-Flash
+        REFLECTION_MODEL: GLM-4.7-Flash
+        ANSWER_MODEL: GLM-4.7-Flash
+    - name: glm45
+      env:
+        LLM_PROVIDER: glm
+        QUERY_GENERATOR_MODEL: GLM-4.5-Flash
+        PHM_MODEL: GLM-4.5-Flash
+        REFLECTION_MODEL: GLM-4.5-Flash
+        ANSWER_MODEL: GLM-4.5-Flash
+    - name: gemini25
+      env:
+        LLM_PROVIDER: gemini
+        QUERY_GENERATOR_MODEL: gemini-2.5-flash
+        PHM_MODEL: gemini-2.5-flash
+        REFLECTION_MODEL: gemini-2.5-flash
+        ANSWER_MODEL: gemini-2.5-flash
+
+  datasets:
+    - name: ottawa
+      case_config: config/tspn_case_exp_ottawa.yaml
+    - name: rm101
+      case_config: config/case_exp_gearbox_rm101.yaml
+
+  ablations:
+    - name: A0_full
+      mode: full
+    - name: A1_no_reflect
+      mode: no_reflect
+    - name: A2_no_prior
+      mode: no_prior
+
+runtime:
+  conda_env: agent
+  use_conda_run: true
+  run_preflight: true
+  continue_on_error: true
+  skip_existing: false
+  default_train_backend: tspn
+  allow_test_labels_for_reporting: true
+
+  # 在线运行默认
+  fake_llm: false
+  report_mode: auto

@@ -1,0 +1,64 @@
+name: "exp_gearbox_rm101"
+save_dir: "/home/user/LQ/B_Signal/PHMGA/save"
+state_save_path: "/home/user/LQ/B_Signal/PHMGA/save/exp_gearbox_rm101/built_state.pkl"
+report_path: "/home/user/LQ/B_Signal/PHMGA/save/exp_gearbox_rm101/final_report.md"
+
+run_executor: true
+train_backend: tspn
+allow_test_labels_for_reporting: false
+
+llm:
+  provider: glm
+  query_generator_model: GLM-4.7-Flash
+  phm_model: GLM-4.7-Flash
+  reflection_model: GLM-4.7-Flash
+  answer_model: GLM-4.7-Flash
+
+model:
+  profile: tspn_basic
+  config_path: "config/model_tspn_rm101_deep.yaml"
+  autofit_dims: true
+  autofit_num_classes: true
+
+data:
+  backend: vibench
+  source_mode: vibench
+  data_dir: "/home/user/data/PHMbenchdata/PHM-Vibench"
+  cache_dir: "/home/user/LQ/B_Signal/PHMGA/save/cache/rm101"
+  metadata_file: "gear_metadata.xlsx"
+  dataset_name: "RM_101_THU_GEARBOX"
+  vibench_code_root: "/home/user/LQ/B_Signal/vibench_fix/PHM-Vibench copy 2"
+  batch_size: 16
+  num_workers: 0
+  window_size: 4096
+  debug: false
+  debug_max_samples: 64
+  debug_epochs: 1
+  epochs: 60
+  patience: 15
+  lr: 3.0e-4
+  scheduler: cosine
+  label_smoothing: 0.05
+  early_stop_metric: val_macro_f1
+  use_weighted_sampler: true
+  train_profile: highacc
+  use_dag_model_config: true
+  use_class_weight: true
+  bridge_min_effective_ops_ratio: 0.4
+  unsupported_policy: drop
+  preserve_topology: true
+  max_ops_per_iteration: 8
+  max_layers: 6
+  parallel_ops_per_layer: 6
+
+builder:
+  min_depth: 6
+  max_depth: 10
+  max_iterations: 24
+
+preflight:
+  strict: true
+  block_on_missing_dependencies: [librosa, nolds, antropy]
+
+user_instruction: >
+  Diagnose gearbox faults on RM_101_THU_GEARBOX and produce a TSPN diagnosis report.
