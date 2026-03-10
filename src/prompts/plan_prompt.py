@@ -32,6 +32,10 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 - Your plan must add a **single new layer** of operations to the graph. Do not create multi-step chains in one plan.
 - **CRITICAL: You are encouraged to be creative. You can select ANY existing node from the `dag_json` as a `parent` for a new operation. This includes root nodes (like 'ch1'), intermediate nodes (like 'fft_01'), and leaf nodes. Creating new parallel branches from early-stage nodes is a powerful strategy for increasing feature diversity.**
 - You **must** use the exact `op_name` and parameter names defined in the `tools` input.
+- You **must not** invent operators that are not in `tools` (for example, do not output names like `spectral_entropy` unless explicitly present in `tools`).
+- If an operator is missing from `tools`, choose the closest available operator from `tools` instead of hallucinating a new one.
+- You must ensure every operation has parameter values grounded in known context (sampling frequency `fs`, meaningful frequency bands/cutoffs when applicable).
+- If `max_ops_per_iteration > 0`, output at most that many steps.
 - Aggregate operators (`mean`, `std`, `skew`, etc.) should not be applied to nodes that already represent aggregated features or have shape `(B, C)`.
 
 **Input:**
@@ -44,63 +48,38 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 - Each "Step" must have "parent", "op_name", and "params".
 
 **Example:**
-If the current nodes are `["ch1","ch2","stft_01_ch1","patch_01_ch1","fft_01_ch1","spectrogram_01_ch2","fft_01_ch2"]`, a strong plan would be to build a feature vector by calculating multiple statistics for each:
+If the current nodes are `["ch1","ch2","hilbert_envelope_01_ch1","fft_01_ch1","fft_01_ch2"]`, a strong plan is to expand feature diversity with currently executable operators:
 ```json
 {{
   "plan": [
     {{
-      "parent": "patch_01_ch1",
-      "op_name": "mean",
+      "parent": "ch1",
+      "op_name": "rms",
       "params": {{}}
     }},
-    {{
-      "parent": "stft_01_ch1",
-      "op_name": "std",
-      "params": {{}}
-    }},
-    {{
-      "parent": "fft_01_ch1",
-      "op_name": "kurtosis",
-      "params": {{}}
-    }},
-    {{
-      "parent": "normalize_01_ch2",
-      "op_name": "mean",
-      "params": {{}}
-    }},
-    {{
-      "parent": "spectrogram_01_ch2",
-      "op_name": "std",
-      "params": {{}}
-    }},
-    {{
-      "parent": "fft_01_ch2",
-      "op_name": "kurtosis",
-      "params": {{}}
-    }}
     {{
       "parent": "ch2",
       "op_name": "kurtosis",
       "params": {{}}
-    }}
-    {{
-      "parent": "ch2,ch1",
-      "op_name": "cross_correlation",
-      "params": {{}}
-    }}
+    }},
     {{
       "parent": "fft_01_ch1",
-      "op_name": "band_power",
-      "params": {{bands: [[0, 50], [50, 100], [100, 150]]}}
-    }}
+      "op_name": "spectral_kurtosis",
+      "params": {{}}
+    }},
+    {{
+      "parent": "fft_01_ch2",
+      "op_name": "spectral_centroid",
+      "params": {{}}
+    }},
+    {{
+      "parent": "hilbert_envelope_01_ch1",
+      "op_name": "std",
+      "params": {{}}
+    }},
     {{
       "parent": "ch2,ch1",
       "op_name": "cross_correlation",
-      "params": {{}}
-    }}
-    {{
-      "parent": "ch2,ch1",
-      "op_name": "coherence",
       "params": {{}}
     }}
   ]
@@ -115,6 +94,9 @@ DAG current_depth: {current_depth}
 DAG minimal depth: {min_depth}
 DAG minimal width: {min_width}
 Reflection: {reflection}
+Dataset Name: {dataset_name}
+Dataset Planning Hint: {dataset_hint}
+Max Ops Per Iteration: {max_ops_per_iteration}
 """
 
 
@@ -141,6 +123,7 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 - Your plan must add a **single new layer** of operations to the graph. Do not create multi-step chains in one plan.
 - For each step in your plan, you can select **any existing node** from the `dag_json` as the `parent`. You are not limited to the original input nodes or the leaf nodes.
 - You **must** use the exact `op_name` and parameter names defined in the `tools` input.
+- You **must not** invent operators that are not in `tools`.
 - Aggregate operators (`mean`, `std`, `skew`, etc.) should not be applied to nodes that already represent aggregated features or have shape `(B, C)`.
 
 **Input:**
@@ -153,45 +136,35 @@ Your primary objective is to devise a plan that adds a new layer of operations t
 - Each "Step" must have "parent", "op_name", and "params".
 
 **Example:**
-If the current nodes are `["ch1","ch2","stft_01_ch1","patch_01_ch1","fft_01_ch1","spectrogram_01_ch2","fft_01_ch2"]`, a strong plan would be to build a feature vector by calculating multiple statistics for each:
+If the current nodes are `["ch1","ch2","hilbert_envelope_01_ch1","fft_01_ch1","fft_01_ch2"]`, a strong plan is:
 ```json
 {{
   "plan": [
     {{
-      "parent": "patch_01_ch1",
-      "op_name": "mean",
+      "parent": "ch1",
+      "op_name": "rms",
       "params": {{}}
     }},
-    {{
-      "parent": "stft_01_ch1",
-      "op_name": "std",
-      "params": {{}}
-    }},
-    {{
-      "parent": "fft_01_ch1",
-      "op_name": "kurtosis",
-      "params": {{}}
-    }},
-    {{
-      "parent": "fft_01_ch2",
-      "op_name": "mean",
-      "params": {{}}
-    }},
-    {{
-      "parent": "spectrogram_01_ch2",
-      "op_name": "std",
-      "params": {{}}
-    }},
-    {{
-      "parent": "fft_01_ch2",
-      "op_name": "kurtosis",
-      "params": {{}}
-    }}
     {{
       "parent": "ch2",
       "op_name": "kurtosis",
       "params": {{}}
-    }}
+    }},
+    {{
+      "parent": "fft_01_ch1",
+      "op_name": "spectral_kurtosis",
+      "params": {{}}
+    }},
+    {{
+      "parent": "fft_01_ch2",
+      "op_name": "spectral_centroid",
+      "params": {{}}
+    }},
+    {{
+      "parent": "hilbert_envelope_01_ch1",
+      "op_name": "std",
+      "params": {{}}
+    }},
     {{
       "parent": "ch2,ch1",
       "op_name": "cross_correlation",

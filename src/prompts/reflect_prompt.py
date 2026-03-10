@@ -6,6 +6,7 @@ You are an experienced PHM (Prognostics and Health Management) system architect.
 - **Current Stage (stage):** {stage}
 - **DAG Blueprint (dag_blueprint):** {dag_blueprint}
 - **Issues Summary (issues_summary):** {issues_summary}
+- **Available Tools (available_tools):** {available_tools}
 - **DAG current_depth:** {current_depth}
 - **DAG Minimal Depth (min_depth):** {min_depth}
 - **DAG Minimal Width (min_width):** {min_width}
@@ -18,7 +19,7 @@ You are an experienced PHM (Prognostics and Health Management) system architect.
 
 2.  **Architectural Soundness (Key to Enriching the DAG):**
     - **Operator Diversity:** Is the DAG stuck in a monotonous loop (e.g., repeatedly applying `mean` to different nodes)? An excellent DAG should explore features from different domains (e.g., time-domain statistics, frequency-domain features, wavelet features) rather than relying on just one type.
-    - **Hierarchical Logic:** Does the DAG follow a logical hierarchy of "signal -> transform -> feature extraction"? For example, after an FFT node, is it followed by an operation to extract spectral features? Or is spectral entropy being inappropriately calculated on the raw signal?
+    - **Hierarchical Logic:** Does the DAG follow a logical hierarchy of "signal -> transform -> feature extraction"? For example, after an FFT node, is it followed by operations that extract valid spectral features?
     - **Redundancy Check:** Did the most recent steps create duplicate or highly correlated features from the same parent? (e.g., calculating both `max` and `peak` might be redundant).
 
 3.  **Goal Orientation:**
@@ -28,6 +29,8 @@ You are an experienced PHM (Prognostics and Health Management) system architect.
 **Decision and Directive:**
 
 Based on the above assessment, make the most appropriate decision. **Your `reason` is crucial as it will directly guide the next planning step.**
+When suggesting operator changes, only reference operators listed in `available_tools`.
+If you suggest adding frequency-domain operators, include parameter rationale tied to known sampling frequency / band ranges.
 
 - **`"decision": "halt"`**: A hard, unrecoverable error exists (e.g., collapsed structure, use of a non-existent tool). The `reason` must clearly state the error.
 - **`"decision": "need_replan"`**: The structure is valid, but the previous plan has a logical flaw (e.g., redundant operation, tool used at the wrong stage). This will require the `PLANNER` to re-plan the **previous step**. The `reason` should clearly explain why the last step was unreasonable.
@@ -57,6 +60,7 @@ REFLECT_PROMPT_V1CN = """
 - **当前阶段 (stage):** {stage}
 - **DAG 蓝图 (dag_blueprint):** {dag_blueprint}
 - **问题汇总 (issues_summary):** {issues_summary}
+- **可用工具 (available_tools):** {available_tools}
 - **DAG 最小深度 (min_depth):** {min_depth}
 - **DAG 最小宽度 (min_width):** {min_width}
 - **DAG 最大深度 (max_depth):** {max_depth}
@@ -79,6 +83,7 @@ REFLECT_PROMPT_V1CN = """
 **决策与指令:**
 
 请根据上述评估，做出最恰当的决策。**你的`reason`至关重要，它将直接指导下一步的规划。**
+若你在 `reason` 中提出算子建议，只能引用 `available_tools` 列表中的算子。
 
 - **`"decision": "halt"`**: 存在无法修复的硬性错误（如结构崩溃、使用了不存在的工具）。`reason`必须明确指出错误所在。
 - **`"decision": "need_replan"`**: 结构有效，但上一步的规划存在逻辑缺陷（如冗余操作、在错误阶段使用了工具）。这会要求`PLANNER`重新规划**上一步**。`reason`应清晰地解释为什么上一步是不合理的。

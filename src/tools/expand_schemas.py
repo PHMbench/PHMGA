@@ -5,7 +5,6 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import Field
 from scipy import signal
-from skimage.util import view_as_windows
 
 from .signal_processing_schemas import ExpandOp, register_op
 
@@ -29,6 +28,12 @@ class PatchOp(ExpandOp):
         Input shape: (B, L, C)
         Output shape: (B, N, P, C), where N is number of patches, P is patch_size.
         """
+        try:
+            from skimage.util import view_as_windows
+        except ImportError as exc:
+            raise ImportError(
+                "scikit-image is required for PatchOp. Install it with 'pip install scikit-image'."
+            ) from exc
         if x.ndim != 3:
             raise ValueError(f"Input for PatchOp must be 3D (B, L, C), but got {x.ndim}D.")
         if self.patch_size <= 0:
