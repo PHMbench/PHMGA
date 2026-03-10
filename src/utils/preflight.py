@@ -3,10 +3,13 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Dict, List
 
 import yaml
+
+_LLM_PROVIDERS = {"gemini", "openai", "openai_compatible", "deepseek", "glm"}
 
 
 def _exists(path_value: str | None) -> bool:
@@ -15,10 +18,48 @@ def _exists(path_value: str | None) -> bool:
     return Path(path_value).expanduser().exists()
 
 
-def _provider_model_check(env: Dict[str, str]) -> Dict[str, Any]:
+def _provider_model_check(
+    env: Dict[str, str],
+    *,
+    config_llm: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     from src.configuration import Configuration
 
-    return Configuration.validate_provider_env(env=env, strict=False)
+    merged_env = dict(env)
+    source = "env"
+    cfg = dict(config_llm or {})
+    cfg_errors: List[str] = []
+    cfg_warnings: List[str] = []
+
+    if cfg:
+        source = "case_yaml"
+        provider = str(cfg.get("provider") or "").strip().lower()
+        query_model = str(cfg.get("query_generator_model") or "").strip()
+        phm_model = str(cfg.get("phm_model") or query_model).strip()
+        reflection_model = str(cfg.get("reflection_model") or query_model).strip()
+        answer_model = str(cfg.get("answer_model") or query_model).strip()
+
+        if provider not in _LLM_PROVIDERS:
+            cfg_errors.append(
+                f"Invalid llm.provider={provider!r}. "
+                f"Expected one of: {', '.join(sorted(_LLM_PROVIDERS))}."
+            )
+        if not query_model:
+            cfg_errors.append("llm.query_generator_model is required when llm block is provided.")
+        if query_model:
+            merged_env["QUERY_GENERATOR_MODEL"] = query_model
+            merged_env["PHM_MODEL"] = phm_model
+            merged_env["REFLECTION_MODEL"] = reflection_model
+            merged_env["ANSWER_MODEL"] = answer_model
+        if provider:
+            merged_env["LLM_PROVIDER"] = provider
+
+    report = Configuration.validate_provider_env(env=merged_env, strict=False)
+    report["source"] = source
+    report["errors"] = list(cfg_errors) + list(report.get("errors") or [])
+    report["warnings"] = list(cfg_warnings) + list(report.get("warnings") or [])
+    report["ok"] = len(report["errors"]) == 0
+    return report
 
 
 def _dependency_status(pkg: str) -> bool:
@@ -30,6 +71,7 @@ def _dependency_status(pkg: str) -> bool:
 
 
 def _operator_checks(required_ops: List[str]) -> Dict[str, Any]:
+    import src.tools  # noqa: F401 - trigger schema module imports and operator registration
     from src.tools.signal_processing_schemas import get_operator
 
     present: List[str] = []
@@ -41,6 +83,13 @@ def _operator_checks(required_ops: List[str]) -> Dict[str, Any]:
         except Exception:
             missing.append(op_name)
     return {"required_ops": required_ops, "registered": present, "missing": missing}
+
+
+def _binary_exists(name: str) -> bool:
+    try:
+        return shutil.which(name) is not None
+    except Exception:
+        return False
 
 
 def _resolve_case_data_mode(config: Dict[str, Any]) -> str:
@@ -108,10 +157,18 @@ def build_preflight_report(config: Dict[str, Any], *, env: Dict[str, str] | None
             errors.append(f"metadata_file not found: {metadata_file}")
         if not dataset_name:
             warnings.append("dataset_name is empty.")
+        builder_cfg = dict(config.get("builder") or {})
+        max_depth = int(builder_cfg.get("max_depth", 0) or 0)
+        if dataset_name == "RM_101_THU_GEARBOX" and max_depth > 0 and max_depth <= 2:
+            warnings.append(
+                "Builder max_depth is very low for RM_101_THU_GEARBOX; recommended max_depth >= 6."
+            )
 
-    provider_check = _provider_model_check(env_map)
+    llm_cfg = dict(config.get("llm") or {})
+    provider_check = _provider_model_check(env_map, config_llm=llm_cfg)
     checks["llm"] = provider_check
     checks["provider_checks"] = provider_check
+    checks["provider_source"] = provider_check.get("source", "env")
     fake_llm = str(env_map.get("FAKE_LLM", "")).strip().lower() in {"1", "true", "yes", "y"}
     if fake_llm:
         warnings.extend([f"[FAKE_LLM] {msg}" for msg in provider_check["errors"]])
@@ -121,7 +178,16 @@ def build_preflight_report(config: Dict[str, Any], *, env: Dict[str, str] | None
 
     required_ops = list(((config.get("preflight") or {}).get("required_ops") or []))
     if not required_ops:
-        required_ops = ["mean", "fft", "filter", "hilbert_envelope", "band_power", "spectral_entropy", "stft", "approximate_entropy"]
+        required_ops = [
+            "mean",
+            "fft",
+            "filter",
+            "hilbert_envelope",
+            "band_power",
+            "stft",
+            "approximate_entropy",
+            "permutation_entropy",
+        ]
     op_checks = _operator_checks(required_ops)
     checks["operators"] = op_checks
     if op_checks["missing"]:
@@ -129,13 +195,32 @@ def build_preflight_report(config: Dict[str, Any], *, env: Dict[str, str] | None
 
     deps = {
         "nolds": _dependency_status("nolds"),
+        "antropy": _dependency_status("antropy"),
+        "librosa": _dependency_status("librosa"),
         "graphviz_python": _dependency_status("graphviz"),
+        "graphviz_dot": _binary_exists("dot"),
     }
     checks["dependencies"] = deps
     if not deps["nolds"]:
         warnings.append("Optional dependency 'nolds' is missing; approximate entropy features will fail.")
+    if not deps["antropy"]:
+        warnings.append("Optional dependency 'antropy' is missing; permutation entropy features will fail.")
+    if not deps["librosa"]:
+        warnings.append("Optional dependency 'librosa' is missing; mel/power_to_db/vqt features will fail.")
     if not deps["graphviz_python"]:
         warnings.append("Optional dependency 'graphviz' python package is missing; PNG graph export will fallback to DOT.")
+    if not deps["graphviz_dot"]:
+        warnings.append("Graphviz binary 'dot' is missing; PNG graph export may fail even if python package exists.")
+
+    preflight_cfg = dict(config.get("preflight") or {})
+    block_missing_deps = list(preflight_cfg.get("block_on_missing_dependencies") or [])
+    for dep_name in block_missing_deps:
+        dep_key = str(dep_name).strip()
+        if dep_key and not bool(deps.get(dep_key, False)):
+            errors.append(
+                f"Missing required dependency for this run: '{dep_key}'. "
+                "Install it or adjust preflight.block_on_missing_dependencies."
+            )
 
     return {
         "ok": not errors,
