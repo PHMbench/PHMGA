@@ -9,6 +9,7 @@ import os
 import pickle
 import hashlib
 import uuid
+import json
 
 # 禁用 LangSmith
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
@@ -348,16 +349,114 @@ def generate_final_report(final_state, report_path: str):
             print("Errors during execution:", final_state['dag_state'].error_log)
 
 
-def save_state(state, filepath: str):
+def _resolve_source_mode_for_state(state: PHMState | None, source_mode: str | None = None) -> str:
+    source = str(source_mode or "").strip().lower()
+    if source in {"fixed_ids", "vibench"}:
+        return source
+    data_cfg = dict(getattr(state, "data_cfg", {}) or {})
+    source = str(data_cfg.get("source_mode") or "").strip().lower()
+    if source in {"fixed_ids", "vibench"}:
+        return source
+    backend = str(data_cfg.get("backend") or "").strip().lower()
+    if backend == "vibench":
+        return "vibench"
+    return "fixed_ids"
+
+
+def _resolve_state_save_mode(save_mode: str | None, source_mode: str | None, state: PHMState | None) -> str:
+    requested = str(save_mode or "auto").strip().lower() or "auto"
+    if requested not in {"auto", "full", "minimal"}:
+        requested = "auto"
+    if requested != "auto":
+        return requested
+    resolved_source = _resolve_source_mode_for_state(state, source_mode)
+    return "minimal" if resolved_source == "vibench" else "full"
+
+
+def _sum_numpy_nbytes(obj: Any, seen: set[int]) -> int:
+    if obj is None:
+        return 0
+    oid = id(obj)
+    if oid in seen:
+        return 0
+    seen.add(oid)
+    if isinstance(obj, np.ndarray):
+        return int(obj.nbytes)
+    if isinstance(obj, dict):
+        total = 0
+        for key, value in obj.items():
+            total += _sum_numpy_nbytes(key, seen)
+            total += _sum_numpy_nbytes(value, seen)
+        return total
+    if isinstance(obj, (list, tuple, set)):
+        return sum(_sum_numpy_nbytes(item, seen) for item in obj)
+    return 0
+
+
+def _estimate_state_numpy_bytes(state: PHMState) -> int:
+    dag_state = getattr(state, "dag_state", None)
+    nodes = dict(getattr(dag_state, "nodes", {}) or {})
+    seen: set[int] = set()
+    total = 0
+    for node in nodes.values():
+        total += _sum_numpy_nbytes(getattr(node, "data", None), seen)
+        total += _sum_numpy_nbytes(getattr(node, "results", None), seen)
+    total += _sum_numpy_nbytes(getattr(state, "datasets", None), seen)
+    return int(total)
+
+
+def _build_minimal_state_snapshot(state: PHMState) -> PHMState:
+    snapshot = state.model_copy(deep=True)
+    dag_state = getattr(snapshot, "dag_state", None)
+    nodes = dict(getattr(dag_state, "nodes", {}) or {})
+    for node in nodes.values():
+        if hasattr(node, "data"):
+            node.data = {}
+        if hasattr(node, "results"):
+            node.results = {}
+    for root_name in ("reference_signal", "test_signal"):
+        root = getattr(snapshot, root_name, None)
+        if root is not None:
+            if hasattr(root, "data"):
+                root.data = {}
+            if hasattr(root, "results"):
+                root.results = {}
+    return snapshot
+
+
+def _missing_root_ref_channels(state: PHMState) -> List[str]:
+    missing: List[str] = []
+    channels = list(getattr(state.dag_state, "channels", []) or [])
+    for ch in channels:
+        node = state.dag_state.nodes.get(ch)
+        if not isinstance(node, InputData):
+            missing.append(str(ch))
+            continue
+        ref = (node.results or {}).get("ref")
+        if not isinstance(ref, dict) or not ref:
+            missing.append(str(ch))
+    return missing
+
+
+def save_state(state, filepath: str, *, save_mode: str = "auto", source_mode: str | None = None):
     """
     使用pickle将状态对象保存到磁盘。
     """
     try:
+        resolved_source_mode = _resolve_source_mode_for_state(state, source_mode)
+        effective_mode = _resolve_state_save_mode(save_mode, resolved_source_mode, state)
+        state_to_save = state if effective_mode == "full" else _build_minimal_state_snapshot(state)
+        bytes_before = _estimate_state_numpy_bytes(state)
+        bytes_after = _estimate_state_numpy_bytes(state_to_save)
+
         abs_path = os.path.abspath(filepath)
-        print(f"\n--- Saving state to {abs_path} ---")
+        print(
+            f"\n--- Saving state to {abs_path} "
+            f"(requested={save_mode}, effective={effective_mode}, source_mode={resolved_source_mode}) ---"
+        )
         os.makedirs(os.path.dirname(abs_path), exist_ok=True)
         with open(abs_path, "wb") as f:
-            pickle.dump(state, f)
+            pickle.dump(state_to_save, f)
         digest = hashlib.sha256()
         with open(abs_path, "rb") as f:
             while True:
@@ -367,6 +466,22 @@ def save_state(state, filepath: str):
                 digest.update(chunk)
         with open(f"{abs_path}.sha256", "w", encoding="utf-8") as f:
             f.write(digest.hexdigest())
+        bytes_reduced = max(0, int(bytes_before) - int(bytes_after))
+        reduction_ratio = (float(bytes_reduced) / float(bytes_before)) if int(bytes_before) > 0 else 0.0
+        meta = {
+            "save_mode_requested": str(save_mode or "auto"),
+            "effective_mode": effective_mode,
+            "source_mode": resolved_source_mode,
+            "nodes_count": len(getattr(state.dag_state, "nodes", {}) or {}),
+            "channels_count": len(getattr(state.dag_state, "channels", []) or []),
+            "numpy_bytes_before": int(bytes_before),
+            "numpy_bytes_after": int(bytes_after),
+            "numpy_bytes_reduced": int(bytes_reduced),
+            "numpy_reduction_ratio": float(reduction_ratio),
+            "pickle_bytes": int(os.path.getsize(abs_path)),
+        }
+        with open(f"{abs_path}.meta.json", "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2, ensure_ascii=False)
         print("...done.")
         return True
     except Exception as e:
@@ -405,6 +520,15 @@ def load_state(filepath: str):
             state = pickle.load(f)
         print("...done.")
         print(f"Successfully loaded state with {len(state.dag_state.nodes)} nodes.")
+        source = _resolve_source_mode_for_state(state, None)
+        if source == "fixed_ids":
+            missing = _missing_root_ref_channels(state)
+            if missing:
+                print(
+                    "Warning: loaded state is missing root InputData.results['ref'] for "
+                    f"channels={missing}. fixed_ids flow expects full state arrays. "
+                    "If this is a minimal snapshot, set data.state_save_mode=full and rebuild."
+                )
         return state
     except Exception as e:
         print(f"Error loading state: {e}")
