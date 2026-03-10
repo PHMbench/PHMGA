@@ -77,6 +77,7 @@ def test_dag2tspn_extended_mapping_and_metadata():
         preserve_dag_topology=True,
         allow_duplicate_tokens=True,
         unsupported_policy="fallback_to_identity",
+        enforce_tspn_closed_world=False,
     )
     result = adapter.adapt(dag)
     cfg = TSPNConfig.model_validate(result.model_config)
