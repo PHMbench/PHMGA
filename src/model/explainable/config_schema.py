@@ -72,6 +72,24 @@ class TrainConfig(BaseModel):
         default=1.0,
         description="Gradient clipping max norm. Set <=0 to disable clipping.",
     )
+    use_weighted_sampler: bool = Field(
+        default=False,
+        description="Use WeightedRandomSampler for training batches.",
+    )
+    scheduler: Literal["none", "cosine", "plateau"] = Field(
+        default="none",
+        description="Learning-rate scheduler strategy.",
+    )
+    label_smoothing: float = Field(
+        default=0.0,
+        ge=0.0,
+        lt=1.0,
+        description="Label smoothing factor for cross-entropy.",
+    )
+    early_stop_metric: Literal["val_macro_f1", "val_acc"] = Field(
+        default="val_macro_f1",
+        description="Primary metric used by early stopping.",
+    )
 
     # Regularization on operator gates (encourage sparsity / avoid redundancy).
     l1_gate: float = Field(default=0.0, ge=0.0, description="L1 penalty weight on gate values.")

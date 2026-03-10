@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+import logging
+import math
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import yaml
 
 from .config_schema import TSPNConfig
+
+LOGGER = logging.getLogger(__name__)
 
 
 def load_tspn_config(path: str | Path) -> TSPNConfig:
@@ -81,6 +85,43 @@ def _make_op_uid(layer_idx: int, token: str, occurrence_idx: int) -> str:
     return f"L{int(layer_idx)}:{token}:{int(occurrence_idx)}"
 
 
+def _resolve_out_channels_for_layers(
+    *,
+    original_out_channels: int,
+    scale: int,
+    module_counts: List[int],
+) -> Tuple[int, Dict[str, Any] | None]:
+    if not module_counts:
+        return int(original_out_channels), None
+    if scale <= 0:
+        raise ValueError(f"scale must be positive, got {scale}")
+    if any(n <= 0 for n in module_counts):
+        raise ValueError(f"Each layer must have at least one op, got module counts: {module_counts}")
+
+    out_total_before = int(original_out_channels) * int(scale)
+    lcm_ops = 1
+    for n in module_counts:
+        lcm_ops = math.lcm(lcm_ops, int(n))
+
+    if out_total_before % lcm_ops == 0:
+        return int(original_out_channels), None
+
+    out_total_after = ((out_total_before + lcm_ops - 1) // lcm_ops) * lcm_ops
+    while out_total_after % int(scale) != 0:
+        out_total_after += lcm_ops
+
+    out_channels_after = out_total_after // int(scale)
+    return out_channels_after, {
+        "module_counts": [int(n) for n in module_counts],
+        "lcm_ops": int(lcm_ops),
+        "out_total_before": int(out_total_before),
+        "out_total_after": int(out_total_after),
+        "out_channels_before": int(original_out_channels),
+        "out_channels_after": int(out_channels_after),
+        "reason": "auto_adjusted_for_layer_divisibility",
+    }
+
+
 def build_tspn_from_config(
     cfg: TSPNConfig, *, device: str | None = None
 ) -> Tuple["TransparentSignalProcessingNetwork", Dict[str, Any]]:
@@ -105,13 +146,28 @@ def build_tspn_from_config(
 
     model_cfg = cfg.model
     runtime_device = device or model_cfg.device
+    module_counts = [len(layer_cfg.ops) for layer_cfg in model_cfg.layers]
+    resolved_out_channels, channel_adjustment = _resolve_out_channels_for_layers(
+        original_out_channels=int(model_cfg.out_channels),
+        scale=int(model_cfg.scale),
+        module_counts=module_counts,
+    )
+    if channel_adjustment:
+        LOGGER.warning(
+            "TSPN channel auto-adjust: out_total %s -> %s (out_channels %s -> %s), module_counts=%s",
+            channel_adjustment["out_total_before"],
+            channel_adjustment["out_total_after"],
+            channel_adjustment["out_channels_before"],
+            channel_adjustment["out_channels_after"],
+            channel_adjustment["module_counts"],
+        )
 
     args = TSPNArgs(
         device=runtime_device,
         num_classes=model_cfg.num_classes,
         in_dim=model_cfg.in_dim,
         in_channels=model_cfg.in_channels,
-        out_channels=model_cfg.out_channels,
+        out_channels=resolved_out_channels,
         scale=model_cfg.scale,
         skip_connection=model_cfg.skip_connection,
         f_c_mu=float(model_cfg.wf_init.get("f_c_mu", 0.0)),
@@ -127,7 +183,7 @@ def build_tspn_from_config(
 
     # In the current TSPN implementation, each layer expands to a fixed channel width:
     # out_total = out_channels * scale, then split evenly per op.
-    out_total = int(model_cfg.out_channels * model_cfg.scale)
+    out_total = int(args.out_channels * args.scale)
 
     for layer_idx, layer_cfg in enumerate(model_cfg.layers, start=1):
         modules = nn.ModuleDict()
@@ -136,6 +192,8 @@ def build_tspn_from_config(
 
         token_counts: Dict[str, int] = {}
         module_num = len(layer_cfg.ops)
+        if module_num <= 0:
+            raise ValueError(f"Layer {layer_idx}: requires at least one op.")
         if out_total % module_num != 0:
             raise ValueError(
                 f"Layer {layer_idx}: out_total={out_total} must be divisible by num_ops={module_num}"
@@ -199,5 +257,7 @@ def build_tspn_from_config(
         ],
         "features": list(model_cfg.features),
     }
+    if channel_adjustment:
+        manifest["channel_adjustment"] = channel_adjustment
 
     return model, manifest
