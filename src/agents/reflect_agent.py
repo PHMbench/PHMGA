@@ -10,6 +10,7 @@ from src.model import get_llm
 from src.configuration import Configuration
 from src.prompts.reflect_prompt import REFLECT_PROMPT
 from src.states.phm_states import PHMState
+from src.tools.signal_processing_schemas import OP_REGISTRY
 from src.utils import get_dag_depth
 from src.utils.logging_setup import get_current_logger, log_event, timed
 
@@ -18,6 +19,28 @@ VALID_DECISIONS = {"finish", "need_patch", "need_replan", "halt"}
 
 def _debug_enabled() -> bool:
     return os.getenv("PHM_DEBUG_REFLECT", "").strip().lower() in {"1", "true", "yes", "y"}
+
+
+def _sanitize_issues_summary(issues_summary: Optional[str]) -> str:
+    text = str(issues_summary or "").strip()
+    if not text:
+        return ""
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    markers = ("Graph PNG export failed",)
+    seen = set()
+    kept = []
+    suppressed = 0
+    for line in lines:
+        if any(marker in line for marker in markers):
+            suppressed += 1
+            continue
+        if line in seen:
+            continue
+        seen.add(line)
+        kept.append(line)
+    if suppressed:
+        kept.append(f"[info] Suppressed {suppressed} non-blocking graph export warnings.")
+    return "\n".join(kept)
 
 
 def reflect_agent(
@@ -46,12 +69,13 @@ def reflect_agent(
 
     # 2. 准备给LLM的上下文，包括深度信息
     # 即使没有错误，也把深度信息加进去，让LLM判断是否需要继续迭代
-    contextual_issues = issues_summary or ""
+    contextual_issues = _sanitize_issues_summary(issues_summary)
     if not contextual_issues:
         contextual_issues = f"Execution was successful. The current DAG has a depth of {depth}."
     else:
-        contextual_issues = f"{issues_summary}\nAdditionally, the current DAG has a depth of {depth}."
+        contextual_issues = f"{contextual_issues}\nAdditionally, the current DAG has a depth of {depth}."
 
+    available_tools = sorted(str(name) for name in OP_REGISTRY.keys())
 
     # 3. 总是调用LLM进行反思，而不是使用硬编码规则
     # LLM将基于指令、阶段、DAG结构和深度等信息，做出更全面的决策
@@ -63,10 +87,11 @@ def reflect_agent(
         "stage": stage,
         "dag_blueprint": json.dumps(dag_blueprint, ensure_ascii=False),
         "issues_summary": contextual_issues, # 使用包含深度信息的上下文
+        "available_tools": ", ".join(available_tools),
         "min_depth": state.min_depth if state is not None else 0,
         "min_width": state.min_width if state is not None else 0,
         "max_depth": state.max_depth if state is not None else 999,
-        "current_depth": get_dag_depth(state.dag_state) if state is not None else depth,
+        "current_depth": depth,
     }
     with timed(logger, event="llm_call", phase="builder", node="reflect", message="reflect_agent LLM invoke"):
         log_event(

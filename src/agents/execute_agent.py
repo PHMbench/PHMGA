@@ -7,6 +7,7 @@ import json
 
 import numpy as np
 
+from src.model.explainable.operator_catalog import is_contract_allowed, resolve_operator_contract
 from src.states.phm_states import PHMState, InputData, ProcessedData
 from src.model import get_llm
 from src.tools.signal_processing_schemas import get_operator
@@ -16,13 +17,106 @@ from src.utils.logging_setup import get_current_logger, log_event, timed
 
 MAX_STEPS = 20
 
+_OP_ALIASES: Dict[str, str] = {
+    "spectral_entropy": "spectral_flatness",
+    "hilbert": "hilbert_envelope",
+    "zscore": "normalize",
+    "welch": "psd",
+}
 
-def _resolve_params(llm, op_cls, params: Dict[str, Any], state: PHMState) -> Dict[str, Any]:
+
+def _categorize_step_failure(exc: Exception | str) -> str:
+    text = str(exc).lower()
+    if "not installed" in text or "importerror" in text or "required for" in text:
+        return "missing_dep"
+    if "unknown op_name" in text or "unsupported" in text or "operator" in text and "not registered" in text:
+        return "unsupported_op"
+    if "parameter" in text or "params" in text or "missing" in text or "cutoff" in text:
+        return "param_error"
+    return "runtime_error"
+
+
+def _resolve_operator_name(op_name: str) -> tuple[str | None, str | None]:
+    from src.tools.signal_processing_schemas import OP_REGISTRY
+
+    raw = str(op_name or "").strip()
+    if not raw:
+        return None, "missing op_name"
+    normalized = raw.lower()
+    if normalized in OP_REGISTRY:
+        return normalized, None
+    alias = _OP_ALIASES.get(normalized)
+    if alias and alias in OP_REGISTRY:
+        return alias, f"map '{raw}' -> '{alias}'"
+    return None, f"unknown op_name '{raw}'"
+
+
+def _resolve_fs_fallback(state: PHMState, parent_ids: list[str], nodes: Dict[str, Any]) -> float:
+    # priority: parent.meta.fs -> state.fs -> data_cfg.sample_rate -> 12800
+    for pid in parent_ids:
+        node = nodes.get(pid)
+        if node is None:
+            continue
+        meta = getattr(node, "meta", None)
+        if isinstance(meta, dict) and meta.get("fs") is not None:
+            try:
+                return float(meta["fs"])
+            except Exception:
+                pass
+    fs_state = getattr(state, "fs", None)
+    if fs_state is not None:
+        try:
+            return float(fs_state)
+        except Exception:
+            pass
+    data_cfg = dict(getattr(state, "data_cfg", {}) or {})
+    for key in ("sample_rate", "fs_hz", "fs"):
+        if data_cfg.get(key) is None:
+            continue
+        try:
+            return float(data_cfg[key])
+        except Exception:
+            continue
+    return 12800.0
+
+
+def _parse_bool(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _resolve_params(
+    llm,
+    op_cls,
+    params: Dict[str, Any],
+    state: PHMState,
+    *,
+    parent_ids: list[str] | None = None,
+    nodes: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     """
     Resolves operator parameters. If a required parameter is missing, it uses an LLM to generate a sensible default.
     """
     resolved_params = params.copy()
     model_fields = op_cls.model_fields
+    op_name = str(getattr(op_cls, "op_name", "") or "").strip().lower()
+
+    if op_name == "filter":
+        if "fs" not in resolved_params:
+            fallback_fs = _resolve_fs_fallback(state, parent_ids or [], nodes or {})
+            resolved_params["fs"] = float(fallback_fs)
+        fs_value = float(resolved_params.get("fs") or 12800.0)
+        nyquist = max(100.0, fs_value * 0.5)
+        low = max(50.0, 0.02 * fs_value)
+        high = min(0.45 * fs_value, nyquist - 50.0)
+        if high <= low:
+            high = min(nyquist - 1.0, low + max(20.0, 0.05 * fs_value))
+        resolved_params.setdefault("filter_type", "band")
+        resolved_params.setdefault("cutoff", [float(low), float(high)])
+        resolved_params.setdefault("order", 4)
 
     # Try to get fs from state for context, if available
     fs = getattr(state, "fs", "unknown")
@@ -34,6 +128,10 @@ def _resolve_params(llm, op_cls, params: Dict[str, Any], state: PHMState) -> Dic
 
         # If a field is required (i.e., has no default value) and is missing, generate it.
         if field.is_required():
+            if field_name == "fs":
+                fallback_fs = _resolve_fs_fallback(state, parent_ids or [], nodes or {})
+                resolved_params["fs"] = float(fallback_fs)
+                continue
             prompt = f"""
 You are an expert signal processing engineer. Your task is to provide a sensible default parameter for a signal processing operation.
 
@@ -86,6 +184,19 @@ Do not add any other text or explanations.
                 print(f"AI generated missing parameter '{field_name}': {generated_value}")
             except Exception as e:
                 print(f"Could not generate or parse parameter '{field_name}': {e}")
+                if field_name == "fs":
+                    fallback_fs = _resolve_fs_fallback(state, parent_ids or [], nodes or {})
+                    resolved_params["fs"] = float(fallback_fs)
+                    log_event(
+                        get_current_logger(),
+                        level="WARNING",
+                        event="execute.param_fallback",
+                        phase="builder",
+                        node="execute",
+                        message="Falling back to deterministic fs after LLM parameter generation failure.",
+                        payload={"fallback_fs": fallback_fs, "error": str(e)},
+                    )
+                    continue
                 # If generation fails, we cannot proceed with this op if param is required
                 state.dag_state.error_log.append(f"Error setting parameter '{field_name}': {e}")
                 raise ValueError(f"Failed to generate required parameter '{field_name}' for operator '{op_cls.op_name}'.") from e
@@ -248,6 +359,12 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     # 采用不可变模式：创建当前节点和叶子的副本
     new_nodes = state.dag_state.nodes.copy()
     new_leaves = state.dag_state.leaves.copy()
+    data_cfg = dict(getattr(state, "data_cfg", {}) or {})
+    operator_contract_name = (
+        str(data_cfg.get("operator_contract") or "rm101_closed_v1").strip().lower() or "rm101_closed_v1"
+    )
+    enforce_closed_world = _parse_bool(data_cfg.get("enforce_tspn_closed_world"), default=True)
+    operator_contract = resolve_operator_contract(operator_contract_name)
 
     for idx, step in enumerate(state.detailed_plan[:MAX_STEPS], start=1):
         op_name = step.get("op_name")
@@ -261,17 +378,65 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 params.pop("parent", None)
 
         if not parent_ids_str:
-            state.dag_state.error_log.append(f"Missing parent in step {step}")
+            state.dag_state.error_log.append(f"[param_error] Missing parent in step {step}")
             continue
         
         parent_ids = [pid.strip() for pid in parent_ids_str.split(',')]
         
         # Validate all parents exist
         if not all(pid in new_nodes for pid in parent_ids):
-            state.dag_state.error_log.append(f"One or more parents not found: {parent_ids} in step {step}")
+            state.dag_state.error_log.append(f"[param_error] One or more parents not found: {parent_ids} in step {step}")
             continue
 
         try:
+            resolved_op_name, resolve_note = _resolve_operator_name(str(op_name or ""))
+            if not resolved_op_name:
+                failure_category = "unsupported_op"
+                msg = f"Skip step index={idx}: {resolve_note}"
+                state.dag_state.error_log.append(f"[{failure_category}] {msg}")
+                log_event(
+                    logger,
+                    level="WARNING",
+                    event="execute.step.skip",
+                    phase="builder",
+                    node="execute",
+                    message=msg,
+                    payload={"idx": idx, "step": step, "failure_category": failure_category},
+                )
+                continue
+            if resolve_note:
+                log_event(
+                    logger,
+                    level="WARNING",
+                    event="execute.step.alias",
+                    phase="builder",
+                    node="execute",
+                    message=resolve_note,
+                    payload={"idx": idx, "op_name": op_name, "resolved_op_name": resolved_op_name},
+                )
+            if enforce_closed_world and not is_contract_allowed(resolved_op_name, operator_contract):
+                failure_category = "contract_violation"
+                msg = (
+                    f"Stop step index={idx}: op '{resolved_op_name}' is outside "
+                    f"operator_contract={operator_contract.name}"
+                )
+                state.dag_state.error_log.append(f"[{failure_category}] {msg}")
+                log_event(
+                    logger,
+                    level="ERROR",
+                    event="execute.step.contract_violation",
+                    phase="builder",
+                    node="execute",
+                    message=msg,
+                    payload={
+                        "idx": idx,
+                        "step": step,
+                        "resolved_op_name": resolved_op_name,
+                        "operator_contract": operator_contract.name,
+                        "failure_category": failure_category,
+                    },
+                )
+                break
             log_event(
                 logger,
                 level="INFO",
@@ -279,22 +444,16 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 phase="builder",
                 node="execute",
                 message="Execute plan step.",
-                payload={"idx": idx, "op_name": op_name, "parent": parent_ids_str},
+                payload={"idx": idx, "op_name": resolved_op_name, "parent": parent_ids_str},
             )
-            op_cls = get_operator(op_name)
+            op_cls = get_operator(resolved_op_name)
             
             # Auto-inject 'fs' if required by the operator and not provided in the original plan
             if "fs" in op_cls.model_fields and "fs" not in params:
-                # Try to get fs from the first parent's metadata
-                fs_val = new_nodes[parent_ids[0]].meta.get("fs")
-                if fs_val is None:
-                    # Fallback to the global state fs
-                    fs_val = getattr(state, "fs", None)
-                if fs_val is not None:
-                    params["fs"] = fs_val
+                params["fs"] = _resolve_fs_fallback(state, parent_ids, new_nodes)
             
             # Resolve any missing required parameters using the LLM
-            params = _resolve_params(llm, op_cls, params, state)
+            params = _resolve_params(llm, op_cls, params, state, parent_ids=parent_ids, nodes=new_nodes)
             op = op_cls(**params, parent=parent_ids_str)
 
             # --- Decoupled Execution Logic ---
@@ -302,7 +461,9 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 out_ref, out_tst = _execute_multi_variable_op(op, parent_ids, new_nodes)
             else: # --- Handle Single-Variable Operators ---
                 if len(parent_ids) > 1:
-                    state.dag_state.error_log.append(f"Operator '{op_name}' is single-variable but received multiple parents: {parent_ids}")
+                    state.dag_state.error_log.append(
+                        f"Operator '{resolved_op_name}' is single-variable but received multiple parents: {parent_ids}"
+                    )
                     continue
                 parent_id = parent_ids[0]
                 out_ref, out_tst = _execute_single_variable_op(op, parent_id, new_nodes)
@@ -312,7 +473,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
             channel = ",".join(sorted([new_nodes[pid].meta.get("channel", "unknown") for pid in parent_ids]))
             
             # Backward-compatible naming: abbreviate simple tokens (no underscore) to 3 chars.
-            op_abbr = op_name[:3] if "_" not in op_name and len(op_name) > 3 else op_name
+            op_abbr = resolved_op_name[:3] if "_" not in resolved_op_name and len(resolved_op_name) > 3 else resolved_op_name
             # Create a more robust ID for multi-parent nodes
             parent_id_abbr = "_".join(sorted(parent_ids))
             new_id = f"{op_abbr}_{idx:02d}_{parent_id_abbr}"
@@ -357,15 +518,15 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 node_id=new_id,
                 parents=parent_ids, # Use the list of parent IDs
                 source_signal_id=parent_ids_str,
-                method=op_name,
+                method=resolved_op_name,
                 results={"ref": out_ref, "tst": out_tst},
                 meta={
-                    "tool": op_name,
+                    "tool": resolved_op_name,
                     "params": params,
                     "parent": parent_ids_str,
                     "channel": channel,
                     "kind": kind,
-                    "method": op_name,
+                    "method": resolved_op_name,
                     "saved": saved_meta,
                 },
                 shape=shape,
@@ -388,7 +549,8 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 payload={"idx": idx, "node_id": node.node_id, "shape": shape},
             )
         except Exception as exc:
-            state.dag_state.error_log.append(f"Error executing step {step}: {exc}")
+            failure_category = _categorize_step_failure(exc)
+            state.dag_state.error_log.append(f"[{failure_category}] Error executing step {step}: {exc}")
             log_event(
                 logger,
                 level="ERROR",
@@ -396,7 +558,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 phase="builder",
                 node="execute",
                 message=f"Step failed: {exc}",
-                payload={"idx": idx, "step": step},
+                payload={"idx": idx, "step": step, "failure_category": failure_category},
             )
             break
 

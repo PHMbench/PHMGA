@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import importlib.util
 from typing import Any, Dict, List
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -9,6 +10,7 @@ from pydantic import BaseModel, Field
 
 from src.configuration import Configuration
 from src.model import get_llm
+from src.model.explainable.operator_catalog import is_contract_allowed, resolve_operator_contract
 from src.prompts.plan_prompt import PLANNER_PROMPT
 from src.states.phm_states import PHMState
 from src.tools.signal_processing_schemas import OP_REGISTRY, get_operator
@@ -41,6 +43,162 @@ class Plan(BaseModel):
     )
 
 
+def _dependency_available(module_name: str) -> bool:
+    return importlib.util.find_spec(module_name) is not None
+
+
+def _op_enabled_by_dependencies(op_name: str) -> bool:
+    dependency_map = {
+        "approximate_entropy": "nolds",
+        "permutation_entropy": "antropy",
+        "power_to_db": "librosa",
+        "mel_spectrogram": "librosa",
+        "vqt": "librosa",
+        "patch": "skimage",
+        "wavelet_transform": "pywt",
+        "denoise_wavelet": "pywt",
+        "vmd": "vmdpy",
+        "emd": "emd",
+    }
+    dep = dependency_map.get(str(op_name or "").strip().lower())
+    if not dep:
+        return True
+    return _dependency_available(dep)
+
+
+_RM101_PRIORITY_OPS = {
+    "filter",
+    "hilbert_envelope",
+    "fft",
+    "stft",
+    "band_power",
+    "cross_correlation",
+    "spectral_kurtosis",
+    "spectral_centroid",
+}
+_RM101_DEPRIORITIZED_OPS = {
+    "approximate_entropy",
+    "permutation_entropy",
+}
+
+
+def _tool_priority(op_name: str, dataset_name: str | None) -> int:
+    dataset = str(dataset_name or "").strip()
+    if dataset == "RM_101_THU_GEARBOX":
+        if op_name in _RM101_PRIORITY_OPS:
+            return 0
+        if op_name in _RM101_DEPRIORITIZED_OPS:
+            return 2
+    return 1
+
+
+def _parse_bool(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _build_tools_description(
+    dataset_name: str | None = None,
+    *,
+    operator_contract: str | None = None,
+    enforce_tspn_closed_world: bool = True,
+) -> str:
+    contract = resolve_operator_contract(operator_contract)
+    tool_descriptions: List[str] = []
+    for op in sorted(
+        OP_REGISTRY.values(),
+        key=lambda item: (_tool_priority(str(getattr(item, "op_name", "") or "").strip(), dataset_name), str(getattr(item, "op_name", "") or "").strip()),
+    ):
+        op_name = str(getattr(op, "op_name", "") or "").strip()
+        if not op_name:
+            continue
+        if not _op_enabled_by_dependencies(op_name):
+            continue
+        if enforce_tspn_closed_world and not is_contract_allowed(op_name, contract):
+            continue
+        schema = op.model_json_schema()
+        description = schema.get("description", "No description available.")
+        priority = _tool_priority(op_name, dataset_name)
+        priority_text = "high" if priority == 0 else ("low" if priority == 2 else "normal")
+        tool_descriptions.append(
+            f"- op_name: {op_name}\n  priority: {priority_text}\n  description: {description}\n"
+        )
+    return "\n---\n".join(tool_descriptions)
+
+
+def _dataset_policy(state: PHMState) -> tuple[str, str, int]:
+    data_cfg = dict(getattr(state, "data_cfg", {}) or {})
+    dataset_name = str(data_cfg.get("dataset_name") or "")
+    max_ops = int(data_cfg.get("max_ops_per_iteration") or 0)
+    if dataset_name == "RM_101_THU_GEARBOX":
+        if max_ops <= 0:
+            max_ops = 8
+        hint = (
+            "Prioritize gearbox-oriented operators: filter/hilbert_envelope/fft/stft/band_power/"
+            "cross_correlation/spectral_kurtosis. Avoid unstable entropy-heavy branches unless required."
+        )
+    else:
+        if max_ops <= 0:
+            max_ops = 0
+        hint = "Prefer diverse but valid operators; always use available tools and meaningful fs/band parameters."
+    return dataset_name, hint, max_ops
+
+
+_PLAN_OP_ALIASES: Dict[str, str] = {
+    "spectral_entropy": "spectral_flatness",
+    "hilbert": "hilbert_envelope",
+    "zscore": "normalize",
+    "bandpass": "filter",
+    "welch": "psd",
+}
+
+
+def _sanitize_plan_steps(
+    raw_steps: List[Dict[str, Any]],
+    *,
+    operator_contract: str | None = None,
+    enforce_tspn_closed_world: bool = True,
+) -> tuple[List[Dict[str, Any]], List[str]]:
+    contract = resolve_operator_contract(operator_contract)
+    sanitized: List[Dict[str, Any]] = []
+    warnings: List[str] = []
+    for idx, step in enumerate(raw_steps):
+        if not isinstance(step, dict):
+            warnings.append(f"Drop non-dict step at index={idx}.")
+            continue
+        op_name_raw = str(step.get("op_name") or "").strip()
+        if not op_name_raw:
+            warnings.append(f"Drop step index={idx}: missing op_name.")
+            continue
+
+        op_name = op_name_raw.lower()
+        if op_name not in OP_REGISTRY:
+            alias = _PLAN_OP_ALIASES.get(op_name)
+            if alias and alias in OP_REGISTRY:
+                step = dict(step)
+                step["op_name"] = alias
+                op_name = alias
+                warnings.append(f"Map unknown op '{op_name_raw}' -> '{alias}' at index={idx}.")
+            else:
+                warnings.append(f"Drop unknown op '{op_name_raw}' at index={idx}.")
+                continue
+
+        if not _op_enabled_by_dependencies(op_name):
+            warnings.append(f"Drop op '{op_name}' at index={idx}: missing runtime dependency.")
+            continue
+        if enforce_tspn_closed_world and not is_contract_allowed(op_name, contract):
+            warnings.append(
+                f"Drop op '{op_name}' at index={idx}: contract_violation ({contract.name})."
+            )
+            continue
+
+        sanitized.append(step)
+    return sanitized, warnings
+
+
 def _normalize_llm_plan_payload(content: Any) -> Dict[str, Any]:
     if isinstance(content, dict):
         return content
@@ -70,28 +228,17 @@ def plan_agent(state: PHMState) -> dict:
     logger = get_current_logger()
     llm = get_llm(Configuration.from_runnable_config(None))
     
-    # --- MODIFIED: Generate a concise, human-readable tool description ---
-    tool_descriptions = []
-    for op in OP_REGISTRY.values():
-        schema = op.model_json_schema()
-        description = schema.get('description', 'No description available.')
-        
-        params_info = []
-        # Exclude common/internal fields from the parameter list
-        excluded_params = {'node_id', 'parent', 'kind', 'in_shape', 'out_shape', 'params'}
-        for name, prop in schema.get('properties', {}).items():
-            if name not in excluded_params:
-                param_desc = prop.get('description', 'No description.')
-                params_info.append(f"        - {name}: {param_desc}")
-        
-        params_str = "\n".join(params_info) if params_info else "        params: {}"
-        
-        tool_descriptions.append(
-            f"- op_name: {schema.get('title', op.op_name)}\n"
-            f"  description: {description}\n"
-            # f"  params:\n{params_str}" # TODO 
-        )
-    tools_description = "\n---\n".join(tool_descriptions)
+    data_cfg = dict(getattr(state, "data_cfg", {}) or {})
+    operator_contract = str(data_cfg.get("operator_contract") or "rm101_closed_v1").strip().lower() or "rm101_closed_v1"
+    enforce_closed_world = _parse_bool(data_cfg.get("enforce_tspn_closed_world"), default=True)
+
+    # --- MODIFIED: Generate a concise, dependency-aware tool description ---
+    dataset_name, dataset_hint, max_ops_per_iteration = _dataset_policy(state)
+    tools_description = _build_tools_description(
+        dataset_name,
+        operator_contract=operator_contract,
+        enforce_tspn_closed_world=enforce_closed_world,
+    )
 
     prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT)
     
@@ -126,6 +273,11 @@ def plan_agent(state: PHMState) -> dict:
             "min_width": state.min_width,
             "max_depth": state.max_depth,
             "current_depth": get_dag_depth(state.dag_state),
+            "dataset_name": dataset_name,
+            "dataset_hint": dataset_hint,
+            "max_ops_per_iteration": max_ops_per_iteration,
+            "operator_contract": operator_contract,
+            "enforce_tspn_closed_world": enforce_closed_world,
         }
         with timed(logger, event="llm_call", phase="builder", node="plan", message="plan_agent LLM invoke"):
             log_event(
@@ -157,7 +309,8 @@ def plan_agent(state: PHMState) -> dict:
         plan_dict = _normalize_llm_plan_payload(getattr(resp, "content", ""))
 
         # 2. 手动预处理（例如，处理空的 params）
-        for step_data in (plan_dict.get("plan", []) if isinstance(plan_dict, dict) else []):
+        raw_steps = (plan_dict.get("plan", []) if isinstance(plan_dict, dict) else [])
+        for step_data in raw_steps:
             if not isinstance(step_data, dict):
                 continue
             # Backward-compat: some older prompts put parent inside params.
@@ -168,7 +321,36 @@ def plan_agent(state: PHMState) -> dict:
 
             if step_data.get("params") in ("", None):
                 step_data["params"] = {}
-        
+
+        sanitized_steps, sanitize_warnings = _sanitize_plan_steps(
+            [s for s in raw_steps if isinstance(s, dict)],
+            operator_contract=operator_contract,
+            enforce_tspn_closed_world=enforce_closed_world,
+        )
+        if max_ops_per_iteration > 0 and len(sanitized_steps) > max_ops_per_iteration:
+            dropped = len(sanitized_steps) - max_ops_per_iteration
+            sanitized_steps = sanitized_steps[:max_ops_per_iteration]
+            sanitize_warnings.append(
+                f"Trim planner steps to max_ops_per_iteration={max_ops_per_iteration}; dropped={dropped}."
+            )
+        if sanitize_warnings:
+            existing_logs = list(state.error_logs)
+            capped = sanitize_warnings[:10]
+            if len(sanitize_warnings) > 10:
+                capped.append(f"... and {len(sanitize_warnings) - 10} more")
+            state.error_logs = existing_logs + [f"Planner sanitize: {msg}" for msg in capped]
+            log_event(
+                logger,
+                level="WARNING",
+                event="plan.sanitize",
+                phase="builder",
+                node="plan",
+                message="Planner output sanitized.",
+                payload={"warnings": sanitize_warnings[:20], "n_warnings": len(sanitize_warnings)},
+            )
+
+        plan_dict["plan"] = sanitized_steps
+
         # 3. 使用 Plan.model_validate() 验证和转换
         plan_obj = Plan.model_validate(plan_dict)
         detailed_plan = [step.model_dump() for step in plan_obj.plan]
