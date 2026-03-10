@@ -8,6 +8,13 @@ train_backend: tspn
 model_config_path: "config/model_tspn_basic.yaml"
 allow_test_labels_for_reporting: false
 
+llm:
+  provider: glm
+  query_generator_model: GLM-4.7-Flash
+  phm_model: GLM-4.7-Flash
+  reflection_model: GLM-4.7-Flash
+  answer_model: GLM-4.7-Flash
+
 data:
   source_mode: fixed_ids
 
