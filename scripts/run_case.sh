@@ -56,6 +56,27 @@ base_host_from_url() {
   printf '%s' "${host}"
 }
 
+read_case_llm_value() {
+  local yaml_path="$1"
+  local key="$2"
+  python - "${yaml_path}" "${key}" <<'PY' || true
+import sys
+from pathlib import Path
+
+cfg_path = Path(sys.argv[1])
+key = sys.argv[2]
+try:
+    import yaml
+    cfg = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+except Exception:
+    print("")
+    raise SystemExit(0)
+llm = cfg.get("llm") or {}
+value = llm.get(key, "")
+print(value if value is not None else "")
+PY
+}
+
 case_name="case1"
 conda_env="agent"
 use_conda=1
@@ -127,10 +148,18 @@ fi
 
 base_cmd=(python main.py "${case_name}" --config "${config_abs}")
 
-provider="$(effective_env_value LLM_PROVIDER)"
-model_name="$(effective_env_value QUERY_GENERATOR_MODEL)"
+provider="$(read_case_llm_value "${config_abs}" "provider")"
+model_name="$(read_case_llm_value "${config_abs}" "query_generator_model")"
+provider_source="case_yaml"
+if [[ -z "${provider}" ]]; then
+  provider="$(effective_env_value LLM_PROVIDER)"
+  provider_source="env"
+fi
 if [[ -z "${model_name}" ]]; then
-  model_name="$(effective_env_value PHM_MODEL)"
+  model_name="$(effective_env_value QUERY_GENERATOR_MODEL)"
+  if [[ -z "${model_name}" ]]; then
+    model_name="$(effective_env_value PHM_MODEL)"
+  fi
 fi
 
 base_url=""
@@ -162,6 +191,7 @@ printf ' %q' "${final_cmd[@]}"
 printf '\n'
 echo "LLM_PROVIDER=${provider:-}"
 echo "QUERY_GENERATOR_MODEL=${model_name:-}"
+echo "LLM_SOURCE=${provider_source}"
 echo "BASE_HOST=${base_host:-}"
 echo "PHM_MODEL_PROFILE=${model_profile:-}"
 echo "PHM_DATASET_NAME=${dataset_name:-}"
