@@ -1,9 +1,11 @@
 import argparse
-import importlib
 import os
 import sys
 import time
+from pathlib import Path
+from typing import Sequence
 
+from src.cases.base_runner import run_registered_case
 from src.utils.logging_setup import (
     clear_current_logger,
     init_run_logger,
@@ -28,48 +30,92 @@ def _run_preflight(config_path: str) -> int:
     return 0 if report.get("ok") else 2
 
 
-def main() -> int:
-    """
-    Main entry point for running PHM analysis cases.
-    Dynamically loads and runs a case module based on command-line arguments.
-    """
-    if len(sys.argv) > 1 and sys.argv[1] == "preflight":
+def _resolve_compose_target(args: argparse.Namespace) -> tuple[Path, str]:
+    if args.config:
+        config_path = Path(args.config).resolve()
+        if not config_path.exists():
+            raise FileNotFoundError(f"Configuration file not found: {config_path}")
+        return config_path.parent, config_path.stem
+    config_dir = Path(args.config_dir or "config").resolve()
+    config_name = str(args.config_name or "config").strip() or "config"
+    if not config_dir.exists():
+        raise FileNotFoundError(f"Configuration directory not found: {config_dir}")
+    target_path = config_dir / f"{config_name}.yaml"
+    if not target_path.exists():
+        raise FileNotFoundError(f"Configuration file not found: {target_path}")
+    return config_dir, config_name
+
+
+def run_main(argv: Sequence[str] | None = None) -> int:
+    argv = list(argv or sys.argv[1:])
+    if argv and argv[0] == "preflight":
         preflight_parser = argparse.ArgumentParser(description="Run PHM preflight checks.")
         preflight_parser.add_argument("--config", type=str, required=True, help="Path to case configuration yaml.")
-        preflight_args = preflight_parser.parse_args(sys.argv[2:])
+        preflight_args = preflight_parser.parse_args(argv[1:])
         return _run_preflight(preflight_args.config)
 
-    parser = argparse.ArgumentParser(description="Run PHM analysis cases.")
+    parser = argparse.ArgumentParser(description="Run PHM analysis cases through Hydra compose + case registry.")
     parser.add_argument(
-        "case_name",
-        type=str,
-        help="The name of the case to run (e.g., 'case1').",
+        "legacy_case_name",
+        nargs="?",
+        default=None,
+        help="Legacy case runner name. Mapped to cases.selected when provided.",
     )
     parser.add_argument(
         "--config",
         type=str,
         default=None,
-        help="Path to the configuration file. Defaults to 'config/<case_name>.yaml'.",
+        help="Path to a YAML config file composed via Hydra from its directory.",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--config-dir",
+        type=str,
+        default="config",
+        help="Hydra config directory (default: config).",
+    )
+    parser.add_argument(
+        "--config-name",
+        type=str,
+        default="config",
+        help="Hydra config name without suffix (default: config).",
+    )
+    parser.add_argument(
+        "--case",
+        type=str,
+        default=None,
+        help="Explicit case runner override. Preferred over the legacy positional name.",
+    )
+    parser.add_argument(
+        "--graph",
+        type=str,
+        default=None,
+        help="Override graphs.selected for this run.",
+    )
+    parser.add_argument(
+        "--override",
+        action="append",
+        default=[],
+        help="Additional Hydra override. Can be repeated.",
+    )
+    args, unknown = parser.parse_known_args(argv)
 
-    case_name = args.case_name
-    config_path = args.config or f"config/{case_name}.yaml"
+    hydra_overrides = list(args.override or []) + list(unknown or [])
+    selected_case = str(args.case or args.legacy_case_name or "").strip() or None
+    if args.graph:
+        hydra_overrides.append(f"graphs.selected={args.graph}")
+
+    try:
+        config_dir, config_name = _resolve_compose_target(args)
+    except FileNotFoundError as exc:
+        print(str(exc))
+        return 2
+    resolved_config_path = config_dir / f"{config_name}.yaml"
+
+    run_label = selected_case or config_name
     run_id = f"main-{int(time.time())}"
     save_dir = os.getenv("PHM_SAVE_DIR") or os.path.join(os.getcwd(), "save")
-    bundle = init_run_logger(case_name=case_name, save_dir=save_dir, run_id=run_id)
+    bundle = init_run_logger(case_name=run_label, save_dir=save_dir, run_id=run_id)
     set_current_logger(bundle)
-
-    if not os.path.exists(config_path):
-        log_event(
-            bundle,
-            level="ERROR",
-            event="main.config_missing",
-            phase="main",
-            message=f"Configuration file not found: {config_path}",
-            payload={"config_path": config_path},
-        )
-        return 2
 
     try:
         log_event(
@@ -77,34 +123,30 @@ def main() -> int:
             level="INFO",
             event="main.start",
             phase="main",
-            message="Starting case runner.",
-            payload={"case_name": case_name, "config_path": config_path},
+            message="Starting case runner via Hydra compose.",
+            payload={
+                "config_dir": str(config_dir),
+                "config_name": config_name,
+                "config_path": str(resolved_config_path),
+                "hydra_overrides": hydra_overrides,
+                "case_name": selected_case,
+            },
         )
-        # Dynamically import the case module
-        case_module = importlib.import_module(f"src.cases.{case_name}")
-        
-        # Run the case
-        case_module.run_case(config_path)
+        runtime = run_registered_case(
+            config_dir=config_dir,
+            config_name=config_name,
+            hydra_overrides=hydra_overrides,
+            case_name=selected_case,
+        )
         log_event(
             bundle,
             level="INFO",
             event="main.success",
             phase="main",
             message="Case finished.",
-            payload={"case_name": case_name},
+            payload=runtime,
         )
         return 0
-        
-    except ImportError:
-        log_event(
-            bundle,
-            level="ERROR",
-            event="main.import_error",
-            phase="main",
-            message=f"Case '{case_name}' not found.",
-            payload={"case_name": case_name},
-        )
-        return 2
     except Exception as e:
         log_event(
             bundle,
@@ -112,12 +154,21 @@ def main() -> int:
             event="main.fail",
             phase="main",
             message=f"Case failed: {e}",
-            payload={"case_name": case_name},
+            payload={
+                "config_dir": str(config_dir),
+                "config_name": config_name,
+                "hydra_overrides": hydra_overrides,
+                "case_name": selected_case,
+            },
         )
-        print(f"An error occurred while running case '{case_name}': {e}")
+        print(f"An error occurred while running case '{run_label}': {e}")
         return 2
     finally:
         clear_current_logger()
+
+
+def main() -> int:
+    return run_main(sys.argv[1:])
 
 if __name__ == "__main__":
     sys.exit(main())
