@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 import sys
 
+import numpy as np
 import pytest
 import yaml
 
@@ -13,27 +14,29 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.cases.case1 import _bind_llm_from_case
+from phm_core import DAGState, InputData, PHMState
+from src.cases.case1 import _bind_llm_from_case, run_case
+from src.config import normalize_runtime_config, resolve_data_selection
 from src.agents.deep_model_train_agent import _resolve_tspn_config
 from src.utils.preflight import build_preflight_report
 
 
 def test_bind_llm_from_case_overrides_env(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDER", "gemini")
-    monkeypatch.setenv("QUERY_GENERATOR_MODEL", "gemini-2.5-pro")
+    monkeypatch.setenv("LLM_PROVIDER", "openrouter")
+    monkeypatch.setenv("QUERY_GENERATOR_MODEL", "openai/gpt-4o-mini")
     cfg = {
         "llm": {
-            "provider": "glm",
-            "query_generator_model": "GLM-4.7-Flash",
+            "provider": "openrouter",
+            "query_generator_model": "openai/gpt-4.1-mini",
         }
     }
 
     source = _bind_llm_from_case(cfg)
     assert source == "case_yaml"
-    assert os.getenv("LLM_PROVIDER") == "glm"
-    assert os.getenv("QUERY_GENERATOR_MODEL") == "GLM-4.7-Flash"
-    assert os.getenv("PHM_MODEL") == "GLM-4.7-Flash"
-    assert cfg["llm"]["provider"] == "glm"
+    assert os.getenv("LLM_PROVIDER") == "openrouter"
+    assert os.getenv("QUERY_GENERATOR_MODEL") == "openai/gpt-4.1-mini"
+    assert os.getenv("PHM_MODEL") == "openai/gpt-4.1-mini"
+    assert cfg["llm"]["provider"] == "openrouter"
 
 
 def test_bind_llm_from_case_rejects_invalid_provider():
@@ -44,44 +47,40 @@ def test_bind_llm_from_case_rejects_invalid_provider():
 
 def test_preflight_detects_provider_model_mismatch():
     cfg = {
-        "data": {"source_mode": "fixed_ids"},
+        "data": {"source_mode": "fixed_ids", "selection": {"mode": "fixed_ids", "train_ids": [1], "test_ids": [2]}},
         "metadata_path": __file__,
         "h5_path": __file__,
-        "ref_ids": [1],
-        "test_ids": [2],
     }
     report = build_preflight_report(
         cfg,
         env={
             "FAKE_LLM": "0",
             "LLM_PROVIDER": "glm",
-            "QUERY_GENERATOR_MODEL": "gemini-2.5-pro",
-            "GLM_API_BASE": "https://open.bigmodel.cn/api/paas/v4",
-            "GLM_API_KEY": "dummy",
+            "QUERY_GENERATOR_MODEL": "openai/gpt-4o-mini",
+            "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+            "OPENROUTER_API_KEY": "dummy",
         },
     )
     assert report["ok"] is False
-    assert any("Gemini" in item for item in report["errors"])
+    assert any("Invalid llm.provider" in item for item in report["errors"])
     assert "provider_checks" in report["checks"]
     assert report["checks"]["provider_source"] == "env"
 
 
 def test_preflight_fake_llm_downgrades_provider_errors_to_warnings():
     cfg = {
-        "data": {"source_mode": "fixed_ids"},
+        "data": {"source_mode": "fixed_ids", "selection": {"mode": "fixed_ids", "train_ids": [1], "test_ids": [2]}},
         "metadata_path": __file__,
         "h5_path": __file__,
-        "ref_ids": [1],
-        "test_ids": [2],
     }
     report = build_preflight_report(
         cfg,
         env={
             "FAKE_LLM": "true",
-            "LLM_PROVIDER": "glm",
-            "QUERY_GENERATOR_MODEL": "GLM-4.7-Flash",
-            "GLM_API_BASE": "",
-            "GLM_API_KEY": "",
+            "LLM_PROVIDER": "openrouter",
+            "QUERY_GENERATOR_MODEL": "openai/gpt-4o-mini",
+            "OPENROUTER_BASE_URL": "",
+            "OPENROUTER_API_KEY": "",
         },
     )
     assert report["ok"] is True
@@ -91,29 +90,97 @@ def test_preflight_fake_llm_downgrades_provider_errors_to_warnings():
 
 def test_preflight_uses_case_llm_over_env():
     cfg = {
-        "data": {"source_mode": "fixed_ids"},
+        "data": {"source_mode": "fixed_ids", "selection": {"mode": "fixed_ids", "train_ids": [1], "test_ids": [2]}},
         "metadata_path": __file__,
         "h5_path": __file__,
-        "ref_ids": [1],
-        "test_ids": [2],
         "llm": {
-            "provider": "glm",
-            "query_generator_model": "GLM-4.7-Flash",
+            "provider": "openrouter",
+            "query_generator_model": "openai/gpt-4o-mini",
         },
     }
     report = build_preflight_report(
         cfg,
         env={
             "FAKE_LLM": "0",
-            "LLM_PROVIDER": "gemini",
-            "QUERY_GENERATOR_MODEL": "gemini-2.5-pro",
-            "GLM_API_BASE": "https://open.bigmodel.cn/api/paas/v4",
-            "GLM_API_KEY": "dummy",
+            "LLM_PROVIDER": "glm",
+            "QUERY_GENERATOR_MODEL": "GLM-4.7-Flash",
+            "OPENROUTER_BASE_URL": "https://openrouter.ai/api/v1",
+            "OPENROUTER_API_KEY": "dummy",
         },
     )
     assert report["checks"]["provider_source"] == "case_yaml"
-    assert report["checks"]["provider_checks"]["provider"] == "glm"
+    assert report["checks"]["provider_checks"]["provider"] == "openrouter"
     assert report["ok"] is True
+
+
+def test_runtime_config_normalizes_legacy_fixed_ids_to_data_selection():
+    cfg = {
+        "metadata_path": __file__,
+        "h5_path": __file__,
+        "ref_ids": [11, 12],
+        "test_ids": [21],
+        "data": {"source_mode": "fixed_ids"},
+    }
+    normalized = normalize_runtime_config(cfg)
+    selection = resolve_data_selection(normalized)
+    assert selection.train_ids == [11, 12]
+    assert selection.val_ids == []
+    assert selection.test_ids == [21]
+    assert "ref_ids" not in normalized
+    assert "test_ids" not in normalized
+    assert "ref_ids" not in normalized["data"]
+    assert "test_ids" not in normalized["data"]
+
+
+def test_case1_loaded_state_receives_resolved_model_truth(monkeypatch, tmp_path):
+    save_root = tmp_path / "save"
+    state_path = tmp_path / "built_state.pkl"
+    state_path.write_bytes(b"stub")
+    report_path = tmp_path / "final_report.md"
+    config_path = tmp_path / "case.yaml"
+
+    cfg = {
+        "name": "case1_model_truth",
+        "save_dir": str(save_root),
+        "state_save_path": str(state_path),
+        "report_path": str(report_path),
+        "user_instruction": "diagnose",
+        "run_executor": False,
+        "train_backend": "tspn",
+        "metadata_path": __file__,
+        "h5_path": __file__,
+        "data": {
+            "source_mode": "fixed_ids",
+            "selection": {"mode": "fixed_ids", "train_ids": [1], "test_ids": [2]},
+        },
+        "model": {
+            "config_path": "config/model_tspn_basic.yaml",
+            "autofit_dims": False,
+            "autofit_num_classes": False,
+        },
+        "preflight": {"strict": True},
+    }
+    config_path.write_text(yaml.safe_dump(cfg), encoding="utf-8")
+
+    sig = np.zeros((1, 32, 1), dtype=np.float32)
+    ch1 = InputData(node_id="ch1", data={"signal": sig}, results={"train": {"s0": sig}}, parents=[], shape=sig.shape, meta={})
+    dag = DAGState(user_instruction="case", channels=["ch1"], nodes={"ch1": ch1}, leaves=["ch1"])
+    loaded_state = PHMState(
+        user_instruction="case",
+        reference_signal=ch1,
+        test_signal=ch1,
+        dag_state=dag,
+        case_name="case1_model_truth",
+        save_dir=str(save_root),
+        train_backend="tspn",
+    )
+
+    monkeypatch.setenv("FAKE_LLM", "1")
+    monkeypatch.setattr("src.cases.case1.load_state", lambda _path: loaded_state)
+    run_case(str(config_path))
+
+    assert loaded_state.model_config_path == "config/model_tspn_basic.yaml"
+    assert loaded_state.model_cfg == cfg["model"]
 
 
 def test_resolve_tspn_config_num_classes_fail_fast_and_autofit():
@@ -164,18 +231,18 @@ def test_resolve_case_config_writes_llm_block(tmp_path):
         "--train-backend",
         "tspn",
         "--provider",
-        "glm",
+        "openrouter",
         "--model",
-        "GLM-4.7-Flash",
+        "openai/gpt-4o-mini",
         "--compat-profile",
         "rm101_strict",
     ]
     subprocess.check_call(cmd, cwd=str(ROOT))
 
     cfg = yaml.safe_load(out_cfg.read_text(encoding="utf-8")) or {}
-    assert cfg["llm"]["provider"] == "glm"
-    assert cfg["llm"]["query_generator_model"] == "GLM-4.7-Flash"
-    assert cfg["llm"]["phm_model"] == "GLM-4.7-Flash"
+    assert cfg["llm"]["provider"] == "openrouter"
+    assert cfg["llm"]["query_generator_model"] == "openai/gpt-4o-mini"
+    assert cfg["llm"]["phm_model"] == "openai/gpt-4o-mini"
     assert cfg["data"]["compat_profile"] == "rm101_strict"
     assert cfg["data"]["operator_contract"] == "rm101_closed_v1"
     assert cfg["data"]["enforce_tspn_closed_world"] is True

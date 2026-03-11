@@ -54,7 +54,7 @@ def test_vibench_train_strategy_options_are_recorded(monkeypatch, tmp_path: Path
     monkeypatch.setattr("src.utils.data_factory_wrapper.PHMVibenchDataFactory", _FakeFactory, raising=False)
 
     sig = np.zeros((1, 128, 1), dtype=np.float32)
-    ch1 = InputData(node_id="ch1", data={"signal": sig}, results={"ref": {"s0": sig}}, parents=[], shape=sig.shape, meta={})
+    ch1 = InputData(node_id="ch1", data={"signal": sig}, results={"train": {"s0": sig}}, parents=[], shape=sig.shape, meta={})
     dag = DAGState(user_instruction="strategy", channels=["ch1"], nodes={"ch1": ch1}, leaves=["ch1"])
     state = PHMState(
         user_instruction="strategy",
@@ -64,6 +64,7 @@ def test_vibench_train_strategy_options_are_recorded(monkeypatch, tmp_path: Path
         case_name="strategy_test",
         save_dir=str(tmp_path / "save"),
         train_backend="tspn",
+        model_config_path="config/model_tspn_basic.yaml",
         data_cfg={
             "backend": "vibench",
             "dataset_name": "RM_101_THU_GEARBOX",
@@ -76,7 +77,6 @@ def test_vibench_train_strategy_options_are_recorded(monkeypatch, tmp_path: Path
             "debug_epochs": 1,
             "batch_size": 4,
             "device": "cpu",
-            "model_config_path": "config/model_tspn_basic.yaml",
             "scheduler": "plateau",
             "label_smoothing": 0.1,
             "early_stop_metric": "val_acc",

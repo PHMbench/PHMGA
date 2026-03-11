@@ -23,8 +23,8 @@ def _make_state(*, source_mode: str = "fixed_ids") -> PHMState:
         shape=sig.shape,
         data={"signal": sig.copy()},
         results={
-            "ref": {"s_ref": sig.copy()},
-            "tst": {"s_tst": (sig * 2.0).copy()},
+            "train": {"s_train": sig.copy()},
+            "test": {"s_test": (sig * 2.0).copy()},
         },
     )
     dag = DAGState(user_instruction="io", channels=["ch1"], nodes={"ch1": ch1}, leaves=["ch1"])
@@ -118,8 +118,8 @@ def test_state_save_mode_auto_fixed_ids_uses_full(tmp_path):
     loaded = load_state(str(state_path))
     assert loaded is not None
     root = loaded.dag_state.nodes["ch1"]
-    assert isinstance((root.results or {}).get("ref"), dict)
-    assert (root.results or {}).get("ref")
+    assert isinstance((root.results or {}).get("train"), dict)
+    assert (root.results or {}).get("train")
 
 
 def test_state_save_mode_full_overrides_vibench(tmp_path):
@@ -132,8 +132,8 @@ def test_state_save_mode_full_overrides_vibench(tmp_path):
     loaded = load_state(str(state_path))
     assert loaded is not None
     root = loaded.dag_state.nodes["ch1"]
-    assert isinstance((root.results or {}).get("ref"), dict)
-    assert (root.results or {}).get("ref")
+    assert isinstance((root.results or {}).get("train"), dict)
+    assert (root.results or {}).get("train")
 
 
 def test_state_save_mode_minimal_allowed_for_fixed_ids(tmp_path):

@@ -58,7 +58,7 @@ def test_grad_clip_called_during_training(monkeypatch: pytest.MonkeyPatch, tmp_p
         node_id="ch1",
         parents=[],
         shape=(1, 32, 1),
-        results={"ref": ref_samples, "tst": {}},
+        results={"train": ref_samples, "test": {}},
         data={},
     )
     state = PHMState(
@@ -67,7 +67,7 @@ def test_grad_clip_called_during_training(monkeypatch: pytest.MonkeyPatch, tmp_p
         reference_signal=ch1,
         test_signal=ch1,
         dag_state=DAGState(user_instruction="train", channels=["ch1"], nodes={"ch1": ch1}, leaves=["ch1"]),
-        labels_ref={f"s{i}": ("A" if i % 2 == 0 else "B") for i in range(8)},
+        labels_train={f"s{i}": ("A" if i % 2 == 0 else "B") for i in range(8)},
         train_backend="tspn",
         model_config_path=str(model_path),
         save_dir=str(tmp_path / "save"),

@@ -12,11 +12,11 @@ from src.states.phm_states import DAGState, InputData, PHMState, ProcessedData
 def test_tspn_bootstrap_agent_generates_valid_config(tmp_path: Path):
     # Two-channel minimal DAG with one processed node to provide token semantics.
     L = 256
-    ref = {"id1": np.random.randn(1, L, 1).astype(np.float32), "id2": np.random.randn(1, L, 1).astype(np.float32)}
-    tst = {"id3": np.random.randn(1, L, 1).astype(np.float32)}
+    train = {"id1": np.random.randn(1, L, 1).astype(np.float32), "id2": np.random.randn(1, L, 1).astype(np.float32)}
+    test = {"id3": np.random.randn(1, L, 1).astype(np.float32)}
 
-    ch1 = InputData(node_id="ch1", parents=[], shape=(1, L, 1), results={"ref": ref, "tst": tst}, meta={"channel": "ch1"})
-    ch2 = InputData(node_id="ch2", parents=[], shape=(1, L, 1), results={"ref": ref, "tst": tst}, meta={"channel": "ch2"})
+    ch1 = InputData(node_id="ch1", parents=[], shape=(1, L, 1), results={"train": train, "test": test}, meta={"channel": "ch1"})
+    ch2 = InputData(node_id="ch2", parents=[], shape=(1, L, 1), results={"train": train, "test": test}, meta={"channel": "ch2"})
 
     # A processed node to indicate an FFT op exists at depth 1.
     n1 = ProcessedData(
@@ -25,7 +25,7 @@ def test_tspn_bootstrap_agent_generates_valid_config(tmp_path: Path):
         shape=(1, L, 1),
         source_signal_id="ch1",
         method="fft",
-        results={"ref": ref, "tst": tst},
+        results={"train": train, "test": test},
         meta={"tool": "fft"},
     )
 
@@ -36,8 +36,8 @@ def test_tspn_bootstrap_agent_generates_valid_config(tmp_path: Path):
         reference_signal=ch1,
         test_signal=ch2,
         dag_state=dag,
-        labels_ref={"id1": "0", "id2": "1"},
-        labels_tst={"id3": "0"},
+        labels_train={"id1": "0", "id2": "1"},
+        labels_test={"id3": "0"},
         save_dir=str(tmp_path),
         train_backend="tspn",
     )
@@ -49,4 +49,3 @@ def test_tspn_bootstrap_agent_generates_valid_config(tmp_path: Path):
     assert cfg.model.in_dim == L
     assert cfg.model.in_channels == 2
     assert cfg.model.num_classes >= 2
-

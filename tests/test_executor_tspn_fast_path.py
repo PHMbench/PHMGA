@@ -9,6 +9,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import src.phm_outer_graph as outer
+import src.graph.executor_tspn_graph as executor_graph_module
 from src.states.phm_states import DAGState, InputData, PHMState
 
 
@@ -37,32 +38,32 @@ def test_executor_graph_uses_tspn_fast_path(monkeypatch):
     calls: list[str] = []
 
     monkeypatch.setattr(
-        outer,
+        executor_graph_module,
         "inquirer_agent",
         lambda state, metrics: calls.append("inquire") or {"insights": []},
     )
     monkeypatch.setattr(
-        outer,
+        executor_graph_module,
         "dataset_preparer_agent",
         lambda state, config=None: calls.append("prepare") or {"datasets": {}},
     )
     monkeypatch.setattr(
-        outer,
+        executor_graph_module,
         "dag_init_agent",
         lambda state: calls.append("init_dag") or {"dag_state": state.dag_state},
     )
     monkeypatch.setattr(
-        outer,
+        executor_graph_module,
         "tspn_bootstrap_agent",
         lambda state: calls.append("bootstrap") or {"model_config_path": "dummy.yaml", "current_model_config": {}},
     )
     monkeypatch.setattr(
-        outer,
+        executor_graph_module,
         "deep_model_train_agent",
         lambda state: calls.append("train") or {"ml_results": {"tspn": {"metrics": {"val": {"val_acc": 1.0}}}}},
     )
     monkeypatch.setattr(
-        outer,
+        executor_graph_module,
         "report_agent_node",
         lambda state: calls.append("report") or {"final_report": "ok"},
     )

@@ -27,12 +27,12 @@ def test_fixed_ids_minimal_state_fails_with_actionable_error(tmp_path: Path):
         case_name="fixed_ids_minimal",
         save_dir=str(tmp_path / "save"),
         train_backend="tspn",
-        labels_ref={"s0": "0", "s1": "1"},
+        labels_train={"s0": "0", "s1": "1"},
+        model_config_path="config/model_tspn_basic.yaml",
         data_cfg={
             "source_mode": "fixed_ids",
             "backend": "fixed_ids",
             "state_save_mode": "minimal",
-            "model_config_path": "config/model_tspn_basic.yaml",
         },
     )
 
@@ -69,6 +69,37 @@ def test_vibench_minimal_state_can_enter_data_factory_path(monkeypatch, tmp_path
     out = deep_model_train_agent(state)
     assert (out.get("ml_results") or {}).get("tspn", {}).get("path") == "vibench"
     assert (out.get("ml_results") or {}).get("tspn", {}).get("state_save_mode") == "minimal"
+
+
+def test_trainer_rejects_data_cfg_only_model_config_path(tmp_path: Path):
+    sig = np.zeros((1, 64, 1), dtype=np.float32)
+    ch1 = InputData(
+        node_id="ch1",
+        data={"signal": sig},
+        results={"train": {"s0": sig}},
+        parents=[],
+        shape=sig.shape,
+        meta={},
+    )
+    dag = DAGState(user_instruction="missing_model_state", channels=["ch1"], nodes={"ch1": ch1}, leaves=["ch1"])
+    state = PHMState(
+        user_instruction="missing_model_state",
+        reference_signal=ch1,
+        test_signal=ch1,
+        dag_state=dag,
+        case_name="missing_model_state",
+        save_dir=str(tmp_path / "save"),
+        train_backend="tspn",
+        labels_train={"s0": "0"},
+        data_cfg={
+            "source_mode": "fixed_ids",
+            "backend": "fixed_ids",
+            "model_config_path": "config/model_tspn_basic.yaml",
+        },
+    )
+
+    with pytest.raises(ValueError, match="Missing state.model_config_path"):
+        deep_model_train_agent(state)
 
 
 @pytest.mark.skipif(not _enabled(), reason="Set PHM_ENABLE_TORCH_TESTS=1 to enable torch training contract tests.")
@@ -110,7 +141,7 @@ def test_rm101_vibench_contract_for_dag_bridge(monkeypatch, tmp_path: Path):
     monkeypatch.setattr("src.utils.data_factory_wrapper.PHMVibenchDataFactory", _FakeFactory, raising=False)
 
     sig = np.zeros((1, 128, 1), dtype=np.float32)
-    ch1 = InputData(node_id="ch1", data={"signal": sig}, results={"ref": {"s0": sig}}, parents=[], shape=sig.shape, meta={})
+    ch1 = InputData(node_id="ch1", data={"signal": sig}, results={"train": {"s0": sig}}, parents=[], shape=sig.shape, meta={})
     dag = DAGState(user_instruction="contract", channels=["ch1"], nodes={"ch1": ch1}, leaves=["ch1"])
     state = PHMState(
         user_instruction="contract",
@@ -132,8 +163,8 @@ def test_rm101_vibench_contract_for_dag_bridge(monkeypatch, tmp_path: Path):
             "debug_epochs": 1,
             "batch_size": 4,
             "device": "cpu",
-            "model_config_path": "config/model_tspn_basic.yaml",
         },
+        model_config_path="config/model_tspn_basic.yaml",
     )
 
     out = deep_model_train_agent(state)

@@ -10,6 +10,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from phm_core import DAGState, InputData, PHMState
+import src.graph.builder_loop_graph as builder_graph_module
 import src.phm_outer_graph as outer_graph
 
 
@@ -29,9 +30,9 @@ def test_builder_graph_stops_at_max_builder_iterations(monkeypatch: pytest.Monke
             "iteration_count": int(state.iteration_count) + 1,
         }
 
-    monkeypatch.setattr(outer_graph, "plan_agent", _plan)
-    monkeypatch.setattr(outer_graph, "execute_agent", _execute)
-    monkeypatch.setattr(outer_graph, "reflect_agent_node", _reflect)
+    monkeypatch.setattr(builder_graph_module, "plan_agent", _plan)
+    monkeypatch.setattr(builder_graph_module, "execute_agent", _execute)
+    monkeypatch.setattr(builder_graph_module, "reflect_agent_node", _reflect)
 
     sig = np.zeros((1, 16, 1), dtype=np.float32)
     ch1 = InputData(node_id="ch1", parents=[], data={"signal": sig}, shape=sig.shape)
