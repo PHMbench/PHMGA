@@ -2,13 +2,41 @@
 
 ## Environment
 
-- Copy `.env.example` to `.env` and fill the API key for your chosen provider.
-- Select provider via `LLM_PROVIDER`:
-  - `gemini` (default)
-  - `openai_compatible` (OpenAI-compatible gateways)
-  - `deepseek`
-  - `glm`
+- Copy `.env.example` to `.env` and fill the OpenRouter credentials.
+- Official LLM runtime is now OpenRouter-only:
+  - `LLM_PROVIDER=openrouter`
+  - `OPENROUTER_API_KEY=...`
+  - `OPENROUTER_BASE_URL=https://openrouter.ai/api/v1`
+- Choose the model via:
+  - `QUERY_GENERATOR_MODEL`
+  - `PHM_MODEL`
+  - `REFLECTION_MODEL`
+  - `ANSWER_MODEL`
+- `FAKE_LLM=true` remains available for offline tests only.
 - TSPN training requires PyTorch. This container may not have `torch` installed; run training in your local env (e.g. `conda activate LQ_signal`) with PyTorch available.
+
+## Config and run entry
+
+Runtime config composition now uses real `hydra-core + OmegaConf`.
+
+- Root config tree lives under `config/`
+- Main entry is registry-based: `Hydra compose -> base_runner -> case registry -> graph registry`
+- `main.py` no longer imports `src.cases.<name>` directly
+
+Typical commands:
+
+```bash
+python main.py --config-dir config --config-name config --case case1 cases=case1 graphs=builder_loop
+python main.py --config config/case_exp_gearbox_rm101.yaml --case case1
+python main.py preflight --config config/case_exp_gearbox_rm101.yaml
+```
+
+Hydra override examples:
+
+```bash
+python main.py --config-dir config --config-name config --case case1 cases=exp_gearbox_rm101 llm/provider=openrouter
+python main.py --config-dir config --config-name config --case case1 graphs=executor_tspn data=vibench
+```
 
 ## built_state save mode
 
