@@ -1,0 +1,5 @@
+backend: vibench
+source_mode: vibench
+metadata_file: metadata.xlsx
+selection:
+  default_mode: fixed_ids

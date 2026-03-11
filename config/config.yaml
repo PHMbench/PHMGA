@@ -1,0 +1,14 @@
+defaults:
+  - system/runtime
+  - system/paths
+  - system/logging
+  - llm/provider: openrouter
+  - data: vibench
+  - graphs: builder_loop
+  - cases: default
+  - models: default
+  - _self_
+
+project:
+  name: PHMGA
+  version: 1.0-hydra-phase2

@@ -1,0 +1,9 @@
+# @package _global_
+models:
+  selected: tspn_basic
+
+model:
+  profile: tspn_basic
+  config_path: "config/model_tspn_basic.yaml"
+  autofit_dims: true
+  autofit_num_classes: true

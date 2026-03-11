@@ -8,11 +8,11 @@ train_backend: tspn
 allow_test_labels_for_reporting: false
 
 llm:
-  provider: glm
-  query_generator_model: GLM-4.7-Flash
-  phm_model: GLM-4.7-Flash
-  reflection_model: GLM-4.7-Flash
-  answer_model: GLM-4.7-Flash
+  provider: openrouter
+  query_generator_model: openai/gpt-4o-mini
+  phm_model: openai/gpt-4o-mini
+  reflection_model: openai/gpt-4o-mini
+  answer_model: openai/gpt-4o-mini
 
 model:
   profile: tspn_basic

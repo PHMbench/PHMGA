@@ -1,33 +1,19 @@
 matrix:
   llm:
-    - name: gemini3
+    - name: openrouter_gpt4omini
       env:
-        LLM_PROVIDER: gemini
-        QUERY_GENERATOR_MODEL: gemini-3-flash
-        PHM_MODEL: gemini-3-flash
-        REFLECTION_MODEL: gemini-3-flash
-        ANSWER_MODEL: gemini-3-flash
-    - name: glm47
+        LLM_PROVIDER: openrouter
+        QUERY_GENERATOR_MODEL: openai/gpt-4o-mini
+        PHM_MODEL: openai/gpt-4o-mini
+        REFLECTION_MODEL: openai/gpt-4o-mini
+        ANSWER_MODEL: openai/gpt-4o-mini
+    - name: openrouter_claude_sonnet
       env:
-        LLM_PROVIDER: glm
-        QUERY_GENERATOR_MODEL: GLM-4.7-Flash
-        PHM_MODEL: GLM-4.7-Flash
-        REFLECTION_MODEL: GLM-4.7-Flash
-        ANSWER_MODEL: GLM-4.7-Flash
-    - name: glm45
-      env:
-        LLM_PROVIDER: glm
-        QUERY_GENERATOR_MODEL: GLM-4.5-Flash
-        PHM_MODEL: GLM-4.5-Flash
-        REFLECTION_MODEL: GLM-4.5-Flash
-        ANSWER_MODEL: GLM-4.5-Flash
-    - name: gemini25
-      env:
-        LLM_PROVIDER: gemini
-        QUERY_GENERATOR_MODEL: gemini-2.5-flash
-        PHM_MODEL: gemini-2.5-flash
-        REFLECTION_MODEL: gemini-2.5-flash
-        ANSWER_MODEL: gemini-2.5-flash
+        LLM_PROVIDER: openrouter
+        QUERY_GENERATOR_MODEL: anthropic/claude-3.5-sonnet
+        PHM_MODEL: anthropic/claude-3.5-sonnet
+        REFLECTION_MODEL: anthropic/claude-3.5-sonnet
+        ANSWER_MODEL: anthropic/claude-3.5-sonnet
 
   datasets:
     - name: ottawa
