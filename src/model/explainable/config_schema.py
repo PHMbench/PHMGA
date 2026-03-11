@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class OpTokenConfig(BaseModel):
@@ -11,8 +11,7 @@ class OpTokenConfig(BaseModel):
     token: str = Field(..., description="Operator token, e.g. I/WF/HT/FFT/NORM/DT/INT/DIFF/STFT/LOG/SQU/SIN.")
     params: Dict[str, Any] = Field(default_factory=dict, description="Token parameters (token-specific).")
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class LayerConfig(BaseModel):
@@ -21,8 +20,7 @@ class LayerConfig(BaseModel):
     ops: List[OpTokenConfig] = Field(..., min_length=1)
     gate_temperature: float = Field(default=1.0, ge=1e-6)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ModelConfig(BaseModel):
@@ -54,8 +52,7 @@ class ModelConfig(BaseModel):
     # Soft delete gates (by stable op_uid).
     disabled_ops: Dict[str, float] = Field(default_factory=dict)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class TrainConfig(BaseModel):
@@ -100,8 +97,7 @@ class TrainConfig(BaseModel):
     debug_max_samples: int = Field(default=16, ge=1)
     debug_epochs: int = Field(default=1, ge=1)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ExplainConfig(BaseModel):
@@ -110,8 +106,7 @@ class ExplainConfig(BaseModel):
     topk_ops: int = Field(default=3, ge=1)
     save_wavefilters: bool = True
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class TSPNConfig(BaseModel):
@@ -122,8 +117,7 @@ class TSPNConfig(BaseModel):
     explain: ExplainConfig = Field(default_factory=ExplainConfig)
     meta: Dict[str, Any] = Field(default_factory=dict, description="Optional free-form metadata.")
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 def validate_config_dict(data: Dict[str, Any]) -> TSPNConfig:

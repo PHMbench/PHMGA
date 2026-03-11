@@ -6,8 +6,7 @@ from typing import Any, Dict, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.model import get_llm
-from src.configuration import Configuration
+from src.llm import get_llm
 from src.prompts.reflect_prompt import REFLECT_PROMPT
 from src.states.phm_states import PHMState
 from src.tools.signal_processing_schemas import OP_REGISTRY
@@ -79,7 +78,7 @@ def reflect_agent(
 
     # 3. 总是调用LLM进行反思，而不是使用硬编码规则
     # LLM将基于指令、阶段、DAG结构和深度等信息，做出更全面的决策
-    llm = get_llm(Configuration.from_runnable_config(None))
+    llm = get_llm(role="reflection")
     prompt = ChatPromptTemplate.from_template(REFLECT_PROMPT)
     chain = prompt | llm
     llm_input = {

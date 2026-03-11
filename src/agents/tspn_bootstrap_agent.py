@@ -10,7 +10,7 @@ import yaml
 
 from src.model.explainable.config_schema import TSPNConfig
 from src.model.explainable.operator_catalog import lookup_operator
-from src.states.phm_states import InputData, PHMState, ProcessedData
+from src.states.phm_states import InputData, PHMState, ProcessedData, get_split_results
 
 
 def _now_tag() -> str:
@@ -24,10 +24,10 @@ def _infer_channels_and_length(state: PHMState) -> Tuple[int, int]:
     first = state.dag_state.nodes.get(channels[0])
     if not isinstance(first, InputData):
         raise ValueError("Expected InputData nodes for channel roots.")
-    ref_dict = (first.results or {}).get("ref") or {}
-    if not isinstance(ref_dict, dict) or not ref_dict:
-        raise ValueError("InputData.results['ref'] is missing or empty.")
-    first_arr = next(iter(ref_dict.values()))
+    train_dict = get_split_results(first.results or {}, "train") or {}
+    if not isinstance(train_dict, dict) or not train_dict:
+        raise ValueError("InputData.results['train'] is missing or empty.")
+    first_arr = next(iter(train_dict.values()))
     if getattr(first_arr, "shape", None) is None:
         raise ValueError("Expected numpy-like arrays for channel results.")
     if len(first_arr.shape) != 3:
@@ -37,14 +37,14 @@ def _infer_channels_and_length(state: PHMState) -> Tuple[int, int]:
 
 
 def _infer_num_classes(state: PHMState) -> int:
-    labels = dict(getattr(state, "labels_ref", {}) or {})
+    labels = dict(getattr(state, "labels_train", {}) or {})
     if not labels:
         # fallback to root meta
         channels = list(state.dag_state.channels or [])
         if channels:
             root = state.dag_state.nodes.get(channels[0])
             if isinstance(root, InputData):
-                labels = dict(root.meta.get("labels_ref", {}) or {})
+                labels = dict(root.meta.get("labels_train", {}) or {})
     uniq = sorted({str(v) for v in labels.values()})
     return max(2, len(uniq))
 

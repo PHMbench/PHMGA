@@ -1,13 +1,3 @@
-from ..states import (
-    OverallState,
-    QueryGenerationState,
-    WebSearchState,
-    ReflectionState,
-)
-
-from langchain_google_genai import ChatGoogleGenerativeAI
-from ..configuration import Configuration
-from ..model import get_default_llm
 import os
 
 from src.tools.research_schemas import SearchQueryList, Reflection
@@ -17,7 +7,6 @@ from langgraph.types import Send
 from langgraph.graph import StateGraph
 from langgraph.graph import START, END
 from langchain_core.runnables import RunnableConfig
-from google.genai import Client
 
 from ..states.research_state import (
     OverallState,
@@ -25,7 +14,8 @@ from ..states.research_state import (
     ReflectionState,
     WebSearchState,
 )
-from configuration import Configuration
+from ..configuration import Configuration
+from ..llm import get_default_llm
 from ..prompts.research_prompts import (
     get_current_date,
     query_writer_instructions,
@@ -33,7 +23,6 @@ from ..prompts.research_prompts import (
     reflection_instructions,
     answer_instructions,
 )
-from langchain_google_genai import ChatGoogleGenerativeAI
 from ..utils import (
     get_citations,
     get_research_topic,
@@ -107,24 +96,34 @@ def web_research(state: WebSearchState, config: RunnableConfig) -> OverallState:
         current_date=get_current_date(),
         research_topic=state["search_query"],
     )
-    genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-    # Uses the google genai client as the langchain client doesn't return grounding metadata
-    response = genai_client.models.generate_content(
-        model=configurable.query_generator_model,
-        contents=formatted_prompt,
-        config={
-            "tools": [{"google_search": {}}],
-            "temperature": 0,
-        },
-    )
-    # resolve the urls to short urls for saving tokens and time
-    resolved_urls = resolve_urls(
-        response.candidates[0].grounding_metadata.grounding_chunks, state["id"]
-    )
-    # Gets the citations and adds them to the generated text
-    citations = get_citations(response, resolved_urls)
-    modified_text = insert_citation_markers(response.text, citations)
-    sources_gathered = [item for citation in citations for item in citation["segments"]]
+    modified_text = ""
+    sources_gathered = []
+    if os.getenv("GEMINI_API_KEY"):
+        try:
+            from google.genai import Client
+
+            genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
+            response = genai_client.models.generate_content(
+                model=configurable.query_generator_model,
+                contents=formatted_prompt,
+                config={
+                    "tools": [{"google_search": {}}],
+                    "temperature": 0,
+                },
+            )
+            resolved_urls = resolve_urls(
+                response.candidates[0].grounding_metadata.grounding_chunks, state["id"]
+            )
+            citations = get_citations(response, resolved_urls)
+            modified_text = insert_citation_markers(response.text, citations)
+            sources_gathered = [item for citation in citations for item in citation["segments"]]
+        except Exception:
+            modified_text = ""
+
+    if not modified_text:
+        llm = get_default_llm(configurable, model_name=configurable.query_generator_model, temperature=0)
+        response = llm.invoke(formatted_prompt)
+        modified_text = str(getattr(response, "content", response))
 
     return {
         "sources_gathered": sources_gathered,

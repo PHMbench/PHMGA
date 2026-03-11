@@ -8,8 +8,7 @@ from typing import Any, Dict, List
 from langchain_core.prompts import ChatPromptTemplate
 from pydantic import BaseModel, Field
 
-from src.configuration import Configuration
-from src.model import get_llm
+from src.llm import get_llm
 from src.model.explainable.operator_catalog import is_contract_allowed, resolve_operator_contract
 from src.prompts.plan_prompt import PLANNER_PROMPT
 from src.states.phm_states import PHMState
@@ -226,7 +225,7 @@ def plan_agent(state: PHMState) -> dict:
     """Call LLM to generate a detailed processing plan using structured output."""
 
     logger = get_current_logger()
-    llm = get_llm(Configuration.from_runnable_config(None))
+    llm = get_llm()
     
     data_cfg = dict(getattr(state, "data_cfg", {}) or {})
     operator_contract = str(data_cfg.get("operator_contract") or "rm101_closed_v1").strip().lower() or "rm101_closed_v1"

@@ -18,7 +18,15 @@ os.environ["LANGCHAIN_ENDPOINT"] = ""
 os.environ["LANGCHAIN_API_KEY"] = ""
 os.environ["LANGCHAIN_PROJECT"] = ""
 
-from src.phm_outer_graph import build_builder_graph, build_executor_graph
+from src.config import (
+    ALLOWED_LLM_PROVIDERS,
+    bind_llm_env,
+    normalize_runtime_config,
+    resolve_data_selection,
+    resolve_source_mode as resolve_case_data_mode,
+    validate_llm_config,
+)
+from src.graph.registry import build_selected_graph
 from src.utils import initialize_state, initialize_state_vibench, save_state, load_state, generate_final_report
 # from src.utils.visualization import visualize_dag_feature_evolution_umap
 from src.agents.reflect_agent import get_dag_depth
@@ -36,7 +44,7 @@ _MODEL_PROFILE_MAP = {
     "tspn_wf_heavy": "config/model_tspn_basic.yaml",
 }
 _ABLATION_MODES = {"full", "no_reflect", "no_prior"}
-_LLM_PROVIDERS = {"gemini", "openai", "openai_compatible", "deepseek", "glm"}
+_LLM_PROVIDERS = set(ALLOWED_LLM_PROVIDERS)
 _STATE_SAVE_MODES = {"auto", "full", "minimal"}
 
 
@@ -63,14 +71,7 @@ def _parse_bool(value: object, default: bool = False) -> bool:
 
 
 def _resolve_source_mode(config: dict) -> str:
-    data_cfg = dict(config.get("data") or {})
-    source_mode = str(data_cfg.get("source_mode") or "").strip().lower()
-    if source_mode in {"fixed_ids", "vibench"}:
-        return source_mode
-    backend = str(data_cfg.get("backend") or "").strip().lower()
-    if backend == "vibench":
-        return "vibench"
-    return "fixed_ids"
+    return resolve_case_data_mode(config)
 
 
 def _resolve_state_save_mode(config: dict) -> str:
@@ -81,13 +82,27 @@ def _resolve_state_save_mode(config: dict) -> str:
     return mode
 
 
-def _missing_root_ref_channels(state) -> list[str]:
+def _resolve_graph_name(config: dict, key: str, default: str) -> str:
+    graphs_cfg = dict(config.get("graphs") or {})
+    name = str(graphs_cfg.get(key) or "").strip()
+    if name:
+        return name
+    selected = str(graphs_cfg.get("selected") or "").strip()
+    if selected:
+        if key == "builder_name" and selected == "builder_loop":
+            return selected
+        if key == "executor_name" and selected == "executor_tspn":
+            return selected
+    return default
+
+
+def _missing_root_train_channels(state) -> list[str]:
     missing: list[str] = []
     channels = list(getattr(state.dag_state, "channels", []) or [])
     for ch in channels:
         node = state.dag_state.nodes.get(ch)
-        ref = (getattr(node, "results", {}) or {}).get("ref") if node is not None else None
-        if not isinstance(ref, dict) or not ref:
+        train = (getattr(node, "results", {}) or {}).get("train") if node is not None else None
+        if not isinstance(train, dict) or not train:
             missing.append(str(ch))
     return missing
 
@@ -142,32 +157,36 @@ def _bind_llm_from_case(config: dict) -> str:
     if not llm_cfg:
         return "env"
 
-    provider = str(llm_cfg.get("provider") or "").strip().lower()
-    if provider not in _LLM_PROVIDERS:
-        raise ValueError(
-            f"Invalid llm.provider={provider!r}. "
-            f"Expected one of: {', '.join(sorted(_LLM_PROVIDERS))}."
-        )
-    query_model = str(llm_cfg.get("query_generator_model") or "").strip()
-    if not query_model:
-        raise ValueError("llm.query_generator_model is required when llm block is provided.")
+    report = validate_llm_config(llm_cfg, env=os.environ)
+    cfg_errors = [
+        str(item)
+        for item in list(report.get("errors") or [])
+        if str(item).startswith("Invalid llm.provider") or str(item).startswith("llm.query_generator_model")
+    ]
+    if cfg_errors:
+        raise ValueError("; ".join(cfg_errors))
 
-    phm_model = str(llm_cfg.get("phm_model") or query_model).strip()
-    reflection_model = str(llm_cfg.get("reflection_model") or query_model).strip()
-    answer_model = str(llm_cfg.get("answer_model") or query_model).strip()
-
-    os.environ["LLM_PROVIDER"] = provider
-    os.environ["QUERY_GENERATOR_MODEL"] = query_model
-    os.environ["PHM_MODEL"] = phm_model
-    os.environ["REFLECTION_MODEL"] = reflection_model
-    os.environ["ANSWER_MODEL"] = answer_model
+    bound_env = bind_llm_env(llm_cfg, env=os.environ)
+    for key in (
+        "LLM_PROVIDER",
+        "QUERY_GENERATOR_MODEL",
+        "PHM_MODEL",
+        "REFLECTION_MODEL",
+        "ANSWER_MODEL",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_BASE_URL",
+        "OPENROUTER_HTTP_REFERER",
+        "OPENROUTER_TITLE",
+    ):
+        if key in bound_env:
+            os.environ[key] = bound_env[key]
 
     config["llm"] = {
-        "provider": provider,
-        "query_generator_model": query_model,
-        "phm_model": phm_model,
-        "reflection_model": reflection_model,
-        "answer_model": answer_model,
+        "provider": str(report.get("provider") or "").strip(),
+        "query_generator_model": str(report.get("query_generator_model") or "").strip(),
+        "phm_model": str(report.get("phm_model") or "").strip(),
+        "reflection_model": str(report.get("reflection_model") or "").strip(),
+        "answer_model": str(report.get("answer_model") or "").strip(),
     }
     return "case_yaml"
 
@@ -179,7 +198,7 @@ def run_case(config_path: str):
     # 1. Load configuration from YAML file
     with open(config_path, 'r', encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
-    config = _apply_runtime_overrides(config)
+    config = normalize_runtime_config(_apply_runtime_overrides(config))
     llm_source = _bind_llm_from_case(config)
 
     case_name = str(config.get("name") or "case")
@@ -222,13 +241,11 @@ def run_case(config_path: str):
     source_mode = _resolve_source_mode(config)
     state_save_mode = _resolve_state_save_mode(config)
     model_opts = _resolve_model_options(config)
+    resolved_model_cfg = dict(config.get("model") or {})
+    resolved_model_path = model_opts["model_config_path"]
     data_cfg = dict(config.get("data") or {})
     data_cfg["source_mode"] = source_mode
     data_cfg["state_save_mode"] = state_save_mode
-    data_cfg["model_profile"] = model_opts["profile"]
-    data_cfg["autofit_dims"] = model_opts["autofit_dims"]
-    data_cfg["autofit_num_classes"] = model_opts["autofit_num_classes"]
-    data_cfg["model_config_path"] = model_opts["model_config_path"]
     data_cfg["ablation_mode"] = ablation_mode
     data_cfg["disable_prior_init"] = (ablation_mode == "no_prior")
     log_event(
@@ -247,8 +264,7 @@ def run_case(config_path: str):
     if source_mode == "fixed_ids":
         data_cfg.setdefault("metadata_path", config.get("metadata_path"))
         data_cfg.setdefault("h5_path", config.get("h5_path"))
-        data_cfg.setdefault("ref_ids", config.get("ref_ids"))
-        data_cfg.setdefault("test_ids", config.get("test_ids"))
+        data_cfg["selection"] = resolve_data_selection(config).model_dump()
 
     # --- Check for existing state ---
     if os.path.exists(state_save_path):
@@ -273,15 +289,16 @@ def run_case(config_path: str):
             clear_current_logger()
             return
         built_state.train_backend = str(config.get("train_backend", built_state.train_backend or "tspn"))
-        built_state.model_config_path = model_opts["model_config_path"]
+        built_state.model_config_path = resolved_model_path
+        built_state.model_cfg = resolved_model_cfg
         built_state.data_cfg = data_cfg
         built_state.save_dir = config.get("save_dir")
         built_state.max_builder_iterations = max_iterations
         if source_mode == "fixed_ids":
-            missing = _missing_root_ref_channels(built_state)
+            missing = _missing_root_train_channels(built_state)
             if missing:
                 msg = (
-                    "Loaded built_state.pkl is missing root InputData.results['ref'] "
+                    "Loaded built_state.pkl is missing root InputData.results['train'] "
                     f"for channels={missing}. fixed_ids requires full state arrays. "
                     "Use data.state_save_mode=full and rebuild (or remove current built_state.pkl)."
                 )
@@ -315,33 +332,36 @@ def run_case(config_path: str):
                     data_cfg=data_cfg,
                     allow_test_labels_for_reporting=bool(config.get("allow_test_labels_for_reporting", False)),
                     train_backend=str(config.get("train_backend", "tspn")),
-                    model_config_path=model_opts["model_config_path"],
+                    model_config_path=resolved_model_path,
                     save_dir=config.get("save_dir"),
                 )
             else:
                 metadata_path = str(config.get("metadata_path") or data_cfg.get("metadata_path") or "")
                 h5_path = str(config.get("h5_path") or data_cfg.get("h5_path") or "")
-                ref_ids = list(config.get("ref_ids") or data_cfg.get("ref_ids") or [])
-                test_ids = list(config.get("test_ids") or data_cfg.get("test_ids") or [])
+                selection = resolve_data_selection(config)
                 initial_phm_state = initialize_state(
                     user_instruction=config["user_instruction"],
                     metadata_path=metadata_path,
                     h5_path=h5_path,
-                    ref_ids=ref_ids,
-                    test_ids=test_ids,
+                    train_ids=list(selection.train_ids),
+                    val_ids=list(selection.val_ids),
+                    test_ids=list(selection.test_ids),
                     case_name=config["name"],
                     allow_test_labels_for_reporting=bool(config.get("allow_test_labels_for_reporting", False)),
                     train_backend=str(config.get("train_backend", "shallow")),
-                    model_config_path=model_opts["model_config_path"],
+                    model_config_path=resolved_model_path,
                     save_dir=config.get("save_dir"),
                     data_cfg=data_cfg,
                 )
             initial_phm_state.data_cfg = data_cfg
+            initial_phm_state.model_config_path = resolved_model_path
+            initial_phm_state.model_cfg = resolved_model_cfg
             initial_phm_state.max_builder_iterations = max_iterations
 
         # --- Part 1: Run DAG Builder Workflow ---
         log_event(run_logger, level="INFO", event="case.part1.start", phase="builder", message="Starting DAG builder workflow.")
-        builder_app = build_builder_graph()
+        builder_graph_name = _resolve_graph_name(config, "builder_name", "builder_loop")
+        builder_app = build_selected_graph(builder_graph_name)
 
         built_state = initial_phm_state.model_copy(deep=True)
         iteration = 0
@@ -488,7 +508,8 @@ def run_case(config_path: str):
     # --- Part 2: Run DAG Executor Workflow (optional) ---
     if bool(config.get("run_executor", False)):
         log_event(run_logger, level="INFO", event="case.part2.start", phase="executor", message="Starting DAG executor workflow.")
-        executor_app = build_executor_graph()
+        executor_graph_name = _resolve_graph_name(config, "executor_name", "executor_tspn")
+        executor_app = build_selected_graph(executor_graph_name)
         thread_config = {"configurable": {"thread_id": str(uuid.uuid4())}}  # Use a new thread for the executor
 
         final_state = built_state.model_copy(deep=True)

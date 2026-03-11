@@ -3,9 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from src.configuration import Configuration
-from src.model import get_llm
-from src.states.phm_states import DAGState, InputData, PHMState, ProcessedData
+from src.llm import get_llm
+from src.states.phm_states import DAGState, InputData, PHMState, ProcessedData, get_split_results
 
 
 def _infer_L_and_fs(state: PHMState) -> tuple[int | None, float | None]:
@@ -15,9 +14,9 @@ def _infer_L_and_fs(state: PHMState) -> tuple[int | None, float | None]:
     root = state.dag_state.nodes.get(channels[0])
     if not isinstance(root, InputData):
         return None, None
-    ref = (root.results or {}).get("ref") or {}
-    if isinstance(ref, dict) and ref:
-        first = next(iter(ref.values()))
+    train = get_split_results(root.results or {}, "train") or {}
+    if isinstance(train, dict) and train:
+        first = next(iter(train.values()))
         try:
             L = int(getattr(first, "shape", (0, 0, 0))[1])
         except Exception:
@@ -65,7 +64,7 @@ def dag_init_agent(
 
     L, fs = _infer_L_and_fs(state)
 
-    llm = get_llm(Configuration.from_runnable_config(None), temperature=temperature)
+    llm = get_llm(temperature=temperature)
     prompt = {
         "role": "system",
         "content": (
@@ -142,4 +141,3 @@ def dag_init_agent(
     new_dag.nodes = nodes
     new_dag.leaves = leaves
     return {"dag_state": new_dag}
-

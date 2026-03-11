@@ -1,19 +1,19 @@
 # PHMGA Agents
 
-This directory contains the AI agents that orchestrate the **PHMGA (Prognostics and Health Management Graph Agent)** framework. Each agent is a specialized component that collaborates to automate signal processing, fault diagnosis, and predictive maintenance tasks.
+This directory contains the workflow agents that orchestrate the **PHMGA (Prognostics and Health Management Graph Agent)** framework. In this repository, `agent` means an outer-workflow node with a stable I/O contract. Some agents are LLM-mediated, others are deterministic.
 
 ## Architecture Overview
 
 PHMGA uses a **dual-layer architecture**:
 
-1. **Outer Layer (LLM Orchestration)**: LangGraph-based workflow with AI agents that plan, execute, reflect, and report on signal processing tasks
+1. **Outer Layer (Workflow Orchestration)**: LangGraph-based workflow with agents that plan, execute, reflect, report, train, and research
 2. **Inner Layer (Computational DAG)**: Dynamic directed acyclic graph representing the signal processing pipeline, built by the Execute Agent
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                         PHMGA Framework                          │
 ├─────────────────────────────────────────────────────────────────┤
-│  Outer Layer: LangGraph Orchestration (LLM Agents)              │
+│  Outer Layer: LangGraph Orchestration (Workflow Agents)         │
 │  ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐       │
 │  │  Plan   │ -> │ Execute │ -> │ Reflect │ -> │ Report  │       │
 │  │  Agent  │    │  Agent  │    │  Agent  │    │  Agent  │       │
@@ -30,19 +30,26 @@ PHMGA uses a **dual-layer architecture**:
 
 ## Agent Summary
 
-| Agent | File | Purpose | Workflow |
-|-------|------|---------|----------|
-| **Plan Agent** | [plan_agent.py](plan_agent.py) | Generates detailed processing plan using LLM | Builder |
-| **Execute Agent** | [execute_agent.py](execute_agent.py) | Executes signal processing operations on DAG | Builder |
-| **Reflect Agent** | [reflect_agent.py](reflect_agent.py) | Evaluates DAG quality and decides next actions | Builder |
-| **Inquirer Agent** | [inquirer_agent.py](inquirer_agent.py) | Calculates similarity metrics between signals | Executor |
-| **Dataset Preparer Agent** | [dataset_preparer_agent.py](dataset_preparer_agent.py) | Assembles training datasets from DAG nodes | Executor |
-| **Shallow ML Agent** | [shallow_ml_agent.py](shallow_ml_agent.py) | Trains traditional ML models (RF, SVM) | Executor |
-| **Deep Model Train Agent** | [deep_model_train_agent.py](deep_model_train_agent.py) | Trains TSPN deep learning model | Executor |
-| **TSPN Bootstrap Agent** | [tspn_bootstrap_agent.py](tspn_bootstrap_agent.py) | Auto-generates TSPN config from DAG | Executor |
-| **DAG Init Agent** | [dag_init_agent.py](dag_init_agent.py) | Initializes minimal processed DAG | Executor |
-| **Report Agent** | [report_agent.py](report_agent.py) | Generates final markdown report | Executor |
-| **Deep Research Agents** | [deep_research_agents.py](deep_research_agents.py) | Web research with query generation | Separate |
+| Agent | File | Type | Purpose | Workflow |
+|-------|------|------|---------|----------|
+| **Plan Agent** | [plan_agent.py](plan_agent.py) | LLM-mediated | Generates detailed processing plan | Builder |
+| **Execute Agent** | [execute_agent.py](execute_agent.py) | Hybrid | Executes DAG steps and can route to TSPN training | Builder |
+| **Reflect Agent** | [reflect_agent.py](reflect_agent.py) | LLM-mediated | Evaluates DAG quality and decides next actions | Builder |
+| **Inquirer Agent** | [inquirer_agent.py](inquirer_agent.py) | Deterministic | Calculates similarity metrics between signals | Executor |
+| **Dataset Preparer Agent** | [dataset_preparer_agent.py](dataset_preparer_agent.py) | Deterministic | Assembles training datasets from DAG nodes | Executor |
+| **Shallow ML Agent** | [shallow_ml_agent.py](shallow_ml_agent.py) | Deterministic | Trains traditional ML models (RF, SVM) | Executor |
+| **Deep Model Train Agent** | [deep_model_train_agent.py](deep_model_train_agent.py) | Deterministic | Trains TSPN deep learning model | Executor |
+| **TSPN Bootstrap Agent** | [tspn_bootstrap_agent.py](tspn_bootstrap_agent.py) | Deterministic | Auto-generates TSPN config from DAG | Executor |
+| **DAG Init Agent** | [dag_init_agent.py](dag_init_agent.py) | LLM-mediated | Initializes minimal processed DAG | Executor |
+| **Report Agent** | [report_agent.py](report_agent.py) | LLM-mediated with template fallback | Generates final markdown report | Executor |
+| **Deep Research Agents** | [deep_research_agents.py](deep_research_agents.py) | LLM-mediated research subgraph | Web research with query generation | Separate |
+
+## Classification
+
+- `LLM-mediated agent`: the node depends on an LLM to make the core business decision.
+- `Deterministic agent`: the node is still a formal workflow step, but its logic is data/config driven rather than prompt driven.
+- `agent` is not a synonym for “uses an LLM”. It is the unit of orchestration in the outer workflow.
+- The flat files under `src/agents/*.py` are still the formal implementations. Subdirectories such as `builder/`, `executor/`, `report/`, and `train/` are mostly compatibility shells today.
 
 ---
 
@@ -272,15 +279,15 @@ The Executor workflow runs the finalized DAG for analysis and reporting:
 
 **Input State**:
 - `dag_state.nodes`: ProcessedData nodes with saved features
-- Node metadata with `labels_ref` and `labels_tst`
+- Node metadata with `labels_train`, `labels_val`, and `labels_test`
 
 **Output State**:
-- `datasets`: Dictionary mapping node_id to `{X_train, X_test, y_train, y_test}`
+- `datasets`: Dictionary mapping node_id to `{X_train, X_val, X_test, y_train, y_val, y_test}`
 - `n_nodes`: Number of datasets created
 
 **Key Features**:
 - Traverses DAG to find labels at root (backward-compatible)
-- Enforces label boundary: `labels_ref` for training, `labels_tst` for reporting only
+- Enforces label boundary: `labels_train` for training, `labels_test` for reporting only
 - Creates `DataSetNode` additions to DAG
 
 ---
@@ -320,8 +327,8 @@ The Executor workflow runs the finalized DAG for analysis and reporting:
 **Input State**:
 - `dag_state`: DAG with channel roots
 - `data_cfg`: Backend configuration ("vibench" or default)
-- `model_config_path`: Optional pre-existing config
-- `labels_ref`, `labels_tst`: Label mappings
+- `model_config_path`: Resolved config written into `PHMState` by the runner
+- `labels_train`, `labels_val`, `labels_test`: Canonical label mappings
 
 **Output State**:
 - `ml_results`: Training metrics and artifacts
@@ -330,7 +337,7 @@ The Executor workflow runs the finalized DAG for analysis and reporting:
 - `model_config_path`: Path to config YAML
 
 **Key Features**:
-- Enforces label boundary: ref only for training, tst only for reporting
+- Enforces label boundary: train/val only for fitting, test only for reporting
 - Supports two backends: PHM-Vibench factory and direct array loading
 - Generates explainability artifacts (operator importance, wavefilters)
 - Outputs predictions CSV and confusion matrix
@@ -351,7 +358,7 @@ The Executor workflow runs the finalized DAG for analysis and reporting:
 
 **Input State**:
 - `dag_state`: Built DAG with ProcessedData nodes
-- `labels_ref`: For inferring num_classes
+- `labels_train`: For inferring num_classes
 
 **Output State**:
 - `model_config_path`: Path to generated YAML
@@ -435,8 +442,8 @@ The Executor workflow runs the finalized DAG for analysis and reporting:
 All agents communicate through the shared `PHMState` object defined in [src/states/phm_states.py](../states/phm_states.py). Key state fields:
 
 ### Core DAG Fields
-- `reference_signal`: InputData - Reference/baseline signal data
-- `test_signal`: InputData - Test signal data
+- `reference_signal`: InputData - Legacy root anchor kept for compatibility
+- `test_signal`: InputData - Legacy root anchor kept for compatibility
 - `dag_state`: DAGState - Complete DAG with nodes and leaves
 - `leaves`: List[str] - Current leaf node IDs
 
@@ -456,6 +463,8 @@ All agents communicate through the shared `PHMState` object defined in [src/stat
 - `data_cfg`: Dict - Backend configuration
 - `save_dir`: str - Base save directory
 - `case_name`: str - Case identifier
+
+Runtime split semantics are `train/val/test`. `reference_signal/test_signal` remain only as historical root anchors.
 
 ---
 
@@ -477,8 +486,9 @@ state = initialize_state(
     user_instruction=config['user_instruction'],
     metadata_path=config['metadata_path'],
     h5_path=config['h5_path'],
-    ref_ids=config['ref_ids'],
-    test_ids=config['test_ids'],
+    train_ids=config['data']['selection']['train_ids'],
+    val_ids=config['data']['selection'].get('val_ids', []),
+    test_ids=config['data']['selection']['test_ids'],
     case_name=config['name']
 )
 

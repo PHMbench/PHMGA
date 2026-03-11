@@ -1,7 +1,16 @@
 from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 from langchain_core.messages import AnyMessage, AIMessage, HumanMessage
-from src.states.phm_states import PHMState, DAGState, InputData, ProcessedData
+from src.config import resolve_data_selection
+from src.states.phm_states import (
+    CANONICAL_SPLITS,
+    PHMState,
+    DAGState,
+    InputData,
+    ProcessedData,
+    get_split_results,
+    normalize_result_splits,
+)
 from src.tools.signal_processing_schemas import get_operator, MultiVariableOp
 import numpy as np
 import os
@@ -221,60 +230,40 @@ def _get_results(node: InputData | ProcessedData) -> Dict[str, Any]:
 
 def _execute_multi_variable_op(
     op: Any, parent_ids: List[str], nodes: Dict[str, InputData | ProcessedData]
-) -> Tuple[Any, Any]:
-    """Execute a MultiVariableOp on all parents and return ref/tst outputs."""
-    parent_refs = {pid: _get_results(nodes[pid]).get("ref") for pid in parent_ids}
-    parent_tsts = {pid: _get_results(nodes[pid]).get("tst") for pid in parent_ids}
-
-    parent_refs = {k: v for k, v in parent_refs.items() if isinstance(v, dict)}
-    parent_tsts = {k: v for k, v in parent_tsts.items() if isinstance(v, dict)}
-
-    out_ref, out_tst = None, None
-
-    if parent_refs:
-        signal_keys = list(next(iter(parent_refs.values())).keys())
-        ref_results = {}
+) -> Dict[str, Any]:
+    """Execute a MultiVariableOp on all parents and return canonical split outputs."""
+    split_outputs: Dict[str, Any] = {}
+    for split in CANONICAL_SPLITS:
+        parent_split = {pid: get_split_results(_get_results(nodes[pid]), split) for pid in parent_ids}
+        parent_split = {k: v for k, v in parent_split.items() if isinstance(v, dict)}
+        if not parent_split:
+            split_outputs[split] = {}
+            continue
+        signal_keys = list(next(iter(parent_split.values())).keys())
+        split_results = {}
         for key in signal_keys:
             single_input = {
-                pid: data.get(key) for pid, data in parent_refs.items() if data.get(key) is not None
+                pid: data.get(key) for pid, data in parent_split.items() if data.get(key) is not None
             }
             if len(single_input) == len(parent_ids):
-                ref_results[key] = op.execute(single_input)
-        out_ref = ref_results
-
-    if parent_tsts:
-        signal_keys = list(next(iter(parent_tsts.values())).keys())
-        tst_results = {}
-        for key in signal_keys:
-            single_input = {
-                pid: data.get(key) for pid, data in parent_tsts.items() if data.get(key) is not None
-            }
-            if len(single_input) == len(parent_ids):
-                tst_results[key] = op.execute(single_input)
-        out_tst = tst_results
-
-    return out_ref, out_tst
+                split_results[key] = op.execute(single_input)
+        split_outputs[split] = split_results
+    return normalize_result_splits(split_outputs)
 
 
 def _execute_single_variable_op(
     op: Any, parent_id: str, nodes: Dict[str, InputData | ProcessedData]
-) -> Tuple[Any, Any]:
+) -> Dict[str, Any]:
     """Execute a single-variable operator on one parent node."""
     parent_results = _get_results(nodes[parent_id])
-    ref_in = parent_results.get("ref")
-    tst_in = parent_results.get("tst")
-
-    if isinstance(ref_in, dict):
-        out_ref = {key: op.execute(val) for key, val in ref_in.items()} if ref_in else None
-    else:
-        out_ref = op.execute(ref_in) if ref_in is not None else None
-
-    if isinstance(tst_in, dict):
-        out_tst = {key: op.execute(val) for key, val in tst_in.items()} if tst_in else None
-    else:
-        out_tst = op.execute(tst_in) if tst_in is not None else None
-
-    return out_ref, out_tst
+    split_outputs: Dict[str, Any] = {}
+    for split in CANONICAL_SPLITS:
+        split_in = get_split_results(parent_results, split)
+        if isinstance(split_in, dict):
+            split_outputs[split] = {key: op.execute(val) for key, val in split_in.items()} if split_in else {}
+        else:
+            split_outputs[split] = op.execute(split_in) if split_in is not None else {}
+    return normalize_result_splits(split_outputs)
 
 
 
@@ -362,7 +351,8 @@ def initialize_state(
     user_instruction: str,
     metadata_path: str,
     h5_path: str,
-    ref_ids: list[int],
+    train_ids: list[int],
+    val_ids: list[int],
     test_ids: list[int],
     case_name: str,
     use_window: bool = True,
@@ -377,20 +367,23 @@ def initialize_state(
     根据初始输入，创建并初始化整个系统的状态（PHMState）。
     为每个物理信号通道创建一个初始节点，并将所有信号按通道分配。
     """
-    ref_signals, ref_labels, ref_metadata = load_signal_data(metadata_path, h5_path, ref_ids)
+    train_signals, train_labels, train_metadata = load_signal_data(metadata_path, h5_path, train_ids)
+    val_signals, val_labels, _val_metadata = load_signal_data(metadata_path, h5_path, val_ids) if list(val_ids or []) else ({}, {}, {})
     test_signals, test_labels, test_metadata = load_signal_data(metadata_path, h5_path, test_ids)
 
     if use_window:
         # Apply windowing to the signals
-        ref_signals, ref_labels = apply_windowing(ref_signals, ref_labels)
+        train_signals, train_labels = apply_windowing(train_signals, train_labels)
+        if val_signals:
+            val_signals, val_labels = apply_windowing(val_signals, val_labels)
         test_signals, test_labels = apply_windowing(test_signals, test_labels)
 
-    if not ref_signals or not test_signals:
-        raise ValueError("Failed to load reference or test signals.")
+    if not train_signals:
+        raise ValueError("Failed to load training signals.")
 
     # --- 确定通道数 ---
     # 从第一个加载的信号中推断出通道数
-    first_sig_array = next(iter(ref_signals.values()))
+    first_sig_array = next(iter(train_signals.values()))
     num_channels = first_sig_array.shape[2] # Shape is (B, L, C)
     channel_names = [f"ch{i+1}" for i in range(num_channels)]
     
@@ -399,22 +392,30 @@ def initialize_state(
     
     for i, channel_name in enumerate(channel_names):
         # 为当前通道提取所有信号
-        channel_ref_signals = {sig_id: sig[:, :, i:i+1] for sig_id, sig in ref_signals.items()}
+        channel_train_signals = {sig_id: sig[:, :, i:i+1] for sig_id, sig in train_signals.items()}
+        channel_val_signals = {sig_id: sig[:, :, i:i+1] for sig_id, sig in val_signals.items()} if val_signals else {}
         channel_test_signals = {sig_id: sig[:, :, i:i+1] for sig_id, sig in test_signals.items()}
         
-        first_sig_shape = next(iter(channel_ref_signals.values())).shape
+        first_sig_shape = next(iter(channel_train_signals.values())).shape
 
         node = InputData(
             node_id=channel_name,
             data={},
-            results={"ref": channel_ref_signals, "tst": channel_test_signals},
+            results=normalize_result_splits(
+                {
+                    "train": channel_train_signals,
+                    "val": channel_val_signals,
+                    "test": channel_test_signals,
+                }
+            ),
             parents=[],
             shape=first_sig_shape,
             meta={
                 "channel": channel_name,
-                "labels_ref": ref_labels,  # 训练/搜索可见
-                "labels_tst": test_labels,  # 默认不可见（仅允许报告阶段读取）
-                "fs": ref_metadata['Sample_rate'].iloc[0]  # 采样频率
+                "labels_train": train_labels,
+                "labels_val": val_labels,
+                "labels_test": test_labels,
+                "fs": train_metadata['Sample_rate'].iloc[0]  # 采样频率
             }
         )
         nodes[channel_name] = node
@@ -437,8 +438,9 @@ def initialize_state(
         reference_signal=next(iter(nodes.values())),
         test_signal=next(iter(nodes.values())),
         dag_state=dag_state,
-        labels_ref=ref_labels,
-        labels_tst=test_labels,
+        labels_train=train_labels,
+        labels_val=val_labels,
+        labels_test=test_labels,
         allow_test_labels_for_reporting=allow_test_labels_for_reporting,
         train_backend=train_backend,
         model_config_path=model_config_path,
@@ -484,12 +486,13 @@ def initialize_state_vibench(
                     return out, labs
         return out, labs
 
-    ref_preview, labels_ref = _take_preview(built.train_loader)
-    tst_preview, labels_tst = _take_preview(built.test_loader)
-    if not ref_preview:
+    train_preview, labels_train = _take_preview(built.train_loader)
+    val_preview, labels_val = _take_preview(built.val_loader)
+    test_preview, labels_test = _take_preview(built.test_loader)
+    if not train_preview:
         raise ValueError("vibench preview is empty (train split). Check data_cfg.")
 
-    first_arr = next(iter(ref_preview.values()))
+    first_arr = next(iter(train_preview.values()))
     if getattr(first_arr, "shape", None) is None or len(first_arr.shape) != 3:
         raise ValueError("Expected preview arrays with shape (1,L,C).")
     _, L, C = first_arr.shape
@@ -500,18 +503,20 @@ def initialize_state_vibench(
     fs_hz = data_cfg.get("fs_hz")
 
     for i, ch in enumerate(channel_names):
-        ch_ref = {sid: arr[:, :, i : i + 1] for sid, arr in ref_preview.items()}
-        ch_tst = {sid: arr[:, :, i : i + 1] for sid, arr in tst_preview.items()}
+        ch_train = {sid: arr[:, :, i : i + 1] for sid, arr in train_preview.items()}
+        ch_val = {sid: arr[:, :, i : i + 1] for sid, arr in val_preview.items()}
+        ch_test = {sid: arr[:, :, i : i + 1] for sid, arr in test_preview.items()}
         node = InputData(
             node_id=ch,
             data={},
-            results={"ref": ch_ref, "tst": ch_tst},
+            results=normalize_result_splits({"train": ch_train, "val": ch_val, "test": ch_test}),
             parents=[],
             shape=(1, int(L), 1),
             meta={
                 "channel": ch,
-                "labels_ref": labels_ref,
-                "labels_tst": labels_tst,
+                "labels_train": labels_train,
+                "labels_val": labels_val,
+                "labels_test": labels_test,
                 "fs": fs_hz,
             },
         )
@@ -526,8 +531,9 @@ def initialize_state_vibench(
         reference_signal=next(iter(nodes.values())),
         test_signal=next(iter(nodes.values())),
         dag_state=dag_state,
-        labels_ref=labels_ref,
-        labels_tst=labels_tst,
+        labels_train=labels_train,
+        labels_val=labels_val,
+        labels_test=labels_test,
         allow_test_labels_for_reporting=allow_test_labels_for_reporting,
         train_backend=train_backend,
         model_config_path=model_config_path,
@@ -630,7 +636,32 @@ def _build_minimal_state_snapshot(state: PHMState) -> PHMState:
     return snapshot
 
 
-def _missing_root_ref_channels(state: PHMState) -> List[str]:
+def _normalize_state_split_contract(state: PHMState) -> PHMState:
+    dag_state = getattr(state, "dag_state", None)
+    nodes = dict(getattr(dag_state, "nodes", {}) or {})
+    for node in nodes.values():
+        if hasattr(node, "results"):
+            node.results = normalize_result_splits(getattr(node, "results", None))
+        meta = dict(getattr(node, "meta", {}) or {})
+        if "labels_train" not in meta and "labels_ref" in meta:
+            meta["labels_train"] = meta.pop("labels_ref")
+        if "labels_test" not in meta and "labels_tst" in meta:
+            meta["labels_test"] = meta.pop("labels_tst")
+        meta.setdefault("labels_val", {})
+        if hasattr(node, "meta"):
+            node.meta = meta
+    if not getattr(state, "labels_train", None):
+        state.labels_train = dict(getattr(state, "labels_ref", {}) or {})
+    if not getattr(state, "labels_test", None):
+        state.labels_test = dict(getattr(state, "labels_tst", {}) or {})
+    if getattr(state, "labels_val", None) is None:
+        state.labels_val = {}
+    state.labels_ref = dict(state.labels_train)
+    state.labels_tst = dict(state.labels_test)
+    return state
+
+
+def _missing_root_train_channels(state: PHMState) -> List[str]:
     missing: List[str] = []
     channels = list(getattr(state.dag_state, "channels", []) or [])
     for ch in channels:
@@ -638,8 +669,8 @@ def _missing_root_ref_channels(state: PHMState) -> List[str]:
         if not isinstance(node, InputData):
             missing.append(str(ch))
             continue
-        ref = (node.results or {}).get("ref")
-        if not isinstance(ref, dict) or not ref:
+        train = get_split_results(node.results or {}, "train")
+        if not isinstance(train, dict) or not train:
             missing.append(str(ch))
     return missing
 
@@ -724,14 +755,15 @@ def load_state(filepath: str):
 
         with open(abs_path, "rb") as f:
             state = pickle.load(f)
+        state = _normalize_state_split_contract(state)
         print("...done.")
         print(f"Successfully loaded state with {len(state.dag_state.nodes)} nodes.")
         source = _resolve_source_mode_for_state(state, None)
         if source == "fixed_ids":
-            missing = _missing_root_ref_channels(state)
+            missing = _missing_root_train_channels(state)
             if missing:
                 print(
-                    "Warning: loaded state is missing root InputData.results['ref'] for "
+                    "Warning: loaded state is missing root InputData.results['train'] for "
                     f"channels={missing}. fixed_ids flow expects full state arrays. "
                     "If this is a minimal snapshot, set data.state_save_mode=full and rebuild."
                 )
@@ -787,15 +819,15 @@ if __name__ == "__main__":
     import numpy as np
 
     # 构建一个简单的 DAG: 输入信号 -> 求均值
-    ref = np.arange(10, dtype=float).reshape(1, 10, 1)
-    tst = np.arange(10, 20, dtype=float).reshape(1, 10, 1)
+    train = np.arange(10, dtype=float).reshape(1, 10, 1)
+    test = np.arange(10, 20, dtype=float).reshape(1, 10, 1)
 
     in_node = InputData(
         node_id="ch1",
         parents=[],
-        shape=ref.shape,
+        shape=train.shape,
         data={},
-        results={"ref": ref, "tst": tst},
+        results={"train": train, "val": {}, "test": test},
         meta={"fs": 1},
     )
 
@@ -824,7 +856,7 @@ if __name__ == "__main__":
         fs=1,
     )
 
-    new_ref = {"ch1": ref * 2}
-    new_tst = {"ch1": tst * 2}
-    updated = run_dag_on_new_data(state, new_ref, new_tst)
+    new_train = {"ch1": train * 2}
+    new_test = {"ch1": test * 2}
+    updated = run_dag_on_new_data(state, new_train, new_test)
     print("Mean results:", updated.dag_state.nodes["n_mean"].results)

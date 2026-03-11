@@ -14,14 +14,14 @@ def _find_root_label_maps(
     *,
     max_hops: int = 1024,
     error_sink: list[str] | None = None,
-) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     """
     Traverse up the DAG from a given node to find its root and return
-    (labels_ref, labels_tst) stored in the root's metadata.
+    (labels_train, labels_val, labels_test) stored in the root's metadata.
     """
     current_node = all_nodes.get(node_id)
     if not current_node:
-        return {}, {}
+        return {}, {}, {}
 
     visited: set[str] = set()
     hops = 0
@@ -35,14 +35,14 @@ def _find_root_label_maps(
                 error_sink.append(
                     f"_find_root_label_maps exceeded max_hops={max_hops} while tracing node '{node_id}'."
                 )
-            return {}, {}
+            return {}, {}, {}
         parent_id = current_node.parents[0]
         if parent_id in visited:
             if error_sink is not None:
                 error_sink.append(
                     f"_find_root_label_maps detected parent cycle while tracing node '{node_id}' (at '{parent_id}')."
                 )
-            return {}, {}
+            return {}, {}, {}
         visited.add(parent_id)
         parent_node = all_nodes.get(parent_id)
         if not parent_node:
@@ -51,18 +51,19 @@ def _find_root_label_maps(
                 error_sink.append(
                     f"_find_root_label_maps missing parent '{parent_id}' while tracing node '{node_id}'."
                 )
-            return {}, {}
+            return {}, {}, {}
         current_node = parent_node
 
     # Once at the root node, extract the 'labels' dictionary from its metadata.
-    labels_ref = current_node.meta.get("labels_ref", {}) or {}
-    labels_tst = current_node.meta.get("labels_tst", {}) or {}
-    if not labels_ref and not labels_tst:
+    labels_train = current_node.meta.get("labels_train", {}) or {}
+    labels_val = current_node.meta.get("labels_val", {}) or {}
+    labels_test = current_node.meta.get("labels_test", {}) or {}
+    if not labels_train and not labels_test:
         # Backward-compatible fallback (discouraged; may include leakage).
         labels = current_node.meta.get("labels", {}) or {}
-        labels_ref = labels
-        labels_tst = labels
-    return labels_ref, labels_tst
+        labels_train = labels
+        labels_test = labels
+    return labels_train, labels_val, labels_test
 
 
 def _build_dataset_from_features(feature_path: str, labels_map: Dict[str, Any], *, flatten: bool) -> Tuple[np.ndarray, np.ndarray]:
@@ -127,32 +128,35 @@ def dataset_preparer_agent(state: PHMState, *, config: Dict | None = None) -> Di
             continue
 
         # For each processed node, find its corresponding true labels from its root.
-        labels_ref, labels_tst = _find_root_label_maps(
+        labels_train, labels_val, labels_test = _find_root_label_maps(
             node_id,
             all_nodes,
             error_sink=state.dag_state.error_log,
         )
-        if not labels_ref and not labels_tst:
+        if not labels_train and not labels_val and not labels_test:
             print(f"Warning: Could not find root labels for node {node_id}. Skipping dataset creation.")
             continue
 
         saved = node.meta.get("saved", {})
-        ref_path = saved.get("ref_path")
-        tst_path = saved.get("tst_path")
+        train_path = saved.get("train_path")
+        val_path = saved.get("val_path")
+        test_path = saved.get("test_path")
 
-        # Build training and test sets using the found labels (separate maps).
-        X_train, y_train = _build_dataset_from_features(ref_path, labels_ref, flatten=flatten)
+        X_train, y_train = _build_dataset_from_features(train_path, labels_train, flatten=flatten)
+        X_val, y_val = _build_dataset_from_features(val_path, labels_val, flatten=flatten)
 
         allow_test = bool(getattr(state, "allow_test_labels_for_reporting", False))
-        X_test, y_test = _build_dataset_from_features(tst_path, labels_tst, flatten=flatten) if allow_test else (np.array([]), np.array([]))
+        X_test, y_test = _build_dataset_from_features(test_path, labels_test, flatten=flatten) if allow_test else (np.array([]), np.array([]))
 
-        if X_train.size == 0 and X_test.size == 0:
+        if X_train.size == 0 and X_val.size == 0 and X_test.size == 0:
             continue
         
         datasets[node_id] = {
             "X_train": X_train,
+            "X_val": X_val,
             "X_test": X_test,
             "y_train": y_train,
+            "y_val": y_val,
             "y_test": y_test,
             "origin_node": node_id,
         }
@@ -165,6 +169,7 @@ def dataset_preparer_agent(state: PHMState, *, config: Dict | None = None) -> Di
                 "origin_node": node_id,
                 "channel": node.meta.get("channel"),
                 "n_train": int(X_train.shape[0]) if X_train.size else 0,
+                "n_val": int(X_val.shape[0]) if X_val.size else 0,
                 "n_test": int(X_test.shape[0]) if X_test.size else 0,
             },
         )

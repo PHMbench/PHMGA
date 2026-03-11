@@ -6,7 +6,7 @@ import logging
 from typing import Any, ClassVar, Dict, Tuple, Literal, Type
 import uuid
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # 建议：可以从一个共享的工具模块导入
 # from utils.shape import assert_shape
@@ -67,10 +67,11 @@ class PHMOperator(BaseModel, abc.ABC):
     out_shape: Tuple[int, ...] | None = Field(default=None, description="最近一次执行时的输出形状。")
     params: Dict[str, Any] = Field(default_factory=dict, description="算子参数字典，包含所有可配置的参数。")
 
-    class Config:
-        extra = "forbid"  # 不允许未定义的字段
-        arbitrary_types_allowed = True
-        frozen = True  # 算子实例一旦创建即不可变，保证图执行的纯粹性
+    model_config = ConfigDict(
+        extra="forbid",
+        arbitrary_types_allowed=True,
+        frozen=True,
+    )
 
     # --- 对 LangGraph 公开的统一接口 --- #
     def __call__(self, x: np.ndarray, **kwargs) -> np.ndarray | dict:

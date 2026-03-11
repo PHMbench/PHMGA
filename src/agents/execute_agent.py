@@ -8,8 +8,8 @@ import json
 import numpy as np
 
 from src.model.explainable.operator_catalog import is_contract_allowed, resolve_operator_contract
-from src.states.phm_states import PHMState, InputData, ProcessedData
-from src.model import get_llm
+from src.states.phm_states import CANONICAL_SPLITS, PHMState, InputData, ProcessedData, get_split_results, normalize_result_splits
+from src.llm import get_llm
 from src.tools.signal_processing_schemas import get_operator
 from src.tools.multi_schemas import MultiVariableOp
 from src.utils.logging_setup import get_current_logger, log_event, timed
@@ -220,54 +220,26 @@ def _execute_multi_variable_op(op, parent_ids, new_nodes):
     Executes a multi-variable operator by gathering data from all parent nodes
     and applying the operator pairwise to the signals within them.
     """
-    # 1. Gather the full result dictionaries from each parent
-    parent_refs = {pid: _get_results(new_nodes[pid]).get("ref") for pid in parent_ids}
-    parent_tsts = {pid: _get_results(new_nodes[pid]).get("tst") for pid in parent_ids}
+    split_outputs: Dict[str, Any] = {}
+    for split in CANONICAL_SPLITS:
+        parent_split = {pid: get_split_results(_get_results(new_nodes[pid]), split) for pid in parent_ids}
+        parent_split = {k: v for k, v in parent_split.items() if isinstance(v, dict)}
+        if not parent_split:
+            split_outputs[split] = {}
+            continue
 
-    # Filter out parents that don't have valid results
-    parent_refs = {k: v for k, v in parent_refs.items() if isinstance(v, dict)}
-    parent_tsts = {k: v for k, v in parent_tsts.items() if isinstance(v, dict)}
-
-    out_ref, out_tst = None, None
-
-    # --- Process Reference Signals ---
-    if parent_refs:
-        # 2. Assume all parents share the same signal keys (e.g., 'id1', 'id2')
-        #    Get the keys from the first valid parent.
-        signal_keys = list(next(iter(parent_refs.values())).keys())
-        
-        ref_results = {}
-        for key in signal_keys:
-            # 3. For each signal key, build the input dict for the operator
-            #    e.g., {'ch1': signal_for_id1, 'ch2': signal_for_id1}
-            single_op_input = {
-                parent_id: parent_data.get(key)
-                for parent_id, parent_data in parent_refs.items()
-            }
-            # Filter out any missing signals for this key
-            single_op_input = {k: v for k, v in single_op_input.items() if v is not None}
-            
-            if len(single_op_input) == len(parent_ids): # Ensure all parents have this signal
-                ref_results[key] = op.execute(single_op_input)
-        out_ref = ref_results
-
-    # --- Process Test Signals (same logic) ---
-    if parent_tsts:
-        signal_keys = list(next(iter(parent_tsts.values())).keys())
-        
-        tst_results = {}
+        signal_keys = list(next(iter(parent_split.values())).keys())
+        split_results = {}
         for key in signal_keys:
             single_op_input = {
                 parent_id: parent_data.get(key)
-                for parent_id, parent_data in parent_tsts.items()
+                for parent_id, parent_data in parent_split.items()
             }
             single_op_input = {k: v for k, v in single_op_input.items() if v is not None}
-
             if len(single_op_input) == len(parent_ids):
-                tst_results[key] = op.execute(single_op_input)
-        out_tst = tst_results
-        
-    return out_ref, out_tst
+                split_results[key] = op.execute(single_op_input)
+        split_outputs[split] = split_results
+    return normalize_result_splits(split_outputs)
 
 
 def _execute_single_variable_op(op, parent_id, new_nodes):
@@ -276,21 +248,14 @@ def _execute_single_variable_op(op, parent_id, new_nodes):
     """
     parent_node = new_nodes[parent_id]
     parent_results = _get_results(parent_node)
-    ref_in = parent_results.get("ref")
-    tst_in = parent_results.get("tst")
-
-    # If the input itself is a dictionary of signals, apply the op to each signal
-    if isinstance(ref_in, dict):
-        out_ref = {key: op.execute(value) for key, value in ref_in.items()} if ref_in else None
-    else:
-        out_ref = op.execute(ref_in) if ref_in is not None else None
-
-    if isinstance(tst_in, dict):
-        out_tst = {key: op.execute(value) for key, value in tst_in.items()} if tst_in else None
-    else:
-        out_tst = op.execute(tst_in) if tst_in is not None else None
-        
-    return out_ref, out_tst
+    split_outputs: Dict[str, Any] = {}
+    for split in CANONICAL_SPLITS:
+        split_in = get_split_results(parent_results, split)
+        if isinstance(split_in, dict):
+            split_outputs[split] = {key: op.execute(value) for key, value in split_in.items()} if split_in else {}
+        else:
+            split_outputs[split] = op.execute(split_in) if split_in is not None else {}
+    return normalize_result_splits(split_outputs)
 
 
 def execute_agent(state: PHMState) -> Dict[str, Any]:
@@ -458,7 +423,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
 
             # --- Decoupled Execution Logic ---
             if issubclass(op_cls, MultiVariableOp):
-                out_ref, out_tst = _execute_multi_variable_op(op, parent_ids, new_nodes)
+                split_outputs = _execute_multi_variable_op(op, parent_ids, new_nodes)
             else: # --- Handle Single-Variable Operators ---
                 if len(parent_ids) > 1:
                     state.dag_state.error_log.append(
@@ -466,7 +431,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                     )
                     continue
                 parent_id = parent_ids[0]
-                out_ref, out_tst = _execute_single_variable_op(op, parent_id, new_nodes)
+                split_outputs = _execute_single_variable_op(op, parent_id, new_nodes)
 
             # Determine channel and new node ID
             # For multi-parent nodes, we can concatenate channel names
@@ -478,34 +443,29 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
             parent_id_abbr = "_".join(sorted(parent_ids))
             new_id = f"{op_abbr}_{idx:02d}_{parent_id_abbr}"
             
-            kind = "both"
-            if out_ref is not None and out_tst is None:
-                kind = "ref"
-            elif out_ref is None and out_tst is not None:
-                kind = "tst"
+            available_splits = [split for split in CANONICAL_SPLITS if split_outputs.get(split)]
+            kind = ",".join(available_splits) if available_splits else "none"
 
             save_dir = os.path.join(case_save_dir, new_id)
             os.makedirs(save_dir, exist_ok=True)
             saved_meta = {}
-            if out_ref is not None:
-                if isinstance(out_ref, dict):
-                    path = os.path.join(save_dir, "ref.npz")
-                    np.savez(path, **out_ref)
+            for split in CANONICAL_SPLITS:
+                split_value = split_outputs.get(split)
+                if not split_value:
+                    continue
+                if isinstance(split_value, dict):
+                    path = os.path.join(save_dir, f"{split}.npz")
+                    np.savez(path, **split_value)
                 else:
-                    path = os.path.join(save_dir, "ref.npy")
-                    np.save(path, out_ref)
-                saved_meta["ref_path"] = path
+                    path = os.path.join(save_dir, f"{split}.npy")
+                    np.save(path, split_value)
+                saved_meta[f"{split}_path"] = path
 
-            if out_tst is not None:
-                if isinstance(out_tst, dict):
-                    path = os.path.join(save_dir, "tst.npz")
-                    np.savez(path, **out_tst)
-                else:
-                    path = os.path.join(save_dir, "tst.npy")
-                    np.save(path, out_tst)
-                saved_meta["tst_path"] = path
-
-            output_for_shape = out_tst if out_tst is not None else out_ref
+            output_for_shape = None
+            for split in ("test", "val", "train"):
+                if split_outputs.get(split):
+                    output_for_shape = split_outputs.get(split)
+                    break
             if isinstance(output_for_shape, dict):
                 # Get shape from the first element in the dictionary
                 shape = next(iter(output_for_shape.values())).shape if output_for_shape else (0,)
@@ -519,7 +479,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
                 parents=parent_ids, # Use the list of parent IDs
                 source_signal_id=parent_ids_str,
                 method=resolved_op_name,
-                results={"ref": out_ref, "tst": out_tst},
+                results=normalize_result_splits(split_outputs),
                 meta={
                     "tool": resolved_op_name,
                     "params": params,

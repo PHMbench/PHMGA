@@ -6,8 +6,7 @@ from typing import Any, Dict, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 
-from src.configuration import Configuration
-from src.model import get_llm
+from src.llm import get_llm
 from src.prompts.report_prompt import REPORT_PROMPT
 from src.states.phm_states import PHMState
 from src.utils.logging_setup import get_current_logger, log_event, timed
@@ -24,7 +23,7 @@ def report_agent(
     """Generate a final markdown report via LLM."""
 
     logger = get_current_logger()
-    llm = get_llm(Configuration.from_runnable_config(None))
+    llm = get_llm(role="answer")
     prompt = ChatPromptTemplate.from_template(REPORT_PROMPT)
     chain = prompt | llm
     llm_input = {

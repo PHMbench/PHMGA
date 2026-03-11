@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import List, Dict, Any, Tuple, Optional
 import os
 import numpy as np
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import uuid
 from typing_extensions import Annotated
 import operator
@@ -14,6 +14,44 @@ from ..schemas.insight_schema import AnalysisInsight
 from ..schemas.plan_schema import AnalysisPlan
 
 Shape = Tuple[int, ...]  # 支持多维形状
+CANONICAL_SPLITS = ("train", "val", "test")
+LEGACY_SPLIT_ALIASES = {"ref": "train", "tst": "test"}
+LEGACY_LABEL_ALIASES = {"labels_ref": "labels_train", "labels_tst": "labels_test"}
+
+
+def canonical_split_name(name: str) -> str:
+    return LEGACY_SPLIT_ALIASES.get(str(name).strip(), str(name).strip())
+
+
+def normalize_result_splits(results: Any) -> Any:
+    if not isinstance(results, dict):
+        return results
+    has_split_keys = any(key in results for key in (*CANONICAL_SPLITS, *LEGACY_SPLIT_ALIASES.keys()))
+    if not has_split_keys:
+        return results
+    normalized: Dict[str, Any] = {}
+    for key, value in results.items():
+        normalized[canonical_split_name(str(key))] = value
+    for split in CANONICAL_SPLITS:
+        normalized.setdefault(split, {})
+    return normalized
+
+
+def normalize_label_aliases(mapping: Dict[str, Any] | None) -> Dict[str, Any]:
+    meta = dict(mapping or {})
+    for legacy_key, canonical_key in LEGACY_LABEL_ALIASES.items():
+        if canonical_key not in meta and legacy_key in meta:
+            meta[canonical_key] = meta.pop(legacy_key)
+    return meta
+
+
+def get_split_results(results: Dict[str, Any] | None, split: str) -> Any:
+    if not isinstance(results, dict):
+        return None
+    canonical = canonical_split_name(split)
+    if canonical in results:
+        return results.get(canonical)
+    return results.get(split)
 
 
 class TrainReport(BaseModel):
@@ -29,8 +67,7 @@ class TrainReport(BaseModel):
     error_modes: List[Dict[str, Any]] = Field(default_factory=list)
     artifacts: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class ConfigPatch(BaseModel):
@@ -40,8 +77,7 @@ class ConfigPatch(BaseModel):
     reason_codes: List[str] = Field(default_factory=list)
     config_patch: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        extra = "forbid"
+    model_config = ConfigDict(extra="forbid")
 
 
 class _NodeBase(BaseModel):
@@ -83,6 +119,17 @@ class InputData(_NodeBase):
     results: Dict[str, Any] = Field(default_factory=dict)
     meta: Dict[str, Any] = Field(default_factory=dict) # 添加 meta 字段
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        payload["results"] = normalize_result_splits(payload.get("results") or {})
+        payload["meta"] = normalize_label_aliases(dict(payload.get("meta") or {}))
+        payload["metadata"] = normalize_label_aliases(dict(payload.get("metadata") or {}))
+        return payload
+
 
 class ProcessedData(_NodeBase):
     """Output of a single signal processing method."""
@@ -93,6 +140,16 @@ class ProcessedData(_NodeBase):
     # processed_data: Any
     results: Any = None
     meta: Dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        payload["results"] = normalize_result_splits(payload.get("results"))
+        payload["meta"] = normalize_label_aliases(dict(payload.get("meta") or {}))
+        return payload
 
 # ---------- Dataset Node ---------- #
 class DataSetNode(_NodeBase):
@@ -108,8 +165,6 @@ class DataSetNode(_NodeBase):
 #     feature_set_id: str = Field(default_factory=lambda: f"feat_{uuid.uuid4().hex[:8]}")
 #     source_processed_id: str
 #     features: List[Dict[str, float]]
-
-# TODO
 
 class Result(BaseModel):
     """
@@ -415,6 +470,10 @@ class PHMState(BaseModel):
 
     # --- New: current immutable TSPN config snapshot (dict) ---
     current_model_config: Dict[str, Any] = Field(default_factory=dict)
+    model_cfg: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Structured model runtime options resolved from config.model.",
+    )
 
     # --- New: real-data backend configuration (e.g., PHM-Vibench data_factory) ---
     data_cfg: Dict[str, Any] = Field(
@@ -423,10 +482,13 @@ class PHMState(BaseModel):
     )
 
     # --- Data boundary / training control (SPEC redlines) ---
-    labels_ref: Dict[str, Any] = Field(default_factory=dict, description="Train/val-visible labels.")
-    labels_tst: Dict[str, Any] = Field(default_factory=dict, description="Test labels (default not visible).")
+    labels_train: Dict[str, Any] = Field(default_factory=dict, description="Training labels.")
+    labels_val: Dict[str, Any] = Field(default_factory=dict, description="Validation labels.")
+    labels_test: Dict[str, Any] = Field(default_factory=dict, description="Test labels.")
+    labels_ref: Dict[str, Any] = Field(default_factory=dict, exclude=True, repr=False)
+    labels_tst: Dict[str, Any] = Field(default_factory=dict, exclude=True, repr=False)
     allow_test_labels_for_reporting: bool = Field(
-        default=False, description="If true, allow using labels_tst for reporting-only metrics."
+        default=False, description="If true, allow using labels_test for reporting-only metrics."
     )
 
     # --- Backend selection / model config ---
@@ -442,5 +504,25 @@ class PHMState(BaseModel):
     def tracker(self) -> "DAGTracker":
         return DAGTracker(self.dag_state)
 
-    class Config:
-        arbitrary_types_allowed = True
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_label_payload(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        payload = dict(data)
+        if "labels_train" not in payload and "labels_ref" in payload:
+            payload["labels_train"] = payload.get("labels_ref") or {}
+        if "labels_test" not in payload and "labels_tst" in payload:
+            payload["labels_test"] = payload.get("labels_tst") or {}
+        payload.setdefault("labels_val", {})
+        return payload
+
+    @model_validator(mode="after")
+    def sync_legacy_label_fields(self) -> "PHMState":
+        if self.labels_ref != self.labels_train:
+            self.labels_ref = dict(self.labels_train)
+        if self.labels_tst != self.labels_test:
+            self.labels_tst = dict(self.labels_test)
+        return self
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)

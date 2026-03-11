@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Any, Dict, List, Tuple
 
-from src.states.phm_states import PHMState, ProcessedData, InputData
+from src.states.phm_states import PHMState, ProcessedData, InputData, get_split_results
 
 
 def _calc_metric(a: np.ndarray, b: np.ndarray, metric: str) -> float:
@@ -24,12 +24,12 @@ def _calc_metric(a: np.ndarray, b: np.ndarray, metric: str) -> float:
 
 def inquirer_agent(state: PHMState, metrics: List[str]) -> Dict[str, List[str]]:
     """
-    Similarity analysis between reference and test signals.
+    Similarity analysis between train and test signals.
 
     Two supported data layouts:
-    1) Legacy: each leaf node contains both ``results['ref']`` and ``results['tst']`` dicts.
+    1) Canonical: each leaf node contains ``results['train']`` and ``results['test']`` dicts.
        In this case, we populate ``node.sim`` in-place and do not create new nodes.
-    2) Paired leaves: separate ref/tst nodes per (channel, method), with ``meta.kind`` in {"ref","tst"}.
+    2) Paired leaves: separate train/test nodes per (channel, method), with ``meta.kind`` in {"train","test"}.
        In this case, we create new similarity nodes (stage="similarity") and return their ids.
     """
     leaf_ids = list(state.dag_state.leaves)
@@ -49,38 +49,38 @@ def inquirer_agent(state: PHMState, metrics: List[str]) -> Dict[str, List[str]]:
         except Exception:
             return None
 
-    # --- Path A: single node has both ref/tst dicts ---
+    # --- Path A: single node has both train/test dicts ---
     for leaf_id in leaf_ids:
         node = state.dag_state.nodes.get(leaf_id)
         if not isinstance(node, (ProcessedData, InputData)) or not node.results:
             continue
 
-        ref_data_dict = node.results.get("ref")
-        tst_data_dict = node.results.get("tst")
-        if not (isinstance(ref_data_dict, dict) and isinstance(tst_data_dict, dict)):
+        train_data_dict = get_split_results(node.results, "train")
+        test_data_dict = get_split_results(node.results, "test")
+        if not (isinstance(train_data_dict, dict) and isinstance(test_data_dict, dict)):
             continue
 
         node.sim = {}
         for metric in metrics:
             sim_matrix: Dict[str, Dict[str, float]] = {}
-            for ref_key, ref_val in ref_data_dict.items():
-                sim_matrix[ref_key] = {}
-                a = np.asarray(ref_val).ravel()
+            for train_key, train_val in train_data_dict.items():
+                sim_matrix[train_key] = {}
+                a = np.asarray(train_val).ravel()
 
-                for tst_key, tst_val in tst_data_dict.items():
-                    b = np.asarray(tst_val).ravel()
+                for test_key, test_val in test_data_dict.items():
+                    b = np.asarray(test_val).ravel()
                     if a.shape != b.shape:
                         state.dag_state.error_log.append(
-                            f"Shape mismatch between {ref_key} and {tst_key} in node {leaf_id}"
+                            f"Shape mismatch between {train_key} and {test_key} in node {leaf_id}"
                         )
                         continue
                     try:
-                        sim_matrix[ref_key][tst_key] = _calc_metric(a, b, metric)
+                        sim_matrix[train_key][test_key] = _calc_metric(a, b, metric)
                     except Exception as exc:
-                        state.dag_state.error_log.append(f"{metric} fail between {ref_key} and {tst_key}: {exc}")
+                        state.dag_state.error_log.append(f"{metric} fail between {train_key} and {test_key}: {exc}")
             node.sim[metric] = sim_matrix
 
-    # --- Path B: paired ref/tst leaves, create similarity nodes ---
+    # --- Path B: paired train/test leaves, create similarity nodes ---
     groups: Dict[Tuple[str, str], Dict[str, str]] = {}
     for leaf_id in leaf_ids:
         node = state.dag_state.nodes.get(leaf_id)
@@ -90,18 +90,18 @@ def inquirer_agent(state: PHMState, metrics: List[str]) -> Dict[str, List[str]]:
         kind = meta.get("kind")
         channel = meta.get("channel")
         method = meta.get("method") or getattr(node, "method", None)
-        if kind not in {"ref", "tst"} or not channel or not method:
+        if kind not in {"train", "test"} or not channel or not method:
             continue
         groups.setdefault((str(channel), str(method)), {})[str(kind)] = leaf_id
 
     tracker = state.tracker()
     for (channel, method), pair in groups.items():
-        if "ref" not in pair or "tst" not in pair:
+        if "train" not in pair or "test" not in pair:
             continue
-        ref_node = state.dag_state.nodes[pair["ref"]]
-        tst_node = state.dag_state.nodes[pair["tst"]]
-        a = _as_array((ref_node.results or {}).get("ref"))
-        b = _as_array((tst_node.results or {}).get("tst"))
+        train_node = state.dag_state.nodes[pair["train"]]
+        test_node = state.dag_state.nodes[pair["test"]]
+        a = _as_array(get_split_results(train_node.results or {}, "train"))
+        b = _as_array(get_split_results(test_node.results or {}, "test"))
         if a is None or b is None or a.shape != b.shape:
             continue
 
@@ -112,8 +112,8 @@ def inquirer_agent(state: PHMState, metrics: List[str]) -> Dict[str, List[str]]:
                 continue
             sim_node = ProcessedData(
                 node_id=f"sim_{metric}_{method}_{channel}",
-                parents=[pair["ref"], pair["tst"]],
-                source_signal_id=f"{pair['ref']},{pair['tst']}",
+                parents=[pair["train"], pair["test"]],
+                source_signal_id=f"{pair['train']},{pair['test']}",
                 method=f"sim_{metric}",
                 results={"sim": val},
                 meta={"channel": channel, "method": method, "metric": metric, "kind": "similarity"},

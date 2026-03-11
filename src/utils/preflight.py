@@ -9,7 +9,12 @@ from typing import Any, Dict, List
 
 import yaml
 
-_LLM_PROVIDERS = {"gemini", "openai", "openai_compatible", "deepseek", "glm"}
+from src.config import (
+    normalize_runtime_config,
+    resolve_data_selection,
+    resolve_source_mode as resolve_case_data_mode,
+    validate_llm_config,
+)
 
 
 def _exists(path_value: str | None) -> bool:
@@ -23,43 +28,7 @@ def _provider_model_check(
     *,
     config_llm: Dict[str, Any] | None = None,
 ) -> Dict[str, Any]:
-    from src.configuration import Configuration
-
-    merged_env = dict(env)
-    source = "env"
-    cfg = dict(config_llm or {})
-    cfg_errors: List[str] = []
-    cfg_warnings: List[str] = []
-
-    if cfg:
-        source = "case_yaml"
-        provider = str(cfg.get("provider") or "").strip().lower()
-        query_model = str(cfg.get("query_generator_model") or "").strip()
-        phm_model = str(cfg.get("phm_model") or query_model).strip()
-        reflection_model = str(cfg.get("reflection_model") or query_model).strip()
-        answer_model = str(cfg.get("answer_model") or query_model).strip()
-
-        if provider not in _LLM_PROVIDERS:
-            cfg_errors.append(
-                f"Invalid llm.provider={provider!r}. "
-                f"Expected one of: {', '.join(sorted(_LLM_PROVIDERS))}."
-            )
-        if not query_model:
-            cfg_errors.append("llm.query_generator_model is required when llm block is provided.")
-        if query_model:
-            merged_env["QUERY_GENERATOR_MODEL"] = query_model
-            merged_env["PHM_MODEL"] = phm_model
-            merged_env["REFLECTION_MODEL"] = reflection_model
-            merged_env["ANSWER_MODEL"] = answer_model
-        if provider:
-            merged_env["LLM_PROVIDER"] = provider
-
-    report = Configuration.validate_provider_env(env=merged_env, strict=False)
-    report["source"] = source
-    report["errors"] = list(cfg_errors) + list(report.get("errors") or [])
-    report["warnings"] = list(cfg_warnings) + list(report.get("warnings") or [])
-    report["ok"] = len(report["errors"]) == 0
-    return report
+    return validate_llm_config(config_llm, env=env)
 
 
 def _dependency_status(pkg: str) -> bool:
@@ -93,17 +62,11 @@ def _binary_exists(name: str) -> bool:
 
 
 def _resolve_case_data_mode(config: Dict[str, Any]) -> str:
-    data = dict(config.get("data") or {})
-    source_mode = str(data.get("source_mode") or "").strip().lower()
-    if source_mode in {"fixed_ids", "vibench"}:
-        return source_mode
-    backend = str(data.get("backend") or "").strip().lower()
-    if backend == "vibench":
-        return "vibench"
-    return "fixed_ids"
+    return resolve_case_data_mode(config)
 
 
 def build_preflight_report(config: Dict[str, Any], *, env: Dict[str, str] | None = None) -> Dict[str, Any]:
+    config = normalize_runtime_config(config)
     env_map = dict(os.environ)
     if env:
         env_map.update(env)
@@ -117,12 +80,16 @@ def build_preflight_report(config: Dict[str, Any], *, env: Dict[str, str] | None
     if source_mode == "fixed_ids":
         metadata_path = str(config.get("metadata_path") or data.get("metadata_path") or "")
         h5_path = str(config.get("h5_path") or data.get("h5_path") or "")
-        ref_ids = list(config.get("ref_ids") or data.get("ref_ids") or [])
-        test_ids = list(config.get("test_ids") or data.get("test_ids") or [])
+        selection = resolve_data_selection(config)
+        train_ids = list(selection.train_ids)
+        val_ids = list(selection.val_ids)
+        test_ids = list(selection.test_ids)
         checks["data"] = {
             "metadata_path": metadata_path,
             "h5_path": h5_path,
-            "n_ref_ids": len(ref_ids),
+            "selection_mode": selection.mode,
+            "n_train_ids": len(train_ids),
+            "n_val_ids": len(val_ids),
             "n_test_ids": len(test_ids),
             "metadata_exists": _exists(metadata_path),
             "h5_exists": _exists(h5_path),
@@ -131,10 +98,12 @@ def build_preflight_report(config: Dict[str, Any], *, env: Dict[str, str] | None
             errors.append(f"metadata_path not found: {metadata_path}")
         if not checks["data"]["h5_exists"]:
             errors.append(f"h5_path not found: {h5_path}")
-        if len(ref_ids) == 0:
-            errors.append("ref_ids is empty.")
+        if len(train_ids) == 0:
+            errors.append("data.selection.train_ids is empty.")
+        if len(val_ids) == 0:
+            warnings.append("data.selection.val_ids is empty; trainer will auto-split validation from train_ids.")
         if len(test_ids) == 0:
-            warnings.append("test_ids is empty; n_test will be 0 unless reporting test labels is enabled.")
+            warnings.append("data.selection.test_ids is empty; n_test will be 0 unless reporting test labels is enabled.")
     else:
         vibench_root = str(data.get("vibench_code_root") or env_map.get("PHM_VIBENCH_CODE_ROOT") or "")
         metadata_file = str(data.get("metadata_file") or "")

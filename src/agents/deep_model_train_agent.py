@@ -16,7 +16,7 @@ import yaml
 from src.model.explainable import build_tspn_from_config, load_tspn_config
 from src.model.explainable.config_schema import TSPNConfig
 from src.model.explainable.bridge import DAG2ConfigAdapter
-from src.states.phm_states import InputData, PHMState, TrainReport
+from src.states.phm_states import InputData, PHMState, TrainReport, get_split_results
 from src.utils.logging_setup import get_current_logger, log_event, timed
 from src.utils.preflight import build_preflight_report, write_preflight_report
 
@@ -63,7 +63,7 @@ def _resolve_source_mode(data_cfg: Dict[str, Any]) -> str:
     return "fixed_ids"
 
 
-def _missing_root_ref_channels(state: PHMState) -> List[str]:
+def _missing_root_train_channels(state: PHMState) -> List[str]:
     missing: List[str] = []
     channels = list(getattr(state.dag_state, "channels", []) or [])
     for ch in channels:
@@ -71,37 +71,37 @@ def _missing_root_ref_channels(state: PHMState) -> List[str]:
         if not isinstance(node, InputData):
             missing.append(str(ch))
             continue
-        ref = (node.results or {}).get("ref")
-        if not isinstance(ref, dict) or not ref:
+        train = get_split_results(node.results or {}, "train")
+        if not isinstance(train, dict) or not train:
             missing.append(str(ch))
     return missing
 
 
-def _profile_to_model_config_path(profile: str | None) -> str | None:
-    mapping = {
-        "tspn_basic": "config/model_tspn_basic.yaml",
-        "tspn_wf_heavy": "config/model_tspn_basic.yaml",
-        "tspn_rm101_deep": "config/model_tspn_rm101_deep.yaml",
-    }
-    if not profile:
-        return None
-    return mapping.get(str(profile).strip())
-
-
-def _resolve_model_config_path(state: PHMState, cfg: Dict[str, Any] | None = None) -> str | None:
-    cfg = cfg or {}
-    data_cfg = dict(getattr(state, "data_cfg", {}) or {})
-    profile_path = _profile_to_model_config_path(str(data_cfg.get("model_profile") or ""))
-    candidate = (
-        state.model_config_path
-        or data_cfg.get("model_config_path")
-        or cfg.get("model_config_path")
-        or profile_path
-    )
+def _resolve_model_config_path(state: PHMState) -> str:
+    model_cfg_raw = getattr(state, "model_cfg", {}) or {}
+    if not isinstance(model_cfg_raw, dict):
+        raise ValueError("state.model_cfg must be a dict.")
+    model_cfg = dict(model_cfg_raw)
+    candidate = state.model_config_path or model_cfg.get("config_path")
     if not candidate:
-        default_path = Path("config") / "model_tspn_basic.yaml"
-        candidate = str(default_path) if default_path.exists() else None
-    return str(candidate) if candidate else None
+        raise ValueError(
+            "Missing state.model_config_path. "
+            "Runner must write resolved model config into PHMState before training."
+        )
+    candidate_path = Path(str(candidate))
+    if not candidate_path.exists():
+        raise ValueError(f"TSPN model_config_path not found: {candidate!r}")
+    return str(candidate_path)
+
+
+def _resolve_model_autofit(state: PHMState, key: str, *, default: bool) -> bool:
+    model_cfg_raw = getattr(state, "model_cfg", {}) or {}
+    if not isinstance(model_cfg_raw, dict):
+        raise ValueError("state.model_cfg must be a dict.")
+    model_cfg = dict(model_cfg_raw)
+    if model_cfg.get(key) is None:
+        return default
+    return _parse_bool(model_cfg.get(key), default=default)
 
 
 def _write_json(path: Path, payload: Dict[str, Any]) -> None:
@@ -115,9 +115,8 @@ def _write_run_preflight_report(state: PHMState, run_dir: Path) -> None:
         "data": data_cfg,
         "metadata_path": data_cfg.get("metadata_path"),
         "h5_path": data_cfg.get("h5_path"),
-        "ref_ids": data_cfg.get("ref_ids"),
-        "test_ids": data_cfg.get("test_ids"),
-        "model_config_path": _resolve_model_config_path(state, {}),
+        "selection": data_cfg.get("selection"),
+        "model_config_path": _resolve_model_config_path(state),
     }
     report = build_preflight_report(preflight_cfg)
     write_preflight_report(report, run_dir / "preflight_report.json")
@@ -201,11 +200,11 @@ def _infer_channels_and_length(state: PHMState) -> Tuple[int, int]:
     first = state.dag_state.nodes.get(channels[0])
     if not isinstance(first, InputData):
         raise ValueError("Expected InputData nodes for channel roots.")
-    # results['ref'] holds {sample_id: (1,L,1)}
-    ref_dict = (first.results or {}).get("ref") or {}
-    if not isinstance(ref_dict, dict) or not ref_dict:
-        raise ValueError("InputData.results['ref'] is missing or empty.")
-    first_arr = next(iter(ref_dict.values()))
+    # results['train'] holds {sample_id: (1,L,1)}
+    train_dict = get_split_results(first.results or {}, "train") or {}
+    if not isinstance(train_dict, dict) or not train_dict:
+        raise ValueError("InputData.results['train'] is missing or empty.")
+    first_arr = next(iter(train_dict.values()))
     if not isinstance(first_arr, np.ndarray) or first_arr.ndim != 3:
         raise ValueError("Expected channel arrays with shape (1,L,1).")
     _, L, _ = first_arr.shape
@@ -257,10 +256,10 @@ def _build_fused_view(
     return _SplitData(x=x, y=y, sample_ids=sample_ids)
 
 
-def _make_label_to_index(labels_ref: Dict[str, Any]) -> Dict[str, int]:
-    uniq = sorted({str(v) for v in labels_ref.values()})
+def _make_label_to_index(labels_train: Dict[str, Any]) -> Dict[str, int]:
+    uniq = sorted({str(v) for v in labels_train.values()})
     if len(uniq) < 2:
-        raise ValueError("Need at least 2 classes in labels_ref.")
+        raise ValueError("Need at least 2 classes in labels_train.")
     return {lab: i for i, lab in enumerate(uniq)}
 
 
@@ -468,9 +467,9 @@ def _train_with_vibench_factory(state: PHMState, *, run_dir: Path, data_cfg: Dic
     B, L, C = tuple(int(x) for x in x0.shape)
     num_classes = max(2, len(label_to_index))
 
-    source_model_config_path = _resolve_model_config_path(state, {"model_config_path": data_cfg.get("model_config_path")})
-    autofit_dims = _parse_bool(data_cfg.get("autofit_dims"), default=True)
-    autofit_num_classes = _parse_bool(data_cfg.get("autofit_num_classes"), default=True)
+    source_model_config_path = _resolve_model_config_path(state)
+    autofit_dims = _resolve_model_autofit(state, "autofit_dims", default=True)
+    autofit_num_classes = _resolve_model_autofit(state, "autofit_num_classes", default=True)
     disable_prior_init = _parse_bool(data_cfg.get("disable_prior_init"), default=False)
     use_dag_model_config = _parse_bool(data_cfg.get("use_dag_model_config"), default=False)
     use_class_weight = _parse_bool(
@@ -1231,7 +1230,7 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
     Inner-loop trainer for the torch-side TSPN model.
 
     This agent enforces the label boundary:
-    - training/validation use labels_ref only
+    - training/validation use labels_train / labels_val
     - test labels are used only when allow_test_labels_for_reporting=true
     """
     cfg = config or {}
@@ -1274,9 +1273,14 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
         with timed(logger, event="train.vibench", phase="train", node="train"):
             return _train_with_vibench_factory(state, run_dir=run_dir, data_cfg=data_cfg)
 
-    model_config_path = _resolve_model_config_path(state, cfg)
-    if not model_config_path or not Path(model_config_path).exists():
-        err = f"TSPN model_config_path not found: {model_config_path!r}"
+    model_cfg = getattr(state, "model_cfg", {}) or {}
+    if not isinstance(model_cfg, dict):
+        raise ValueError("state.model_cfg must be a dict.")
+
+    try:
+        model_config_path = _resolve_model_config_path(state)
+    except ValueError as exc:
+        err = str(exc)
         state.error_logs.append(err)
         ml = dict(state.ml_results)
         ml["tspn"] = {"error": err, "artifacts_dir": str(run_dir)}
@@ -1287,15 +1291,15 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
             phase="train",
             node="train",
             message=err,
-            payload={"model_config_path": model_config_path},
+            payload={"model_config_path": getattr(state, "model_config_path", None)},
         )
-        return {"ml_results": ml, "run_dir": str(run_dir)}
+        raise
 
     if source_mode == "fixed_ids":
-        missing = _missing_root_ref_channels(state)
+        missing = _missing_root_train_channels(state)
         if missing:
             raise ValueError(
-                "InputData.results['ref'] is missing for fixed_ids mode "
+                "InputData.results['train'] is missing for fixed_ids mode "
                 f"(channels={missing}). The loaded built_state appears to be a minimal state snapshot. "
                 "fixed_ids training requires a full state with root arrays. "
                 "Set data.state_save_mode=full and rebuild/remove built_state.pkl."
@@ -1304,21 +1308,23 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
     # Infer dims from data.
     C, L = _infer_channels_and_length(state)
 
-    # Build label mapping from ref labels only.
-    if not state.labels_ref:
+    # Build label mapping from train labels only.
+    if not state.labels_train:
         # fallback to root meta (backward-compatible)
         first_ch = state.dag_state.channels[0]
         root = state.dag_state.nodes.get(first_ch)
         if isinstance(root, InputData):
-            state.labels_ref = root.meta.get("labels_ref", {}) or {}
-            state.labels_tst = root.meta.get("labels_tst", {}) or {}
+            state.labels_train = root.meta.get("labels_train", {}) or {}
+            state.labels_val = root.meta.get("labels_val", {}) or {}
+            state.labels_test = root.meta.get("labels_test", {}) or {}
 
-    label_to_index = _make_label_to_index(state.labels_ref)
-    labels_ref_idx = _remap_labels(state.labels_ref, label_to_index)
+    label_to_index = _make_label_to_index(state.labels_train)
+    labels_train_idx = _remap_labels(state.labels_train, label_to_index)
+    labels_val_idx = _remap_labels(state.labels_val, label_to_index) if state.labels_val else {}
     inferred_num_classes = len(label_to_index)
 
-    autofit_dims = _parse_bool(data_cfg.get("autofit_dims"), default=True)
-    autofit_num_classes = _parse_bool(data_cfg.get("autofit_num_classes"), default=True)
+    autofit_dims = _resolve_model_autofit(state, "autofit_dims", default=True)
+    autofit_num_classes = _resolve_model_autofit(state, "autofit_num_classes", default=True)
     use_class_weight = _parse_bool(
         data_cfg.get("use_class_weight"),
         default=str(data_cfg.get("dataset_name") or "") == "RM_101_THU_GEARBOX",
@@ -1428,22 +1434,26 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
     _write_run_preflight_report(state, run_dir)
 
     # Build fused views.
-    ref = _build_fused_view(state, split="ref", labels_map=labels_ref_idx)
-    if ref.x.size == 0:
+    train = _build_fused_view(state, split="train", labels_map=labels_train_idx)
+    if train.x.size == 0:
         raise ValueError("Empty training data after channel/label intersection.")
 
     seed = int(getattr(tspn_cfg.train, "seed", 42) or 42)
     random.seed(seed)
     np.random.seed(seed)
 
-    # Train/val split within ref.
-    tr_idx, val_idx = _train_val_split(ref.y, val_ratio=float(tspn_cfg.train.val_ratio), seed=seed)
+    explicit_val = _build_fused_view(state, split="val", labels_map=labels_val_idx) if labels_val_idx else _SplitData(
+        x=np.empty((0, 0, 0)),
+        y=np.empty((0,), dtype=np.int64),
+        sample_ids=[],
+    )
+    auto_val_split = explicit_val.x.size == 0
 
     # Optional test split (reporting only).
     test = None
-    if bool(getattr(state, "allow_test_labels_for_reporting", False)) and state.labels_tst:
-        labels_tst_idx = _remap_labels(state.labels_tst, label_to_index)
-        test = _build_fused_view(state, split="tst", labels_map=labels_tst_idx)
+    if bool(getattr(state, "allow_test_labels_for_reporting", False)) and state.labels_test:
+        labels_test_idx = _remap_labels(state.labels_test, label_to_index)
+        test = _build_fused_view(state, split="test", labels_map=labels_test_idx)
 
     # Optional dependency: torch.
     try:
@@ -1501,8 +1511,13 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
         sids = [split_data.sample_ids[i] for i in idx.tolist()]
         return _SplitData(x=x, y=y, sample_ids=sids)
 
-    train_data = _subset(ref, tr_idx)
-    val_data = _subset(ref, val_idx)
+    if auto_val_split:
+        tr_idx, val_idx = _train_val_split(train.y, val_ratio=float(tspn_cfg.train.val_ratio), seed=seed)
+        train_data = _subset(train, tr_idx)
+        val_data = _subset(train, val_idx)
+    else:
+        train_data = _subset(train, np.arange(train.y.shape[0], dtype=np.int64))
+        val_data = _subset(explicit_val, np.arange(explicit_val.y.shape[0], dtype=np.int64))
 
     train_loader = DataLoader(
         _ArrayDataset(train_data.x, train_data.y, train_data.sample_ids),
@@ -1748,7 +1763,11 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
     dataset_manifest = {
         "source_mode": str(data_cfg.get("source_mode") or "fixed_ids"),
         "dataset_name": data_cfg.get("dataset_name"),
-        "split_protocol": "fixed_ids(ref->train/val, tst->test)",
+        "split_protocol": (
+            "fixed_ids(train->train,val->val,test->test)"
+            if not auto_val_split
+            else "fixed_ids(train->train/val auto-split,test->test)"
+        ),
         "n_train": int(train_data.y.shape[0]),
         "n_val": int(val_data.y.shape[0]),
         "n_test": int(test.y.shape[0]) if test is not None and test.y.size else 0,
@@ -1854,9 +1873,9 @@ def deep_model_train_agent(state: PHMState, *, config: Dict[str, Any] | None = N
         dataset_id=str(getattr(state, "case_name", "") or ""),
         task_id="",
         split_protocol={
-            "train": "ref_train",
-            "val": "ref_val",
-            "test": "tst",
+            "train": "train",
+            "val": "val" if not auto_val_split else "auto_from_train",
+            "test": "test",
             "allow_test_labels_for_reporting": bool(getattr(state, "allow_test_labels_for_reporting", False)),
         },
         metrics={
