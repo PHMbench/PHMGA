@@ -20,32 +20,19 @@ def _load_env_file(path: Path) -> None:
     if not path.exists():
         return
     for line in path.read_text(encoding="utf-8").splitlines():
-        s = line.strip()
-        if not s or s.startswith("#") or "=" not in s:
+        text = line.strip()
+        if not text or text.startswith("#") or "=" not in text:
             continue
-        k, v = s.split("=", 1)
-        k = k.strip()
-        v = v.strip().strip('"').strip("'")
-        if k and k not in os.environ:
-            os.environ[k] = v
-
-
-def _prepare_gateway_env() -> None:
-    os.environ["LLM_PROVIDER"] = "openai_compatible"
-    os.environ["QUERY_GENERATOR_MODEL"] = "gemini-2.5-flash"
-    if not os.getenv("OPENAI_BASE_URL"):
-        base = os.getenv("GEMINI_BASE_URL") or os.getenv("GEMINI_BASE")
-        if base:
-            os.environ["OPENAI_BASE_URL"] = base
-    if not os.getenv("OPENAI_API_KEY"):
-        key = os.getenv("GEMINI_API_KEY")
-        if key:
-            os.environ["OPENAI_API_KEY"] = key
+        key, value = text.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
 
 
 def _print_env_summary() -> None:
-    base = os.getenv("OPENAI_BASE_URL")
-    key = os.getenv("OPENAI_API_KEY")
+    base = os.getenv("OPENROUTER_BASE_URL")
+    key = os.getenv("OPENROUTER_API_KEY")
     model = os.getenv("QUERY_GENERATOR_MODEL")
     print("LLM_PROVIDER=", os.getenv("LLM_PROVIDER"))
     print("MODEL=", model)
@@ -54,10 +41,9 @@ def _print_env_summary() -> None:
 
 
 def _phmga_get_llm_test() -> None:
-    from src.configuration import Configuration
     from src.model import get_llm
 
-    llm = get_llm(Configuration.from_runnable_config(None), temperature=0)
+    llm = get_llm(temperature=0)
     print("PHMGA_LLM_CLASS=", llm.__class__.__name__)
     resp = llm.invoke("Reply exactly OK")
     content = getattr(resp, "content", resp)
@@ -67,16 +53,17 @@ def _phmga_get_llm_test() -> None:
 def main() -> None:
     _ensure_repo_on_path()
     _load_env_file(_repo_root() / ".env")
-    _prepare_gateway_env()
+    os.environ.setdefault("LLM_PROVIDER", "openrouter")
+    os.environ.setdefault("QUERY_GENERATOR_MODEL", "openai/gpt-4o-mini")
 
     print("== ENV SUMMARY ==")
     _print_env_summary()
 
-    print("\n== PHMGA get_llm() GATEWAY TEST ==")
+    print("\n== PHMGA get_llm() OPENROUTER TEST ==")
     try:
         _phmga_get_llm_test()
-    except Exception as e:
-        print("PHMGA_TEST_ERROR=", type(e).__name__, str(e)[:400])
+    except Exception as exc:
+        print("PHMGA_TEST_ERROR=", type(exc).__name__, str(exc)[:400])
 
 
 if __name__ == "__main__":
