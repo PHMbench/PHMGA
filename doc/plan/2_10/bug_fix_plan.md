@@ -18,7 +18,7 @@
 - 已完成数值稳定性修复：`_softplus_inv` 稳定化、训练梯度裁剪、Hjorth/Cepstrum/小波边界处理。
 - 已完成 fail-fast：`Configuration.validate_provider_env()`、preflight `provider_checks`、Gemini 缺 key 直接报错。
 - 已完成安全/资源收口：HDF5 `with` 管理、`state.pkl` SHA256 sidecar 校验（支持 `PHM_ALLOW_UNVERIFIED_STATE=1` 本地兼容）。
-- 详细状态请以 `doc/plan/2_10/bug_status_matrix.md` 为准。
+- 详细状态请以 `doc/plan/2_10/implementation_plan.md` 与 `doc/plan/2_10/bug_report_consolidated.md` 为准。
 
 ---
 
@@ -212,15 +212,7 @@ PHMGA 代码库整体结构良好，但存在一些需要立即处理的安全�
 
 ## 各报告详情
 
-10 个 teammates 的详细报告已保存到 `doc/plan/2_10/` 目录：
+原始分模块审查已收敛到两份保留文档：
 
-1. `agent_01_plan_agent.md` - 14 个 BUG
-2. `agent_02_execute_agent.md` - 11 个 BUG
-3. `agent_03_reflect_agent.md` - 10 个 BUG
-4. `agent_04_dataset_preparer.md` - 10 个 BUG
-5. `agent_05_shallow_ml.md` - 9 个 BUG
-6. `agent_06_report_agent.md` - 10 个 BUG
-7. `agent_07_inquirer_agent.md` - 12 个 BUG
-8. `agent_08_utils_states.md` - 11 个 BUG
-9. `agent_09_tools_schemas.md` - 20 个 BUG
-10. `agent_10_graph_config.md` - 14 个 BUG
+1. `bug_report_consolidated.md` - 合并后的 BUG 集合
+2. `implementation_plan.md` - 最终实施方案

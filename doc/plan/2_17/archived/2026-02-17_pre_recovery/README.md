@@ -4,9 +4,6 @@
 
 归档文件：
 - `verification_report.md`
-- `status_matrix.md`
 - `evidence_summary.md`
-- `guidebook_snapshot.md`
-- `sync_from_2_16.md`
 
 当前有效执行文档请使用：`doc/plan/2_18/guidebook.md`。
