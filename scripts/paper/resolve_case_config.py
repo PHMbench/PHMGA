@@ -98,6 +98,8 @@ def main() -> int:
     if provider or model:
         if not provider or not model:
             raise SystemExit("--provider and --model must be set together.")
+        if provider != "openrouter":
+            raise SystemExit("--provider only supports 'openrouter' in the current config contract.")
         cfg["llm"] = {
             "provider": provider,
             "query_generator_model": model,

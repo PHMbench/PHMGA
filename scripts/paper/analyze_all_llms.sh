@@ -15,7 +15,7 @@ EXPECTED_PER_LLM=6
 total_complete=0
 total_records=0
 
-llm_dirs=("m1_gemini25" "m2_gemini3" "m3_glm47")
+llm_dirs=("m1_openrouter_gpt4omini" "m2_openrouter_claude35" "m3_openrouter_gpt4o")
 
 # Check each LLM
 for dir in "${llm_dirs[@]}"; do

@@ -60,12 +60,12 @@ for row in rows:
 
 def infer_provider_model(llm_tag: str):
     tag = (llm_tag or "").lower()
-    if "m3_glm47" in tag:
-        return "glm", "GLM-4.7-Flash"
-    if "m2_gemini3" in tag:
-        return "openai_compatible", "gemini-3-flash-preview"
-    if "m1_gemini25" in tag:
-        return "openai_compatible", "gemini-2.5-flash"
+    if "m3_openrouter_gpt4o" in tag:
+        return "openrouter", "openai/gpt-4o"
+    if "m2_openrouter_claude35" in tag:
+        return "openrouter", "anthropic/claude-3.5-sonnet"
+    if "m1_openrouter_gpt4omini" in tag:
+        return "openrouter", "openai/gpt-4o-mini"
     return "", ""
 
 for combo, row in sorted(latest.items()):
@@ -73,7 +73,11 @@ for combo, row in sorted(latest.items()):
     if status == "ok":
         continue
     llm_tag = str(row.get("llm") or "")
-    active_llm_tags = {"m1_gemini25", "m2_gemini3", "m3_glm47"}
+    active_llm_tags = {
+        "m1_openrouter_gpt4omini",
+        "m2_openrouter_claude35",
+        "m3_openrouter_gpt4o",
+    }
     if llm_tag not in active_llm_tags:
         sys.stderr.write(f"[rerun][skip] inactive_or_legacy_tag llm={llm_tag} combo={combo}\n")
         continue

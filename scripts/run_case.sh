@@ -146,7 +146,11 @@ fi
 
 [[ -f "${config_abs}" ]] || { echo "Error: config file not found: ${config_abs}" >&2; exit 2; }
 
-base_cmd=(python main.py "${case_name}" --config "${config_abs}")
+config_dir="$(cd -- "$(dirname -- "${config_abs}")" && pwd)"
+config_name="$(basename -- "${config_abs}")"
+config_name="${config_name%.*}"
+
+base_cmd=(python main.py --config-dir "${config_dir}" --config-name "${config_name}" --case "${case_name}")
 
 provider="$(read_case_llm_value "${config_abs}" "provider")"
 model_name="$(read_case_llm_value "${config_abs}" "query_generator_model")"
@@ -164,17 +168,8 @@ fi
 
 base_url=""
 case "${provider}" in
-  glm)
-    base_url="$(effective_env_value GLM_API_BASE)"
-    ;;
-  deepseek)
-    base_url="$(effective_env_value DEEPSEEK_API_BASE)"
-    ;;
-  openai|openai_compatible)
-    base_url="$(effective_env_value OPENAI_BASE_URL)"
-    if [[ -z "${base_url}" ]]; then
-      base_url="$(effective_env_value OPENAI_API_BASE)"
-    fi
+  openrouter)
+    base_url="$(effective_env_value OPENROUTER_BASE_URL)"
     ;;
 esac
 base_host="$(base_host_from_url "${base_url}")"

@@ -88,12 +88,12 @@ base_env=(
   "PHM_REPORT_MODE=auto"
   "PHM_ABLATION_MODE=${ablation_mode}"
 )
-# Add OPENAI_* variables if set (for openai_compatible provider)
-if [[ -n "${OPENAI_API_KEY:-}" ]]; then
-  base_env+=("OPENAI_API_KEY=${OPENAI_API_KEY}")
+# Add OpenRouter variables if set
+if [[ -n "${OPENROUTER_API_KEY:-}" ]]; then
+  base_env+=("OPENROUTER_API_KEY=${OPENROUTER_API_KEY}")
 fi
-if [[ -n "${OPENAI_BASE_URL:-}" ]]; then
-  base_env+=("OPENAI_BASE_URL=${OPENAI_BASE_URL}")
+if [[ -n "${OPENROUTER_BASE_URL:-}" ]]; then
+  base_env+=("OPENROUTER_BASE_URL=${OPENROUTER_BASE_URL}")
 fi
 
 resolve_cmd=(
@@ -116,7 +116,7 @@ preflight_cmd=(
   conda run -n "${conda_env}" -v PYTHONPATH="${REPO_ROOT}" python main.py preflight --config "${resolved_cfg}"
 )
 run_cmd=(
-  conda run --no-capture-output -n "${conda_env}" -v PYTHONPATH="${REPO_ROOT}" python main.py case1 --config "${resolved_cfg}"
+  conda run --no-capture-output -n "${conda_env}" -v PYTHONPATH="${REPO_ROOT}" python main.py --config-dir "$(dirname -- "${resolved_cfg}")" --config-name "$(basename -- "${resolved_cfg}" .yaml)" --case case1
 )
 discover_cmd=(
   conda run -n "${conda_env}" -v PYTHONPATH="${REPO_ROOT}" python scripts/paper/discover_run_artifacts.py --case-dir "${case_dir}"

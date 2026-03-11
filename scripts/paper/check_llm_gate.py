@@ -17,50 +17,29 @@ def _load_local_dotenv() -> None:
 
 
 def _gate_a1(provider: str, model: str) -> int:
-    if provider.strip().lower() != "glm":
-        print(f"GATE_A1_FAIL unsupported provider for zai gate: {provider!r}")
+    if provider.strip().lower() != "openrouter":
+        print(f"GATE_A1_FAIL unsupported provider for openrouter gate: {provider!r}")
         return 2
     try:
-        from zai import ZhipuAiClient
+        from src.model import get_llm
     except Exception as exc:
-        print(f"GATE_A1_FAIL zai import error: {type(exc).__name__}")
+        print(f"GATE_A1_FAIL import error: {type(exc).__name__}")
         return 3
 
-    api_key = os.getenv("GLM_API_KEY")
-    if not api_key:
-        print("GATE_A1_FAIL missing GLM_API_KEY")
+    os.environ["LLM_PROVIDER"] = "openrouter"
+    os.environ["QUERY_GENERATOR_MODEL"] = str(model).strip()
+    if not os.getenv("OPENROUTER_API_KEY"):
+        print("GATE_A1_FAIL missing OPENROUTER_API_KEY")
         return 4
-
-    client = ZhipuAiClient(api_key=api_key)
     try:
-        response = client.chat.completions.create(
-            model=str(model).strip().lower(),
-            messages=[{"role": "user", "content": "只回复 OK"}],
-            thinking={"type": "enabled"},
-            stream=True,
-            max_tokens=128,
-            temperature=0.1,
-        )
+        response = get_llm(temperature=0).invoke("只回复 OK")
     except Exception as exc:
         print(f"GATE_A1_FAIL request error: {type(exc).__name__}: {exc}")
         return 5
 
-    chunks: list[str] = []
-    seen = False
-    for chunk in response:
-        delta = chunk.choices[0].delta
-        reasoning = getattr(delta, "reasoning_content", None)
-        content = getattr(delta, "content", None)
-        if reasoning:
-            seen = True
-            chunks.append(str(reasoning))
-        if content:
-            seen = True
-            chunks.append(str(content))
-
-    text = "".join(chunks)
+    text = str(getattr(response, "content", response))
     print(f"GATE_A1_OUTPUT={text[:240]}")
-    if not seen:
+    if not text:
         print("GATE_A1_FAIL empty streaming response")
         return 6
     if "OK" not in text.upper():
@@ -105,8 +84,8 @@ def _gate_a2(config_path: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run unified LLM connectivity gates with dotenv loading.")
     parser.add_argument("--gate", required=True, choices=["a1", "a2"])
-    parser.add_argument("--provider", default="glm")
-    parser.add_argument("--model", default="glm-4.7-flash")
+    parser.add_argument("--provider", default="openrouter")
+    parser.add_argument("--model", default="openai/gpt-4o-mini")
     parser.add_argument("--config", default="")
     args = parser.parse_args()
 
@@ -122,4 +101,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
