@@ -3,7 +3,7 @@ project:
   version: journal_thesis_rebuild
 
 defaults:
-  dataset: rm101
+  dataset: rm101_synth
   graph_path: dag_only
 
 llm:
