@@ -1,3 +1,5 @@
+"""Base contracts for the unified operator system."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal
@@ -11,6 +13,7 @@ ExecutionRole = Literal["trainable", "fixed", "proxy", "outer_only"]
 
 
 class OperatorSpec(BaseModel):
+    """Static metadata required by workflow, bridge, and reporting."""
     op_uid: str
     name: str
     param_schema: Dict[str, str] = Field(default_factory=dict)
@@ -21,6 +24,7 @@ class OperatorSpec(BaseModel):
 
 
 class BaseIsomorphicOperator:
+    """One semantic operator with multiple backend execution surfaces."""
     spec: OperatorSpec
 
     def forward_np(self, x: np.ndarray, **kwargs: Any) -> np.ndarray:

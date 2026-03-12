@@ -1,3 +1,5 @@
+"""Prompt-template exports for the workflow front-end."""
+
 from .templates import EXECUTOR_PROMPT, PLANNER_PROMPT, REFLECTOR_PROMPT, REPORT_PROMPT
 
 __all__ = ["PLANNER_PROMPT", "EXECUTOR_PROMPT", "REFLECTOR_PROMPT", "REPORT_PROMPT"]

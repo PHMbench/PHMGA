@@ -1,6 +1,8 @@
+"""Feature extraction helpers shared by the ML and trainable paths."""
+
 from __future__ import annotations
 
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 import numpy as np
 
@@ -10,6 +12,7 @@ from src.operators import OperatorCatalog
 
 
 def _apply_spec(window: np.ndarray, spec: FeatureSpec, catalog: OperatorCatalog) -> float:
+    """Apply one compiled feature spec to a single window."""
     current = window[[spec.channel_index], :]
     for op_uid in spec.transform_ops:
         current = catalog.get(op_uid).forward_np(current)
@@ -22,6 +25,7 @@ def build_feature_matrix(
     split_records: Dict[str, List[SignalRecord]],
     catalog: OperatorCatalog,
 ) -> Dict[str, Dict[str, np.ndarray | list[str]]]:
+    """Turn split-specific signal windows into downstream feature matrices."""
     outputs: Dict[str, Dict[str, np.ndarray | list[str]]] = {}
     for split_name, records in split_records.items():
         features: list[list[float]] = []
@@ -29,6 +33,8 @@ def build_feature_matrix(
         sample_ids: list[str] = []
         for record in records:
             for window in record.windows:
+                # Sample ids are duplicated per window on purpose so reports can
+                # still trace predictions back to their source sample.
                 features.append([_apply_spec(window, spec, catalog) for spec in plan.feature_specs])
                 labels.append(record.label)
                 sample_ids.append(record.sample_id)

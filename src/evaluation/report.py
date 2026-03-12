@@ -1,3 +1,5 @@
+"""Report rendering for graph-dependent artifacts."""
+
 from __future__ import annotations
 
 from typing import Any, Dict
@@ -9,6 +11,7 @@ from src.states import WorkflowState
 
 
 def render_mermaid_dag(dag: DagJson) -> str:
+    """Render the validated DAG into a lightweight Mermaid diagram."""
     lines = ["```mermaid", "flowchart TD"]
     for node in dag.nodes:
         lines.append(f"    {node.node_id}[{node.name}]")
@@ -24,6 +27,7 @@ def build_final_report(
     manifest: CompiledDagManifest,
     path_artifacts: Dict[str, Any],
 ) -> str:
+    """Assemble the final markdown report from protocol and artifact evidence."""
     lines = [
         f"# PHMGA Final Report: {protocol.dataset_name} / {state.graph_path}",
         "",

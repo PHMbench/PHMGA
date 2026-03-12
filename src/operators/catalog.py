@@ -1,3 +1,5 @@
+"""Minimal operator catalog used by the rebuilt research scaffold."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,6 +11,7 @@ from .base import BaseIsomorphicOperator, OperatorSpec
 
 
 class NormalizeOperator(BaseIsomorphicOperator):
+    """Per-channel normalization before feature extraction."""
     spec = OperatorSpec(
         op_uid="signal.normalize",
         name="Normalize",
@@ -30,6 +33,7 @@ class NormalizeOperator(BaseIsomorphicOperator):
 
 
 class FFTMagnitudeOperator(BaseIsomorphicOperator):
+    """Frequency-domain transform used by all current paths."""
     spec = OperatorSpec(
         op_uid="signal.fft_mag",
         name="FFT Magnitude",
@@ -48,6 +52,7 @@ class FFTMagnitudeOperator(BaseIsomorphicOperator):
 
 
 class MeanFeatureOperator(BaseIsomorphicOperator):
+    """Scalar summary feature on top of the transform chain."""
     spec = OperatorSpec(
         op_uid="feature.mean",
         name="Mean",
@@ -66,6 +71,7 @@ class MeanFeatureOperator(BaseIsomorphicOperator):
 
 
 class StdFeatureOperator(BaseIsomorphicOperator):
+    """Standard-deviation summary feature for the minimal baseline."""
     spec = OperatorSpec(
         op_uid="feature.std",
         name="Std",
@@ -84,6 +90,7 @@ class StdFeatureOperator(BaseIsomorphicOperator):
 
 
 class RMSFeatureOperator(BaseIsomorphicOperator):
+    """Root-mean-square feature used in both downstream paths."""
     spec = OperatorSpec(
         op_uid="feature.rms",
         name="RMS",
@@ -103,6 +110,7 @@ class RMSFeatureOperator(BaseIsomorphicOperator):
 
 @dataclass
 class OperatorCatalog:
+    """Lookup table that exposes the sanctioned operator subset."""
     operators: Dict[str, BaseIsomorphicOperator]
 
     def get(self, op_uid: str) -> BaseIsomorphicOperator:
@@ -121,6 +129,7 @@ class OperatorCatalog:
 
 
 def get_operator_catalog() -> OperatorCatalog:
+    """Build the small closed-world operator catalog used by tests and scripts."""
     operators: Iterable[BaseIsomorphicOperator] = (
         NormalizeOperator(),
         FFTMagnitudeOperator(),
