@@ -1,3 +1,5 @@
+"""Execute agent that materializes the minimal structural-prior DAG."""
+
 from __future__ import annotations
 
 from src.dag import DAGTracker, DagJson, DagNode
@@ -11,10 +13,13 @@ def execute_agent(
     protocol: DatasetProtocol,
     catalog: OperatorCatalog,
 ) -> WorkflowState:
+    """Build a deterministic DAG that is valid for all three graph paths."""
     tracker = DAGTracker()
     signal_length = protocol.window.window_size
     fft_length = signal_length // 2 + 1
     for channel_index in range(protocol.samples[0].channels):
+        # Each channel starts with an explicit input node so downstream plans can
+        # recover channel lineage without inspecting runtime tensors.
         input_node = DagNode(
             node_id=f"input_ch{channel_index}",
             op_uid="input.signal",
@@ -30,6 +35,8 @@ def execute_agent(
         tracker.add_node(input_node)
 
         normalize_spec = catalog.get("signal.normalize").spec
+        # The transform chain is intentionally small: it yields a stable bridge
+        # contract while keeping the paper-oriented DAG easy to inspect.
         normalize_node = DagNode(
             node_id=f"normalize_ch{channel_index}",
             op_uid=normalize_spec.op_uid,
