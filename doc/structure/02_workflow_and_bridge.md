@@ -24,6 +24,17 @@
 
 `agents / prompts / states -> DAGTracker(NetworkX) -> DAG JSON -> bridge -> {DAG-only | ML | Torch}`
 
+## 当前实现态
+
+当前前端 workflow 由四个最小 agent 构成：
+
+- `plan_agent()`
+- `execute_agent()`
+- `reflect_agent()`
+- `report_agent()`
+
+它们围绕 `WorkflowState` 顺序执行，并在 `scripts/run_case.py` 中被统一编排。
+
 ## Bridge 输出对象
 
 - `DagArtifacts`
@@ -40,6 +51,18 @@
 - shape inference
 - path type
 - 编译告警
+
+当前 bridge 编译入口是 `compile_dag_for_path()`，其实际落盘产物至少包括：
+
+- `dag.json`
+- `compiled_dag_manifest.json`
+- `dag_graph.md`
+
+随后再由 graph path 决定额外产物：
+
+- `dag_only`: `dag_artifacts.json`、`method_description.md`
+- `ml`: `feature_pipeline.json`、`metrics.json`、`predictions.json`、`importance.json`
+- `torch`: `model_build_plan.json`、`training_curves.json`、`checkpoint.json`、`importance.json`、`metrics.json`
 
 ## Graph path 选择
 

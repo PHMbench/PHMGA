@@ -19,7 +19,22 @@
 - `backend_availability`
 - `execution_role`
 
+当前代码中的最小对应对象是：
+
+- `DagNode`
+- `DagEdge`
+- `DagJson`
+- `DAGTracker`
+
 每条边只表达依赖与拓扑，不承载隐藏状态。所有进入 bridge 的 DAG JSON 都必须先通过 schema 校验、无环检查和 shape contract 检查。
+
+## 当前最小 shape contract
+
+- 输入节点：`[1, window_size]`
+- 变换节点：保持或改变最后一维，但必须显式写入 `in_shape` / `out_shape`
+- 特征节点：最小输出是 `[1]`
+
+当前 `execute_agent()` 使用 `normalize -> fft_mag -> feature_*` 的最小链条来产出可桥接的 feature nodes。
 
 ## DAGTracker
 
@@ -52,6 +67,18 @@ class BaseIsomorphicOperator:
 - 输入输出 shape rule
 - backend availability
 - `trainable | fixed | proxy | outer_only`
+
+## 当前实现态
+
+当前 `OperatorSpec` 与 `OperatorCatalog` 已经落地了最小算子集：
+
+- `signal.normalize`
+- `signal.fft_mag`
+- `feature.mean`
+- `feature.std`
+- `feature.rms`
+
+需要明确的是：当前仓库里部分算子只是声明 `backend_availability`，并不意味着 `forward_pt` 已经完整实现。当前最小可运行后端仍以 `forward_np` 为主。
 
 ## OperatorCatalog
 

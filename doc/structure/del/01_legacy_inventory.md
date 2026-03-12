@@ -9,3 +9,4 @@
 | 旧 `config/*` 多组兼容配置 | 删除后重写 | 配置层为旧平台服务过多 | 单一 `config/config.yaml` + dataset/experiment groups | 否 |
 | 旧 `tests/*` | 删除后重写 | 旧测试编码了 facade 和旧 split 术语 | 新 `tests/unit` + `tests/smoke` | 否 |
 | `ref/test`、`labels_ref/tst` 等旧 split 术语 | 删除 | 违反 canonical `train/val/test` 协议 | `train/val/test` | 否 |
+| 旧版 `AGENTS.md` / `CLAUDE.md` / `GEMINI.md` 平台叙事 | 删除后重写 | 仍引用旧主链、旧路径和旧运行方式 | `README.md` + 薄适配层 AI 指南 | 否 |

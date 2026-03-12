@@ -33,6 +33,15 @@ PHMGA/
 5. 建立 `ml` 与 `torch` 路径执行端。
 6. 建立 tests 和 README 使用说明。
 
+## 当前仓库检查清单
+
+- `README.md` 是否仍然是唯一通用事实源。
+- `AGENTS.md`、`CLAUDE.md`、`GEMINI.md` 是否只保留工具特有约束并显式引用 `README.md`。
+- `doc/structure` 是否同步反映当前实现态，而不是回退成抽象蓝图。
+- `config/runs/*.yaml` 是否作为正式运行配置层存在。
+- 核心源码模块是否具备模块级说明和关键边界注释。
+- `torch` path 是否被准确描述为当前 NumPy fallback 实现。
+
 ## 最终验收 5 条标准
 
 1. 新结构文档能单独解释论文版仓库。

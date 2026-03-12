@@ -6,6 +6,16 @@
 - 给复现实验的人：明确数据协议、graph path 和正式产物。
 - 给后续删改代码的人：任何目录、类型和脚本都必须能回指到论文主链。
 
+## 当前实现态
+
+这些文档描述的是当前仓库已经落地的最小研究骨架，而不是抽象愿景：
+
+- `scripts/preflight.py` 与 `scripts/run_case.py` 是仅有的正式脚本入口。
+- `config/runs/*.yaml` 是正式运行配置层。
+- `RM_101_THU_GEARBOX` 与 `RM_017_Ottawa19` 已接入统一 canonical protocol。
+- `dag_only`、`ml`、`torch` 三条 graph path 都已有最小可运行闭环。
+- `torch` path 当前仍使用 NumPy fallback 训练器，目的是保证离线合同和 smoke 通过。
+
 ## 为什么现在要删库重构
 
 旧分支承载了过重的平台式工程壳，存在多入口、多兼容层、多套 split 语义和并行主链。论文版仓库必须反过来由研究问题驱动，只保留服务主实验闭环的最小研究核心。
