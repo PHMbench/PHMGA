@@ -1,53 +1,59 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict
 
 import yaml
-from hydra import compose, initialize_config_dir
-from hydra.core.global_hydra import GlobalHydra
-from omegaconf import OmegaConf
 
 
-def load_yaml_file(path: str | Path) -> Dict[str, Any]:
-    payload = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected mapping yaml at {path}, got {type(payload).__name__}.")
-    return payload
+def _load_yaml(path: Path) -> Dict[str, Any]:
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Expected mapping in {path}")
+    return data
 
 
-def _normalize_config_target(
-    config_path: str | Path | None = None,
+def _deep_merge(base: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
+    merged = deepcopy(base)
+    for key, value in extra.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def load_runtime_config(
+    config_path: str | Path,
     *,
-    config_dir: str | Path | None = None,
-    config_name: str | None = None,
-) -> Tuple[Path, str]:
-    if config_path is not None:
-        path = Path(config_path).resolve()
-        if path.suffix not in {".yaml", ".yml"}:
-            raise ValueError(f"Expected yaml config path, got: {path}")
-        return path.parent, path.stem
-    if config_dir is None or not str(config_name or "").strip():
-        raise ValueError("Either config_path or both config_dir and config_name must be provided.")
-    return Path(config_dir).resolve(), str(config_name).strip()
+    dataset_name: str | None = None,
+    graph_path: str | None = None,
+    output_dir: str | None = None,
+) -> Dict[str, Any]:
+    root = Path(config_path).resolve()
+    config_dir = root.parent
+    base = _load_yaml(root)
 
+    dataset_key = str(dataset_name or base.get("defaults", {}).get("dataset", "rm101")).strip().lower()
+    graph_key = str(graph_path or base.get("defaults", {}).get("graph_path", "dag_only")).strip().lower()
 
-def load_composed_config(
-    config_path: str | Path | None = None,
-    *,
-    config_dir: str | Path | None = None,
-    config_name: str | None = None,
-    overrides: Iterable[str] | None = None,
-) -> Tuple[Dict[str, Any], List[str]]:
-    normalized_dir, normalized_name = _normalize_config_target(
-        config_path,
-        config_dir=config_dir,
-        config_name=config_name,
-    )
-    GlobalHydra.instance().clear()
-    with initialize_config_dir(config_dir=str(normalized_dir), version_base=None):
-        cfg = compose(config_name=normalized_name, overrides=list(overrides or []))
-    payload = OmegaConf.to_container(cfg, resolve=True)
-    if not isinstance(payload, dict):
-        raise ValueError(f"Expected composed config to be a mapping, got {type(payload).__name__}.")
-    return payload, [str((normalized_dir / f"{normalized_name}.yaml").resolve())]
+    dataset_cfg = _load_yaml(config_dir / "data" / f"{dataset_key}.yaml")
+    experiment_cfg = _load_yaml(config_dir / "experiment" / f"{graph_key}.yaml")
+    model_cfg = _load_yaml(config_dir / "model" / "default.yaml")
+
+    merged = _deep_merge(base, dataset_cfg)
+    merged = _deep_merge(merged, experiment_cfg)
+    merged = _deep_merge(merged, model_cfg)
+    merged.setdefault("runtime", {})
+    merged["runtime"]["dataset_name"] = merged["data"]["dataset_name"]
+    merged["runtime"]["graph_path"] = merged["experiment"]["graph_path"]
+    if output_dir:
+        merged["runtime"]["output_dir"] = output_dir
+    else:
+        merged["runtime"].setdefault(
+            "output_dir",
+            str(config_dir.parent / "artifacts" / f"{dataset_key}_{graph_key}"),
+        )
+    return merged
