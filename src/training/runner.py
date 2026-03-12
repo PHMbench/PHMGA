@@ -1,3 +1,5 @@
+"""Minimal runners for the ``ml`` and ``torch`` graph paths."""
+
 from __future__ import annotations
 
 from typing import Dict, List
@@ -13,6 +15,7 @@ from src.operators import OperatorCatalog
 
 
 def _compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
+    """Compute the two primary metrics used by the rebuilt repo."""
     return {
         "accuracy": float(accuracy_score(y_true, y_pred)),
         "macro_f1": float(f1_score(y_true, y_pred, average="macro")),
@@ -26,6 +29,7 @@ def run_ml_pipeline(
     *,
     max_iter: int = 200,
 ) -> Dict[str, object]:
+    """Run the lightweight ML baseline on bridge-generated feature matrices."""
     matrices = build_feature_matrix(plan, split_records, catalog)
     clf = LogisticRegression(max_iter=max_iter, random_state=0)
     clf.fit(matrices["train"]["X"], matrices["train"]["y"])
@@ -51,12 +55,14 @@ def run_ml_pipeline(
 
 
 def _softmax(logits: np.ndarray) -> np.ndarray:
+    """Numerically stable softmax used by the fallback trainable path."""
     shifted = logits - logits.max(axis=1, keepdims=True)
     exp = np.exp(shifted)
     return exp / exp.sum(axis=1, keepdims=True)
 
 
 def _one_hot(labels: np.ndarray, num_classes: int) -> np.ndarray:
+    """Expand integer labels into one-hot rows for cross-entropy training."""
     eye = np.eye(num_classes, dtype=float)
     return eye[labels]
 
@@ -69,6 +75,12 @@ def run_torch_pipeline(
     epochs: int = 12,
     learning_rate: float = 0.2,
 ) -> Dict[str, object]:
+    """Run the current trainable path implementation.
+
+    Despite the path name, the rebuilt repository currently uses a NumPy
+    fallback here so smoke tests can validate the full artifact contract
+    without requiring a PyTorch runtime.
+    """
     matrices = build_feature_matrix(plan, split_records, catalog)
     x_train = matrices["train"]["X"]
     y_train = matrices["train"]["y"]
@@ -77,6 +89,9 @@ def run_torch_pipeline(
     bias = np.zeros((num_classes,), dtype=float)
     curves: list[dict[str, float]] = []
     for epoch in range(epochs):
+        # This is a minimal linear classifier trained by gradient descent. It
+        # exists to exercise the trainable artifact path, not to be a final
+        # research-grade deep model.
         logits = x_train @ weights + bias
         probs = _softmax(logits)
         targets = _one_hot(y_train, num_classes)

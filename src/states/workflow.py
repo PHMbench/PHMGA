@@ -1,3 +1,5 @@
+"""Workflow state shared by the rebuilt front-end agents."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal, Optional
@@ -8,6 +10,7 @@ from src.dag import DagJson
 
 
 class WorkflowState(BaseModel):
+    """Minimal front-end state; backend results live in path-specific artifacts."""
     user_instruction: str
     dataset_name: str
     graph_path: Literal["dag_only", "ml", "torch"]
