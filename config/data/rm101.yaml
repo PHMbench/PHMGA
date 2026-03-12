@@ -1,0 +1,26 @@
+data:
+  dataset_name: RM101
+  catalog: PHM-Vibench
+  metadata_schema_version: v1
+  sampling_rate: 12800
+  length: 512
+  channels: 2
+  operating_condition: gearbox_nominal
+  window:
+    window_size: 256
+    stride: 128
+    slice_mode: sliding
+    drop_last_window: false
+  splits:
+    train_ids: [rm101_001, rm101_002, rm101_003, rm101_004]
+    val_ids: [rm101_005, rm101_006]
+    test_ids: [rm101_007, rm101_008]
+  labels:
+    rm101_001: 0
+    rm101_002: 0
+    rm101_003: 1
+    rm101_004: 1
+    rm101_005: 0
+    rm101_006: 1
+    rm101_007: 0
+    rm101_008: 1

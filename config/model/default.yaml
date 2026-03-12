@@ -1,0 +1,3 @@
+model:
+  feature_ops: [feature.mean, feature.std, feature.rms]
+  transform_ops: [signal.normalize, signal.fft_mag]

@@ -1,7 +1,0 @@
-# @package llm
-provider: openrouter
-provider_strategy: openrouter_only
-selected_provider: openrouter
-openrouter_base_url: https://openrouter.ai/api/v1
-openrouter_http_referer: ""
-openrouter_title: PHMGA
