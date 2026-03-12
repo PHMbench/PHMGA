@@ -1,3 +1,5 @@
+"""Public bridge exports for graph-path compilation."""
+
 from .compiler import (
     CompiledDagManifest,
     DagArtifacts,

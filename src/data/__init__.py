@@ -1,3 +1,5 @@
+"""Canonical data-protocol exports."""
+
 from .protocol import (
     DatasetProtocol,
     SampleMeta,

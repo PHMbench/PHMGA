@@ -1,3 +1,5 @@
+"""DAG intermediate representation and validation utilities."""
+
 from __future__ import annotations
 
 from typing import Any, Dict, List, Literal
@@ -12,6 +14,7 @@ ExecutionRole = Literal["trainable", "fixed", "proxy", "outer_only"]
 
 
 class DagNode(BaseModel):
+    """Canonical DAG node passed from workflow front-end into the bridge."""
     node_id: str
     op_uid: str
     name: str
@@ -25,22 +28,26 @@ class DagNode(BaseModel):
 
     @model_validator(mode="after")
     def ensure_shapes(self) -> "DagNode":
+        """Require explicit shape contracts on every node."""
         if not self.in_shape or not self.out_shape:
             raise ValueError("Shapes must be non-empty")
         return self
 
 
 class DagEdge(BaseModel):
+    """Explicit edge record for JSON export and manifest generation."""
     source: str
     target: str
 
 
 class DagJson(BaseModel):
+    """Validated node-link style DAG payload."""
     nodes: List[DagNode]
     edges: List[DagEdge]
 
 
 def validate_dag_json(payload: Dict[str, Any] | DagJson) -> DagJson:
+    """Validate DAG shape, references, and acyclicity before bridge entry."""
     dag = payload if isinstance(payload, DagJson) else DagJson.model_validate(payload)
     graph = nx.DiGraph()
     node_ids = {node.node_id for node in dag.nodes}
@@ -56,17 +63,22 @@ def validate_dag_json(payload: Dict[str, Any] | DagJson) -> DagJson:
         if edge.source not in node_ids or edge.target not in node_ids:
             raise ValueError("Edges must reference existing nodes")
         graph.add_edge(edge.source, edge.target)
+    # The rebuilt repo treats a validated DAG JSON as the sole legal hand-off
+    # between workflow and backend compilation, so cycles are rejected here.
     if not nx.is_directed_acyclic_graph(graph):
         raise ValueError("DAG must be acyclic")
     return dag
 
 
 class DAGTracker:
+    """Incremental DAG builder used by the workflow layer."""
+
     def __init__(self) -> None:
         self._graph = nx.DiGraph()
         self._nodes: Dict[str, DagNode] = {}
 
     def add_node(self, node: DagNode) -> None:
+        """Insert one node and reject it immediately if it introduces a cycle."""
         self._nodes[node.node_id] = node
         self._graph.add_node(node.node_id)
         for parent in node.parents:
@@ -77,6 +89,7 @@ class DAGTracker:
             raise ValueError(f"Adding {node.node_id} would create a cycle")
 
     def export(self) -> DagJson:
+        """Export a topologically ordered DAG JSON and re-validate it."""
         edges = [DagEdge(source=source, target=target) for source, target in self._graph.edges()]
         ordered_nodes = [self._nodes[node_id] for node_id in nx.topological_sort(self._graph)]
         return validate_dag_json({"nodes": [node.model_dump() for node in ordered_nodes], "edges": [edge.model_dump() for edge in edges]})

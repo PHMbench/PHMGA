@@ -1,3 +1,5 @@
+"""Bridge compiler from validated DAG JSON to graph-path-specific plans."""
+
 from __future__ import annotations
 
 from typing import Dict, List, Literal
@@ -9,6 +11,7 @@ from src.utils import hash_payload
 
 
 class ManifestNode(BaseModel):
+    """Compact per-node summary stored in compiled manifests."""
     node_id: str
     op_uid: str
     kind: str
@@ -17,6 +20,7 @@ class ManifestNode(BaseModel):
 
 
 class CompiledDagManifest(BaseModel):
+    """Stable manifest shared by all graph-path outputs."""
     dag_hash: str
     topo_order: List[str]
     nodes: List[ManifestNode]
@@ -25,6 +29,7 @@ class CompiledDagManifest(BaseModel):
 
 
 class DagArtifacts(BaseModel):
+    """Artifact bundle for the ``dag_only`` path."""
     node_inventory: List[Dict[str, str]]
     edge_inventory: List[Dict[str, str]]
     method_description: str
@@ -32,6 +37,7 @@ class DagArtifacts(BaseModel):
 
 
 class FeatureSpec(BaseModel):
+    """Minimal execution spec for one feature node."""
     feature_node_id: str
     channel_index: int
     transform_ops: List[str]
@@ -39,11 +45,13 @@ class FeatureSpec(BaseModel):
 
 
 class FeaturePipelinePlan(BaseModel):
+    """Bridge output for the lightweight ML path."""
     feature_specs: List[FeatureSpec]
     manifest: CompiledDagManifest
 
 
 class ModelBuildPlan(BaseModel):
+    """Bridge output for the trainable path."""
     backend_target: str
     feature_specs: List[FeatureSpec]
     trainable_head: Dict[str, int]
@@ -51,8 +59,8 @@ class ModelBuildPlan(BaseModel):
 
 
 def _build_manifest(dag: DagJson, path_type: Literal["dag_only", "ml", "torch"]) -> CompiledDagManifest:
+    """Derive a stable manifest that all downstream paths can report on."""
     validated = validate_dag_json(dag)
-    node_lookup = {node.node_id: node for node in validated.nodes}
     topo_order = [node.node_id for node in validated.nodes]
     nodes = [
         ManifestNode(
@@ -79,6 +87,7 @@ def _build_manifest(dag: DagJson, path_type: Literal["dag_only", "ml", "torch"])
 
 
 def _lineage(node_lookup: Dict[str, DagNode], node_id: str) -> List[DagNode]:
+    """Walk one-parent lineage backwards to recover channel-local execution."""
     node = node_lookup[node_id]
     lineage: list[DagNode] = []
     current = node
@@ -91,11 +100,14 @@ def _lineage(node_lookup: Dict[str, DagNode], node_id: str) -> List[DagNode]:
 
 
 def _build_feature_specs(dag: DagJson) -> List[FeatureSpec]:
+    """Compile feature nodes into executable per-channel feature specs."""
     node_lookup = {node.node_id: node for node in dag.nodes}
     feature_specs: list[FeatureSpec] = []
     for node in dag.nodes:
         if node.kind != "feature":
             continue
+        # The current DAG generator emits one linear chain per channel, so a
+        # single-parent lineage is sufficient for the minimal bridge contract.
         lineage = _lineage(node_lookup, node.node_id)
         input_node = next(parent for parent in lineage if parent.kind == "input")
         transform_ops = [parent.op_uid for parent in lineage if parent.kind == "transform"]
@@ -114,6 +126,7 @@ def compile_dag_for_path(
     dag: DagJson,
     path_type: Literal["dag_only", "ml", "torch"],
 ) -> DagArtifacts | FeaturePipelinePlan | ModelBuildPlan:
+    """Compile one validated DAG into the selected graph-path backend object."""
     validated = validate_dag_json(dag)
     manifest = _build_manifest(validated, path_type)
     if path_type == "dag_only":
