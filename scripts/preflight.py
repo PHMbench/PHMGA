@@ -1,3 +1,5 @@
+"""Preflight checks for config, protocol, operators, and graph paths."""
+
 from __future__ import annotations
 
 import argparse
@@ -15,27 +17,30 @@ from src.operators import get_operator_catalog
 
 
 def run_preflight(config_path: str) -> dict:
+    """Validate one resolved config against the shared runtime contract."""
+    runtime_config = load_runtime_config(config_path)
+    protocol = build_protocol_from_config(runtime_config)
     catalog = get_operator_catalog()
-    datasets = {}
-    for dataset_name in ("RM101", "Ottawa"):
-        runtime_config = load_runtime_config(config_path, dataset_name=dataset_name)
-        protocol = build_protocol_from_config(runtime_config)
-        datasets[dataset_name] = {
-            "samples": len(protocol.samples),
+    return {
+        "status": "ok",
+        "config_name": runtime_config["runtime"]["config_name"],
+        "dataset_name": protocol.dataset_name,
+        "graph_path": runtime_config["experiment"]["graph_path"],
+        "source_mode": protocol.source_mode,
+        "sample_count": len(protocol.samples),
+        "splits": {
             "train": len(protocol.splits.train_ids),
             "val": len(protocol.splits.val_ids),
             "test": len(protocol.splits.test_ids),
-            "window_size": protocol.window.window_size,
-        }
-    return {
-        "status": "ok",
-        "datasets": datasets,
-        "graph_paths": ["dag_only", "ml", "torch"],
+        },
+        "window": protocol.window.model_dump(),
+        "selected_channels": protocol.selected_channels,
         "operators": [spec.op_uid for spec in catalog.specs()],
     }
 
 
 def main() -> None:
+    """CLI entrypoint for repository preflight checks."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
     args = parser.parse_args()

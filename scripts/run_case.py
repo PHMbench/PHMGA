@@ -1,3 +1,5 @@
+"""Single execution entrypoint for all graph paths in the rebuilt repo."""
+
 from __future__ import annotations
 
 import argparse
@@ -22,23 +24,29 @@ from src.training import run_ml_pipeline, run_torch_pipeline
 from src.utils import ensure_dir, write_json, write_text
 
 
-def _write_common_artifacts(output_dir: Path, state: WorkflowState, compiled: Any) -> None:
+def _write_common_artifacts(output_dir: Path, state: WorkflowState, compiled: Any, protocol) -> None:
+    """Write artifacts that every graph path shares."""
     write_json(state.dag.model_dump(), output_dir / "dag.json")
     write_json(compiled.manifest.model_dump(), output_dir / "compiled_dag_manifest.json")
     write_text(render_mermaid_dag(state.dag), output_dir / "dag_graph.md")
+    write_json(protocol.splits.model_dump(), output_dir / "resolved_splits.json")
+    write_json(protocol.model_dump(), output_dir / "resolved_dataset_manifest.json")
 
 
 def _run_path(
     graph_path: str,
     compiled: DagArtifacts | FeaturePipelinePlan | ModelBuildPlan,
-    split_records: Dict[str, Any],
+    split_records: Dict[str, Any] | None,
     runtime_config: Dict[str, Any],
     catalog,
 ) -> Dict[str, Any]:
+    """Dispatch from one compiled DAG to the selected backend path."""
     if graph_path == "dag_only":
         payload = compiled.model_dump()
         payload["artifact_kind"] = "dag_only"
         return payload
+    if split_records is None:
+        raise ValueError(f"split_records are required for graph_path={graph_path}")
     if graph_path == "ml":
         return run_ml_pipeline(
             compiled,
@@ -58,34 +66,34 @@ def _run_path(
 def run_case(
     config_path: str,
     *,
-    dataset_name: str | None = None,
-    graph_path: str | None = None,
     output_dir: str | None = None,
 ) -> Dict[str, Any]:
-    runtime_config = load_runtime_config(
-        config_path,
-        dataset_name=dataset_name,
-        graph_path=graph_path,
-        output_dir=output_dir,
-    )
+    """Run the full paper-oriented workflow for one config-defined case."""
+    runtime_config = load_runtime_config(config_path, output_dir=output_dir)
     protocol = build_protocol_from_config(runtime_config)
     llm = get_llm(runtime_config)
     catalog = get_operator_catalog()
+    graph_path = runtime_config["experiment"]["graph_path"]
     state = WorkflowState(
         user_instruction="Generate a paper-ready PHM workflow from canonical metadata.",
         dataset_name=protocol.dataset_name,
-        graph_path=runtime_config["experiment"]["graph_path"],
-        data_context={"catalog": protocol.catalog, "metadata_schema_version": protocol.metadata_schema_version},
+        graph_path=graph_path,
+        data_context={
+            "catalog": protocol.catalog,
+            "metadata_schema_version": protocol.metadata_schema_version,
+            "source_mode": protocol.source_mode,
+        },
     )
     state = plan_agent(state, protocol, llm)
     state = execute_agent(state, protocol, catalog)
     state = reflect_agent(state, llm)
+    # The validated DAG JSON is the only legal hand-off into backend execution.
     compiled = compile_dag_for_path(state.dag, state.graph_path)
-    split_records = materialize_split_signals(protocol)
+    split_records = None if state.graph_path == "dag_only" else materialize_split_signals(protocol)
     path_artifacts = _run_path(state.graph_path, compiled, split_records, runtime_config, catalog)
 
     output_root = ensure_dir(runtime_config["runtime"]["output_dir"])
-    _write_common_artifacts(output_root, state, compiled)
+    _write_common_artifacts(output_root, state, compiled, protocol)
 
     if state.graph_path == "dag_only":
         write_json(path_artifacts, output_root / "dag_artifacts.json")
@@ -107,8 +115,10 @@ def run_case(
     write_json(runtime_config, output_root / "resolved_config.json")
 
     return {
+        "config_name": runtime_config["runtime"]["config_name"],
         "dataset": protocol.dataset_name,
         "graph_path": state.graph_path,
+        "source_mode": protocol.source_mode,
         "output_dir": str(output_root),
         "manifest_path": str(output_root / "compiled_dag_manifest.json"),
         "report_path": str(output_root / "final_report.md"),
@@ -116,16 +126,13 @@ def run_case(
 
 
 def main() -> None:
+    """CLI entrypoint for one graph-dependent run."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
-    parser.add_argument("--dataset", default=None)
-    parser.add_argument("--graph-path", default=None)
     parser.add_argument("--output-dir", default=None)
     args = parser.parse_args()
     result = run_case(
         args.config,
-        dataset_name=args.dataset,
-        graph_path=args.graph_path,
         output_dir=args.output_dir,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2))
