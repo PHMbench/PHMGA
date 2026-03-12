@@ -21,9 +21,9 @@ def test_operator_catalog_declares_backend_availability_and_roles():
 
 
 def test_execute_agent_builds_validated_dag():
-    config = load_runtime_config(ROOT / "config/config.yaml", dataset_name="RM101", graph_path="ml")
+    config = load_runtime_config(ROOT / "config/runs/rm101_synth_ml.yaml")
     protocol = build_protocol_from_config(config)
-    state = WorkflowState(user_instruction="build dag", dataset_name="RM101", graph_path="ml")
+    state = WorkflowState(user_instruction="build dag", dataset_name=protocol.dataset_name, graph_path="ml")
     state = execute_agent(state, protocol, get_operator_catalog())
     dag = validate_dag_json(state.dag)
     assert len(dag.nodes) >= 8
