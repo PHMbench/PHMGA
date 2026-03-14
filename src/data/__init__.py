@@ -7,6 +7,7 @@ from .protocol import (
     SplitManifest,
     WindowSpec,
     build_protocol_from_config,
+    materialize_preview_signal,
     materialize_split_signals,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "SplitManifest",
     "WindowSpec",
     "build_protocol_from_config",
+    "materialize_preview_signal",
     "materialize_split_signals",
 ]

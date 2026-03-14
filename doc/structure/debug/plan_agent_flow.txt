@@ -1,0 +1,50 @@
+# Plan Agent 决策流程
+
+## 初始化阶段
+```
+WorkflowState (input)
+    ↓
+signal_context is None?
+    ├─ Yes → _build_signal_context()
+    │         ├─ materialize_preview_signal()
+    │         ├─ 提取 channel_count, window_shape
+    │         └─ 生成 root_node_ids (ch1, ch2, ...)
+    └─ No → 跳过
+    ↓
+```
+
+## 深度计算阶段
+```
+_dag_depth(state)
+    ├─ DAG 为空? → return 0
+    ├─ 计算每个节点深度
+    │   ├─ 根节点 → depth = 1
+    │   └─ 子节点 → depth = 1 + max(父节点深度)
+    └─ return max(所有深度)
+```
+
+## LLM 调用阶段
+```
+llm.generate_step_plan()
+    ├─ OfflineLLM.generate_step_plan()
+    │   ├─ DAG 为空?
+    │   │   ├─ Yes → 初始规划
+    │   │   │   ├─ 每个通道 → normalize
+    │   │   │   ├─ 每个 normalize → fft
+    │   │   │   ├─ 每个 fft → mean, std, rms
+    │   │   │   └─ (ml/torch) → concatenate
+    │   │   └─ No → 增量规划
+    │   │       ├─ _leaf_node_ids(dag)
+    │   │       ├─ 对每个叶子节点扩展
+    │   │       └─ return StepPlan
+    │   └─ (未来) Provider-backed LLM
+    └─ return StepPlan
+```
+
+## 状态更新阶段
+```
+state.signal_context = SignalContext (已创建)
+state.step_plan = StepPlan (已生成)
+state.status = 'planned'
+return state
+```

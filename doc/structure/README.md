@@ -28,4 +28,10 @@ PHMGA 是一个面向工业时间序列的研究框架：前端 agentic workflow
 
 1. 先看 `index.md`，确认主链和三条 graph path。
 2. 再看 `00` 到 `03`，确认协议、DAG/算子、workflow/bridge、训练评估。
-3. 最后看 `04_rebuild_checklist.md` 和 `del/`，按固定顺序重建并记录删除决策。
+3. 再看 `05_missing_assets_and_roadmap.md`，确认当前缺口、recommended default 和 decision pending。
+4. 最后看 `04_rebuild_checklist.md` 和 `del/`，按固定顺序重建并记录删除决策。
+
+## 当前审阅补充
+
+- `del/02_agent_review_findings.md` 是本轮针对 `feature-NSNet` 与 `journal_thesis` 的正式审阅报告。
+- 该报告优先回答：当前 agent/prompt/dag/bridge 哪些地方还不符合论文主线，哪些问题必须先修，哪些事项仍是 gap。

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Literal
+from typing import Dict, List, Literal, Union
 
 from pydantic import BaseModel, Field
 
@@ -125,7 +125,7 @@ def _build_feature_specs(dag: DagJson) -> List[FeatureSpec]:
 def compile_dag_for_path(
     dag: DagJson,
     path_type: Literal["dag_only", "ml", "torch"],
-) -> DagArtifacts | FeaturePipelinePlan | ModelBuildPlan:
+) -> Union[DagArtifacts, FeaturePipelinePlan, ModelBuildPlan]:
     """Compile one validated DAG into the selected graph-path backend object."""
     validated = validate_dag_json(dag)
     manifest = _build_manifest(validated, path_type)

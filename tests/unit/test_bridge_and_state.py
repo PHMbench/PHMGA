@@ -18,10 +18,16 @@ def _build_state(config_name: str) -> WorkflowState:
     config = load_runtime_config(ROOT / config_name)
     protocol = build_protocol_from_config(config)
     llm = get_llm(config)
+    catalog = get_operator_catalog()
     graph_path = config["experiment"]["graph_path"]
-    state = WorkflowState(user_instruction="paper workflow", dataset_name=protocol.dataset_name, graph_path=graph_path)
-    state = plan_agent(state, protocol, llm)
-    state = execute_agent(state, protocol, get_operator_catalog())
+    state = WorkflowState(
+        user_instruction="paper workflow",
+        dataset_name=protocol.dataset_name,
+        graph_path=graph_path,
+        data_context={"min_depth": 2, "min_width": 1, "max_depth": 8, "stage": "TEST"},
+    )
+    state = plan_agent(state, protocol, llm, catalog)
+    state = execute_agent(state, protocol, catalog, llm)
     state = reflect_agent(state, llm)
     return state
 
@@ -31,7 +37,10 @@ def test_workflow_state_is_serializable():
     payload = state.model_dump()
     assert payload["dataset_name"] == "RM101_SYNTH"
     assert payload["graph_path"] == "dag_only"
+    assert payload["signal_context"]["channel_count"] >= 1
+    assert payload["step_plan"]["plan"]
     assert payload["dag"]["nodes"]
+    assert payload["reflection_results"]
 
 
 def test_bridge_compiles_all_paths():

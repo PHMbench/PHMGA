@@ -1,4 +1,9 @@
-"""Minimal operator catalog used by the rebuilt research scaffold."""
+"""Minimal operator catalog used by the rebuilt research scaffold.
+
+The catalog intentionally stays small, but it now exposes plan-facing operator
+names so the NVTA-style planner can speak in compact `op_name` terms while the
+backend still compiles against stable `op_uid` identifiers.
+"""
 
 from __future__ import annotations
 
@@ -108,15 +113,49 @@ class RMSFeatureOperator(BaseIsomorphicOperator):
         return f"rms({x_sym})"
 
 
+class ConcatenateFeatureOperator(BaseIsomorphicOperator):
+    """Minimal multi-input feature fusion used to test NVTA-style execution."""
+
+    spec = OperatorSpec(
+        op_uid="multi.concatenate",
+        name="Concatenate",
+        param_schema={"axis": "int"},
+        input_shape_rule="1 + 1 + ...",
+        output_shape_rule="K",
+        backend_availability=["np", "sym"],
+        execution_role="proxy",
+    )
+
+    def forward_np(self, x: np.ndarray, **kwargs: float) -> np.ndarray:
+        axis = int(kwargs.get("axis", 0))
+        arrays = [np.asarray(part, dtype=float).reshape(-1) for part in x]
+        return np.concatenate(arrays, axis=axis)
+
+    def forward_sym(self, x_sym: str, **kwargs: float) -> str:
+        return f"concat({x_sym})"
+
+
 @dataclass
 class OperatorCatalog:
     """Lookup table that exposes the sanctioned operator subset."""
     operators: Dict[str, BaseIsomorphicOperator]
+    plan_name_aliases: Dict[str, str]
 
     def get(self, op_uid: str) -> BaseIsomorphicOperator:
         if op_uid not in self.operators:
             raise KeyError(f"Unknown operator: {op_uid}")
         return self.operators[op_uid]
+
+    def resolve_plan_name(self, op_name: str) -> str:
+        normalized = op_name.strip().lower()
+        if normalized in self.plan_name_aliases:
+            return self.plan_name_aliases[normalized]
+        if normalized in self.operators:
+            return normalized
+        raise KeyError(f"Unknown plan operator name: {op_name}")
+
+    def get_by_plan_name(self, op_name: str) -> BaseIsomorphicOperator:
+        return self.get(self.resolve_plan_name(op_name))
 
     def specs(self) -> List[OperatorSpec]:
         return [operator.spec for operator in self.operators.values()]
@@ -127,6 +166,23 @@ class OperatorCatalog:
     def transform_ops(self) -> List[str]:
         return [spec.op_uid for spec in self.specs() if spec.op_uid.startswith("signal.")]
 
+    def summary(self) -> List[Dict[str, str]]:
+        """Compact prompt-safe catalog summary."""
+
+        summary: list[dict[str, str]] = []
+        for spec in self.specs():
+            summary.append(
+                {
+                    "op_uid": spec.op_uid,
+                    "op_name": spec.op_uid.split(".")[-1],
+                    "name": spec.name,
+                    "input_shape_rule": spec.input_shape_rule,
+                    "output_shape_rule": spec.output_shape_rule,
+                    "execution_role": spec.execution_role,
+                }
+            )
+        return summary
+
 
 def get_operator_catalog() -> OperatorCatalog:
     """Build the small closed-world operator catalog used by tests and scripts."""
@@ -136,5 +192,18 @@ def get_operator_catalog() -> OperatorCatalog:
         MeanFeatureOperator(),
         StdFeatureOperator(),
         RMSFeatureOperator(),
+        ConcatenateFeatureOperator(),
     )
-    return OperatorCatalog({operator.spec.op_uid: operator for operator in operators})
+    plan_name_aliases = {
+        "normalize": "signal.normalize",
+        "fft": "signal.fft_mag",
+        "fft_mag": "signal.fft_mag",
+        "mean": "feature.mean",
+        "std": "feature.std",
+        "rms": "feature.rms",
+        "concatenate": "multi.concatenate",
+    }
+    return OperatorCatalog(
+        {operator.spec.op_uid: operator for operator in operators},
+        plan_name_aliases=plan_name_aliases,
+    )

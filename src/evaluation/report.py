@@ -28,6 +28,7 @@ def build_final_report(
     path_artifacts: Dict[str, Any],
 ) -> str:
     """Assemble the final markdown report from protocol and artifact evidence."""
+    plan_steps = len(state.step_plan.plan) if state.step_plan else 0
     lines = [
         f"# PHMGA Final Report: {protocol.dataset_name} / {state.graph_path}",
         "",
@@ -59,7 +60,7 @@ def build_final_report(
             "",
             "## Workflow",
             f"- User instruction: {state.user_instruction}",
-            f"- Plan steps: {len(state.plan)}",
+            f"- Plan steps: {plan_steps}",
             "",
             "## Analysis Workflow",
             "!Analysis Workflow",

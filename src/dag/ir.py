@@ -1,36 +1,55 @@
-"""DAG intermediate representation and validation utilities."""
+"""DAG intermediate representation and validation utilities.
+
+The validated DAG JSON remains the sole legal hand-off from workflow agents to
+bridge/model code, so the node contract carries enough provenance to trace each
+node back to the planner step that introduced it.
+"""
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Union
 
 import networkx as nx
 from pydantic import BaseModel, Field, model_validator
 
 
 BackendName = Literal["np", "pt", "sym"]
-NodeKind = Literal["input", "transform", "feature", "artifact"]
+GraphPath = Literal["dag_only", "ml", "torch"]
+OperatorCategory = Literal["input", "transform", "feature", "multi", "decision", "artifact"]
+NodeKind = Literal["input", "transform", "feature", "multi", "decision", "artifact"]
 ExecutionRole = Literal["trainable", "fixed", "proxy", "outer_only"]
 
 
 class DagNode(BaseModel):
     """Canonical DAG node passed from workflow front-end into the bridge."""
+
     node_id: str
     op_uid: str
     name: str
     kind: NodeKind
+    operator_category: OperatorCategory
     params: Dict[str, Any] = Field(default_factory=dict)
     parents: List[str] = Field(default_factory=list)
     in_shape: List[int]
     out_shape: List[int]
     backend_availability: List[BackendName]
     execution_role: ExecutionRole
+    legal_paths: List[GraphPath] = Field(default_factory=lambda: ["dag_only", "ml", "torch"])
+    input_bindings: Dict[str, str] = Field(default_factory=dict)
+    plan_step_ref: str = ""
+    rationale: str = ""
 
     @model_validator(mode="after")
     def ensure_shapes(self) -> "DagNode":
-        """Require explicit shape contracts on every node."""
+        """Require explicit shape contracts and bindings on richer node kinds."""
         if not self.in_shape or not self.out_shape:
             raise ValueError("Shapes must be non-empty")
+        if self.kind != "input" and not self.parents:
+            raise ValueError("Non-input nodes must declare at least one parent")
+        if self.kind == "multi" and not self.input_bindings:
+            raise ValueError("Multi-input nodes must declare input_bindings")
+        if not self.legal_paths:
+            raise ValueError("Nodes must declare legal_paths")
         return self
 
 
@@ -46,7 +65,7 @@ class DagJson(BaseModel):
     edges: List[DagEdge]
 
 
-def validate_dag_json(payload: Dict[str, Any] | DagJson) -> DagJson:
+def validate_dag_json(payload: Union[Dict[str, Any], DagJson]) -> DagJson:
     """Validate DAG shape, references, and acyclicity before bridge entry."""
     dag = payload if isinstance(payload, DagJson) else DagJson.model_validate(payload)
     graph = nx.DiGraph()

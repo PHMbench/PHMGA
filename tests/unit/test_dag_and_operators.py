@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from src.agents import execute_agent
+from src.agents import execute_agent, plan_agent
 from src.config import load_runtime_config
 from src.data import build_protocol_from_config
 from src.dag import validate_dag_json
+from src.llm import get_llm
 from src.operators import get_operator_catalog
 from src.states import WorkflowState
 
@@ -18,13 +19,24 @@ def test_operator_catalog_declares_backend_availability_and_roles():
     for spec in catalog.specs():
         assert spec.backend_availability
         assert spec.execution_role in {"trainable", "fixed", "proxy", "outer_only"}
+    assert catalog.resolve_plan_name("fft") == "signal.fft_mag"
+    assert catalog.resolve_plan_name("concatenate") == "multi.concatenate"
 
 
 def test_execute_agent_builds_validated_dag():
     config = load_runtime_config(ROOT / "config/runs/rm101_synth_ml.yaml")
     protocol = build_protocol_from_config(config)
-    state = WorkflowState(user_instruction="build dag", dataset_name=protocol.dataset_name, graph_path="ml")
-    state = execute_agent(state, protocol, get_operator_catalog())
+    llm = get_llm(config)
+    catalog = get_operator_catalog()
+    state = WorkflowState(
+        user_instruction="build dag",
+        dataset_name=protocol.dataset_name,
+        graph_path="ml",
+        data_context={"min_depth": 2, "min_width": 1, "max_depth": 8},
+    )
+    state = plan_agent(state, protocol, llm, catalog)
+    state = execute_agent(state, protocol, catalog, llm)
     dag = validate_dag_json(state.dag)
     assert len(dag.nodes) >= 8
     assert any(node.kind == "feature" for node in dag.nodes)
+    assert any(node.kind == "multi" for node in dag.nodes)

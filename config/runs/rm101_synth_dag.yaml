@@ -1,0 +1,4 @@
+base_config: ../config.yaml
+defaults:
+  dataset: rm101_synth
+  graph_path: dag_only

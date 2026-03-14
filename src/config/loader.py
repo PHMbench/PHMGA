@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Set
+from typing import Any, Dict, Optional, Set, Union
 
 import re
 import yaml
@@ -37,7 +37,7 @@ def _resolve_config_root(start_dir: Path) -> Path:
     raise ValueError(f"Could not find config root above {start_dir}")
 
 
-def _load_raw_config(path: Path, seen: Set[Path] | None = None) -> Dict[str, Any]:
+def _load_raw_config(path: Path, seen: Optional[Set[Path]] = None) -> Dict[str, Any]:
     resolved = path.resolve()
     trail = seen or set()
     if resolved in trail:
@@ -59,9 +59,9 @@ def _slugify(text: str) -> str:
 
 
 def load_runtime_config(
-    config_path: str | Path,
+    config_path: Union[str, Path],
     *,
-    output_dir: str | None = None,
+    output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Resolve the single runtime config used by scripts and tests."""
     root = Path(config_path).resolve()

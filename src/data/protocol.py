@@ -1,10 +1,15 @@
-"""Canonical data protocol plus real/synthetic signal materialization."""
+"""Canonical data protocol plus real/synthetic signal materialization.
+
+Besides full split materialization, the workflow front-end also needs a tiny
+representative signal window so the execute agent can cache intermediate
+results in state without eagerly loading the full dataset.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Optional
 
 import h5py
 import numpy as np
@@ -30,7 +35,7 @@ def _clean_text(value: Any, default: str = "") -> str:
     return str(value).strip()
 
 
-def _clean_optional_int(value: Any) -> int | None:
+def _clean_optional_int(value: Any) -> Optional[int]:
     if _is_missing(value):
         return None
     return int(value)
@@ -70,14 +75,14 @@ class SampleMeta(BaseModel):
     channels: int
     operating_condition: str
     source_h5: str
-    dataset_id: int | None = None
+    dataset_id: Optional[int] = None
     file_name: str = ""
-    domain_id: int | None = None
+    domain_id: Optional[int] = None
     domain_description: str = ""
-    metadata_length: int | None = None
-    observed_length: int | None = None
-    metadata_channels: int | None = None
-    observed_channels: int | None = None
+    metadata_length: Optional[int] = None
+    observed_length: Optional[int] = None
+    metadata_channels: Optional[int] = None
+    observed_channels: Optional[int] = None
 
 
 class SplitManifest(BaseModel):
@@ -106,9 +111,9 @@ class DatasetProtocol(BaseModel):
     samples: List[SampleMeta]
     splits: SplitManifest
     window: WindowSpec
-    selected_channels: List[int] | None = None
-    metadata_path: str | None = None
-    h5_path: str | None = None
+    selected_channels: Optional[List[int]] = None
+    metadata_path: Optional[str] = None
+    h5_path: Optional[str] = None
     source_mode: Literal["synthetic", "real"] = "synthetic"
     leakage_boundary: str = "split_before_windowing"
 
@@ -145,7 +150,7 @@ def _unique_ids(split_cfg: Dict[str, Any]) -> List[str]:
     return ordered_ids
 
 
-def _resolve_selected_channels(data_cfg: Dict[str, Any], observed_channels: int) -> List[int] | None:
+def _resolve_selected_channels(data_cfg: Dict[str, Any], observed_channels: int) -> Optional[List[int]]:
     selected_channels = data_cfg.get("selected_channels")
     if selected_channels in (None, [], "null"):
         return None
@@ -398,12 +403,48 @@ def _window_signal(signal: np.ndarray, window: WindowSpec) -> list[np.ndarray]:
     return windows
 
 
-def _load_real_signal(handle: h5py.File, sample: SampleMeta, selected_channels: List[int] | None) -> np.ndarray:
+def _load_real_signal(handle: h5py.File, sample: SampleMeta, selected_channels: Optional[List[int]]) -> np.ndarray:
     raw = handle[sample.sample_id][()]
     signal = _normalize_h5_array(raw)
     if selected_channels is not None:
         signal = signal[selected_channels, :]
     return signal
+
+
+def materialize_preview_signal(protocol: DatasetProtocol) -> tuple[str, np.ndarray]:
+    """Load one representative window for workflow-side operator execution.
+
+    The preview signal is intentionally tiny in scope: it gives the execute
+    agent a concrete tensor to run operators on and to store back into state,
+    while leaving full split materialization to the downstream backend paths.
+    """
+
+    split_lookup: Dict[str, set[str]] = {
+        "train": set(protocol.splits.train_ids),
+        "val": set(protocol.splits.val_ids),
+        "test": set(protocol.splits.test_ids),
+    }
+    preferred_order = ("train", "val", "test")
+    sample_by_id = {sample.sample_id: sample for sample in protocol.samples}
+
+    for split_name in preferred_order:
+        split_ids = split_lookup[split_name]
+        if not split_ids:
+            continue
+        sample_id = next(iter(split_ids))
+        sample = sample_by_id[sample_id]
+        if protocol.source_mode == "synthetic":
+            signal = _generate_signal(sample)
+        else:
+            if not protocol.h5_path:
+                raise ValueError("Real-data protocol is missing h5_path.")
+            with h5py.File(protocol.h5_path, "r") as handle:
+                signal = _load_real_signal(handle, sample, protocol.selected_channels)
+        windows = _window_signal(signal, protocol.window)
+        if not windows:
+            raise ValueError(f"Sample {sample.sample_id} produced no windows.")
+        return sample.sample_id, windows[0]
+    raise ValueError("Protocol does not contain any split samples.")
 
 
 def materialize_split_signals(protocol: DatasetProtocol) -> Dict[str, List[SignalRecord]]:

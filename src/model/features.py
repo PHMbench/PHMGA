@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
+from typing import Dict, List, Union
 
 import numpy as np
 
@@ -21,12 +21,12 @@ def _apply_spec(window: np.ndarray, spec: FeatureSpec, catalog: OperatorCatalog)
 
 
 def build_feature_matrix(
-    plan: FeaturePipelinePlan | ModelBuildPlan,
+    plan: Union[FeaturePipelinePlan, ModelBuildPlan],
     split_records: Dict[str, List[SignalRecord]],
     catalog: OperatorCatalog,
-) -> Dict[str, Dict[str, np.ndarray | list[str]]]:
+) -> Dict[str, Dict[str, Union[np.ndarray, List[str]]]]:
     """Turn split-specific signal windows into downstream feature matrices."""
-    outputs: Dict[str, Dict[str, np.ndarray | list[str]]] = {}
+    outputs: Dict[str, Dict[str, Union[np.ndarray, List[str]]]] = {}
     for split_name, records in split_records.items():
         features: list[list[float]] = []
         labels: list[int] = []

@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional, Union
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -35,8 +35,8 @@ def _write_common_artifacts(output_dir: Path, state: WorkflowState, compiled: An
 
 def _run_path(
     graph_path: str,
-    compiled: DagArtifacts | FeaturePipelinePlan | ModelBuildPlan,
-    split_records: Dict[str, Any] | None,
+    compiled: Union[DagArtifacts, FeaturePipelinePlan, ModelBuildPlan],
+    split_records: Optional[Dict[str, Any]],
     runtime_config: Dict[str, Any],
     catalog,
 ) -> Dict[str, Any]:
@@ -66,7 +66,7 @@ def _run_path(
 def run_case(
     config_path: str,
     *,
-    output_dir: str | None = None,
+    output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run the full paper-oriented workflow for one config-defined case."""
     runtime_config = load_runtime_config(config_path, output_dir=output_dir)
@@ -82,10 +82,14 @@ def run_case(
             "catalog": protocol.catalog,
             "metadata_schema_version": protocol.metadata_schema_version,
             "source_mode": protocol.source_mode,
+            "min_depth": 2,
+            "min_width": 1,
+            "max_depth": 8,
+            "stage": "RUN_CASE",
         },
     )
-    state = plan_agent(state, protocol, llm)
-    state = execute_agent(state, protocol, catalog)
+    state = plan_agent(state, protocol, llm, catalog)
+    state = execute_agent(state, protocol, catalog, llm)
     state = reflect_agent(state, llm)
     # The validated DAG JSON is the only legal hand-off into backend execution.
     compiled = compile_dag_for_path(state.dag, state.graph_path)
@@ -110,7 +114,7 @@ def run_case(
         write_json(path_artifacts["importance"], output_root / "importance.json")
         write_json(path_artifacts["metrics"], output_root / "metrics.json")
 
-    final_report = report_agent(state, protocol, compiled.manifest, path_artifacts)
+    final_report = report_agent(state, protocol, compiled.manifest, path_artifacts, llm)
     write_text(final_report, output_root / "final_report.md")
     write_json(runtime_config, output_root / "resolved_config.json")
 

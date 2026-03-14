@@ -38,6 +38,8 @@ PHMGA/
 - `README.md` 是否仍然是唯一通用事实源。
 - `AGENTS.md`、`CLAUDE.md`、`GEMINI.md` 是否只保留工具特有约束并显式引用 `README.md`。
 - `doc/structure` 是否同步反映当前实现态，而不是回退成抽象蓝图。
+- `05_missing_assets_and_roadmap.md` 是否已记录 gap、decision pending 与 recommended default。
+- `del/02_agent_review_findings.md` 是否已形成明确的 `P0 / P1 / P2` 修复顺序。
 - `config/runs/*.yaml` 是否作为正式运行配置层存在。
 - 核心源码模块是否具备模块级说明和关键边界注释。
 - `torch` path 是否被准确描述为当前 NumPy fallback 实现。
