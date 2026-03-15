@@ -17,14 +17,22 @@ from .base import BaseIsomorphicOperator, OperatorSpec
 
 class NormalizeOperator(BaseIsomorphicOperator):
     """Per-channel normalization before feature extraction."""
+
     spec = OperatorSpec(
         op_uid="signal.normalize",
         name="Normalize",
+        schema_category="TRANSFORM",
+        description="Per-channel z-score normalization that preserves the time axis.",
         param_schema={"eps": "float"},
+        param_defaults={"eps": 1e-6},
+        param_docs={"eps": "Small epsilon added to the per-channel standard deviation to avoid divide-by-zero."},
         input_shape_rule="CxT",
         output_shape_rule="CxT",
         backend_availability=["np", "sym"],
         execution_role="fixed",
+        legal_paths=["dag_only", "ml", "torch"],
+        planning_notes="Use before spectral transforms when channel amplitudes are on different scales.",
+        llm_tunable_params=["eps"],
     )
 
     def forward_np(self, x: np.ndarray, **kwargs: float) -> np.ndarray:
@@ -42,11 +50,18 @@ class FFTMagnitudeOperator(BaseIsomorphicOperator):
     spec = OperatorSpec(
         op_uid="signal.fft_mag",
         name="FFT Magnitude",
+        schema_category="TRANSFORM",
+        description="Convert a time-domain channel signal into a one-sided magnitude spectrum.",
         param_schema={},
+        param_defaults={},
+        param_docs={},
         input_shape_rule="CxT",
         output_shape_rule="CxF",
         backend_availability=["np", "sym"],
         execution_role="fixed",
+        legal_paths=["dag_only", "ml", "torch"],
+        planning_notes="A common PHM bridge from time-domain waveforms to frequency-domain features.",
+        llm_tunable_params=[],
     )
 
     def forward_np(self, x: np.ndarray, **kwargs: float) -> np.ndarray:
@@ -61,11 +76,18 @@ class MeanFeatureOperator(BaseIsomorphicOperator):
     spec = OperatorSpec(
         op_uid="feature.mean",
         name="Mean",
+        schema_category="AGGREGATE",
+        description="Aggregate a signal or spectrum into its global mean feature.",
         param_schema={},
+        param_defaults={},
+        param_docs={},
         input_shape_rule="CxT",
         output_shape_rule="1",
         backend_availability=["np", "sym"],
         execution_role="outer_only",
+        legal_paths=["dag_only", "ml"],
+        planning_notes="Use after a transform stage to summarize one branch into a scalar descriptor.",
+        llm_tunable_params=[],
     )
 
     def forward_np(self, x: np.ndarray, **kwargs: float) -> np.ndarray:
@@ -80,11 +102,18 @@ class StdFeatureOperator(BaseIsomorphicOperator):
     spec = OperatorSpec(
         op_uid="feature.std",
         name="Std",
+        schema_category="AGGREGATE",
+        description="Aggregate a signal or spectrum into its global standard deviation feature.",
         param_schema={},
+        param_defaults={},
+        param_docs={},
         input_shape_rule="CxT",
         output_shape_rule="1",
         backend_availability=["np", "sym"],
         execution_role="outer_only",
+        legal_paths=["dag_only", "ml"],
+        planning_notes="Useful for compact dispersion summaries on transformed branches.",
+        llm_tunable_params=[],
     )
 
     def forward_np(self, x: np.ndarray, **kwargs: float) -> np.ndarray:
@@ -99,11 +128,18 @@ class RMSFeatureOperator(BaseIsomorphicOperator):
     spec = OperatorSpec(
         op_uid="feature.rms",
         name="RMS",
+        schema_category="AGGREGATE",
+        description="Aggregate a signal or spectrum into a root-mean-square descriptor.",
         param_schema={},
+        param_defaults={},
+        param_docs={},
         input_shape_rule="CxT",
         output_shape_rule="1",
         backend_availability=["np", "sym"],
         execution_role="outer_only",
+        legal_paths=["dag_only", "ml", "torch"],
+        planning_notes="A standard PHM feature that can serve both classical and trainable downstream paths.",
+        llm_tunable_params=[],
     )
 
     def forward_np(self, x: np.ndarray, **kwargs: float) -> np.ndarray:
@@ -119,11 +155,18 @@ class ConcatenateFeatureOperator(BaseIsomorphicOperator):
     spec = OperatorSpec(
         op_uid="multi.concatenate",
         name="Concatenate",
+        schema_category="MULTI_VARIABLE",
+        description="Fuse multiple scalar or vector features into one combined feature vector.",
         param_schema={"axis": "int"},
+        param_defaults={"axis": 0},
+        param_docs={"axis": "Concatenation axis after each parent result has been flattened to a 1-D feature vector."},
         input_shape_rule="1 + 1 + ...",
         output_shape_rule="K",
         backend_availability=["np", "sym"],
         execution_role="proxy",
+        legal_paths=["dag_only", "ml", "torch"],
+        planning_notes="Use to combine multiple parent branches into a richer feature vector without inventing a new operator family.",
+        llm_tunable_params=["axis"],
     )
 
     def forward_np(self, x: np.ndarray, **kwargs: float) -> np.ndarray:
@@ -167,7 +210,12 @@ class OperatorCatalog:
         return [spec.op_uid for spec in self.specs() if spec.op_uid.startswith("signal.")]
 
     def summary(self) -> List[Dict[str, str]]:
-        """Compact prompt-safe catalog summary."""
+        """Compact but prompt-safe catalog summary.
+
+        The summary intentionally carries enough descriptive metadata for
+        planning and parameter reasoning without exposing backend-specific
+        implementation details.
+        """
 
         summary: list[dict[str, str]] = []
         for spec in self.specs():
@@ -176,9 +224,15 @@ class OperatorCatalog:
                     "op_uid": spec.op_uid,
                     "op_name": spec.op_uid.split(".")[-1],
                     "name": spec.name,
+                    "schema_category": spec.schema_category,
+                    "description": spec.description,
                     "input_shape_rule": spec.input_shape_rule,
                     "output_shape_rule": spec.output_shape_rule,
                     "execution_role": spec.execution_role,
+                    "legal_paths": ",".join(spec.legal_paths),
+                    "param_docs": "; ".join(f"{key}: {value}" for key, value in spec.param_docs.items()),
+                    "llm_tunable_params": ",".join(spec.llm_tunable_params),
+                    "planning_notes": spec.planning_notes,
                 }
             )
         return summary

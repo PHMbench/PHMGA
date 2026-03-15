@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 BackendName = Literal["np", "pt", "sym"]
 GraphPath = Literal["dag_only", "ml", "torch"]
-OperatorCategory = Literal["input", "transform", "feature", "multi", "decision", "artifact"]
+OperatorCategory = Literal["INPUT", "EXPAND", "TRANSFORM", "AGGREGATE", "MULTI_VARIABLE", "DECISION", "ARTIFACT"]
 NodeKind = Literal["input", "transform", "feature", "multi", "decision", "artifact"]
 ExecutionRole = Literal["trainable", "fixed", "proxy", "outer_only"]
 
