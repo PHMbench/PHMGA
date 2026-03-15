@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 from pathlib import Path
 import sys
@@ -19,9 +20,10 @@ from src.data import build_protocol_from_config, materialize_split_signals
 from src.evaluation import render_mermaid_dag
 from src.llm import get_llm
 from src.operators import get_operator_catalog
-from src.states import WorkflowState
+from src.states import RoundTrace, WorkflowState
 from src.training import run_ml_pipeline, run_torch_pipeline
 from src.utils import ensure_dir, write_json, write_text
+from src.utils import hash_payload
 
 
 def _write_common_artifacts(output_dir: Path, state: WorkflowState, compiled: Any, protocol) -> None:
@@ -52,6 +54,7 @@ def _run_path(
             compiled,
             split_records,
             catalog,
+            algorithm=str(runtime_config["model"]["ml"].get("algorithm", "logistic_regression")),
             max_iter=int(runtime_config["model"]["ml"]["max_iter"]),
         )
     return run_torch_pipeline(
@@ -60,6 +63,73 @@ def _run_path(
         catalog,
         epochs=int(runtime_config["model"]["torch"]["epochs"]),
         learning_rate=float(runtime_config["model"]["torch"]["learning_rate"]),
+    )
+
+
+def _dag_hash(state: WorkflowState) -> str:
+    if state.dag is None:
+        return hash_payload({"nodes": [], "edges": []})
+    return hash_payload(state.dag.model_dump())
+
+
+def _run_frontend_loop(
+    state: WorkflowState,
+    protocol,
+    llm,
+    catalog,
+) -> WorkflowState:
+    """Execute the front-end agent loop with rollback-aware replan handling."""
+
+    state.last_stable_dag = state.dag.model_copy(deep=True) if state.dag else None
+    state.last_stable_execution_results = deepcopy(state.execution_results)
+
+    for round_index in range(1, state.max_iterations + 1):
+        state.iteration_index = round_index
+        input_dag_hash = _dag_hash(state)
+        previous_node_ids = {node.node_id for node in state.dag.nodes} if state.dag else set()
+
+        state = plan_agent(state, protocol, llm, catalog)
+        state = execute_agent(state, protocol, catalog, llm)
+        state = reflect_agent(state, llm)
+
+        current_reflection = state.reflection_results[-1]
+        current_node_ids = {node.node_id for node in state.dag.nodes} if state.dag else set()
+        added_node_ids = sorted(current_node_ids - previous_node_ids)
+        round_step_plan = state.step_plan.model_copy(deep=True) if state.step_plan else None
+
+        rolled_back = False
+        if current_reflection.decision == "need_replan":
+            rolled_back = True
+            state.dag = state.last_stable_dag.model_copy(deep=True) if state.last_stable_dag else None
+            state.execution_results = deepcopy(state.last_stable_execution_results)
+            state.step_plan = None
+
+        state.round_history.append(
+            RoundTrace(
+                round_index=round_index,
+                input_dag_hash=input_dag_hash,
+                step_plan=round_step_plan,
+                added_node_ids=added_node_ids,
+                execution_gaps=[gap.model_copy(deep=True) for gap in state.execution_gaps],
+                reflection_result=current_reflection.model_copy(deep=True),
+                rolled_back=rolled_back,
+            )
+        )
+
+        if current_reflection.decision == "need_replan":
+            continue
+        if current_reflection.decision == "need_patch":
+            state.last_stable_dag = state.dag.model_copy(deep=True) if state.dag else None
+            state.last_stable_execution_results = deepcopy(state.execution_results)
+            continue
+        if current_reflection.decision == "finish":
+            state.last_stable_dag = state.dag.model_copy(deep=True) if state.dag else None
+            state.last_stable_execution_results = deepcopy(state.execution_results)
+            return state
+        raise RuntimeError(f"Workflow halted: {current_reflection.reason}")
+
+    raise RuntimeError(
+        f"Workflow exceeded max_iterations={state.max_iterations} without reaching finish."
     )
 
 
@@ -78,6 +148,7 @@ def run_case(
         user_instruction="Generate a paper-ready PHM workflow from canonical metadata.",
         dataset_name=protocol.dataset_name,
         graph_path=graph_path,
+        max_iterations=int(runtime_config.get("runtime", {}).get("max_iterations", 4)),
         data_context={
             "catalog": protocol.catalog,
             "metadata_schema_version": protocol.metadata_schema_version,
@@ -88,9 +159,7 @@ def run_case(
             "stage": "RUN_CASE",
         },
     )
-    state = plan_agent(state, protocol, llm, catalog)
-    state = execute_agent(state, protocol, catalog, llm)
-    state = reflect_agent(state, llm)
+    state = _run_frontend_loop(state, protocol, llm, catalog)
     # The validated DAG JSON is the only legal hand-off into backend execution.
     compiled = compile_dag_for_path(state.dag, state.graph_path)
     split_records = None if state.graph_path == "dag_only" else materialize_split_signals(protocol)
@@ -107,16 +176,27 @@ def run_case(
         write_json(path_artifacts["metrics"], output_root / "metrics.json")
         write_json(path_artifacts["predictions"], output_root / "predictions.json")
         write_json(path_artifacts["importance"], output_root / "importance.json")
+        write_json(path_artifacts["similarity_artifacts"], output_root / "similarity_artifacts.json")
     else:
         write_json(path_artifacts["model_build_plan"], output_root / "model_build_plan.json")
         write_json(path_artifacts["training_curves"], output_root / "training_curves.json")
         write_json(path_artifacts["checkpoint"], output_root / "checkpoint.json")
         write_json(path_artifacts["importance"], output_root / "importance.json")
         write_json(path_artifacts["metrics"], output_root / "metrics.json")
+        write_json(path_artifacts["similarity_artifacts"], output_root / "similarity_artifacts.json")
 
     final_report = report_agent(state, protocol, compiled.manifest, path_artifacts, llm)
     write_text(final_report, output_root / "final_report.md")
     write_json(runtime_config, output_root / "resolved_config.json")
+    write_json(
+        state.model_dump(
+            exclude={
+                "execution_results",
+                "last_stable_execution_results",
+            }
+        ),
+        output_root / "workflow_state.json",
+    )
 
     return {
         "config_name": runtime_config["runtime"]["config_name"],

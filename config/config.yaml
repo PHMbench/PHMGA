@@ -9,6 +9,8 @@ defaults:
 llm:
   provider: openrouter
   mode: offline_stub
+  model: offline-stub
+  api_key_env: OPENROUTER_API_KEY
 
 artifacts:
   keep:
@@ -24,3 +26,6 @@ model:
     epochs: 12
     learning_rate: 0.2
     hidden_dim: 8
+
+runtime:
+  max_iterations: 4
