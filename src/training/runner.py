@@ -1,16 +1,21 @@
-"""Minimal runners for the ``ml`` and ``torch`` graph paths."""
+"""Minimal runners for the ``ml`` and ``torch`` graph paths.
+
+The paper-oriented training layer now delegates dataset assembly to
+`src.data.dataset_preparer` and shallow baselines to `src.model.shallow_ml`.
+This keeps the main workflow agents focused on DAG construction while the
+path-specific runners own data/model execution details.
+"""
 
 from __future__ import annotations
 
 from typing import Dict, List
 
 import numpy as np
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, f1_score
 
 from src.bridge import FeaturePipelinePlan, ModelBuildPlan
-from src.data import SignalRecord
-from src.model import build_feature_matrix
+from src.data import SignalRecord, build_dataset_views
+from src.model import build_similarity_artifacts, run_shallow_ml_baseline
 from src.operators import OperatorCatalog
 
 
@@ -27,30 +32,28 @@ def run_ml_pipeline(
     split_records: Dict[str, List[SignalRecord]],
     catalog: OperatorCatalog,
     *,
+    algorithm: str = "logistic_regression",
     max_iter: int = 200,
 ) -> Dict[str, object]:
     """Run the lightweight ML baseline on bridge-generated feature matrices."""
-    matrices = build_feature_matrix(plan, split_records, catalog)
-    clf = LogisticRegression(max_iter=max_iter, random_state=0)
-    clf.fit(matrices["train"]["X"], matrices["train"]["y"])
-    predictions: Dict[str, list[dict[str, object]]] = {}
-    metrics: Dict[str, Dict[str, float]] = {}
-    for split_name in ("train", "val", "test"):
-        preds = clf.predict(matrices[split_name]["X"])
-        metrics[split_name] = _compute_metrics(matrices[split_name]["y"], preds)
-        predictions[split_name] = [
-            {"sample_id": sample_id, "prediction": int(pred)}
-            for sample_id, pred in zip(matrices[split_name]["sample_ids"], preds)
-        ]
+    dataset_views = build_dataset_views(plan, split_records, catalog)
+    baseline = run_shallow_ml_baseline(
+        dataset_views,
+        algorithm,
+        max_iter=max_iter,
+        random_state=0,
+    )
     importance = {
-        spec.feature_node_id: float(abs(weight))
-        for spec, weight in zip(plan.feature_specs, clf.coef_[0])
+        spec.feature_node_id: float(baseline["importance_by_index"].get(index, 0.0))
+        for index, spec in enumerate(plan.feature_specs)
     }
     return {
         "feature_pipeline": plan.model_dump(),
-        "metrics": metrics,
-        "predictions": predictions,
+        "algorithm": baseline["algorithm"],
+        "metrics": baseline["metrics"],
+        "predictions": baseline["predictions"],
         "importance": importance,
+        "similarity_artifacts": build_similarity_artifacts(dataset_views),
     }
 
 
@@ -81,9 +84,9 @@ def run_torch_pipeline(
     fallback here so smoke tests can validate the full artifact contract
     without requiring a PyTorch runtime.
     """
-    matrices = build_feature_matrix(plan, split_records, catalog)
-    x_train = matrices["train"]["X"]
-    y_train = matrices["train"]["y"]
+    dataset_views = build_dataset_views(plan, split_records, catalog)
+    x_train = dataset_views["train"].X
+    y_train = dataset_views["train"].y
     num_classes = int(np.max(y_train)) + 1
     weights = np.zeros((x_train.shape[1], num_classes), dtype=float)
     bias = np.zeros((num_classes,), dtype=float)
@@ -107,13 +110,14 @@ def run_torch_pipeline(
     split_metrics: Dict[str, Dict[str, float]] = {}
     predictions: Dict[str, list[dict[str, object]]] = {}
     for split_name in ("train", "val", "test"):
-        logits = matrices[split_name]["X"] @ weights + bias
+        view = dataset_views[split_name]
+        logits = view.X @ weights + bias
         probs = _softmax(logits)
         preds = np.argmax(probs, axis=1)
-        split_metrics[split_name] = _compute_metrics(matrices[split_name]["y"], preds)
+        split_metrics[split_name] = _compute_metrics(view.y, preds)
         predictions[split_name] = [
             {"sample_id": sample_id, "prediction": int(pred)}
-            for sample_id, pred in zip(matrices[split_name]["sample_ids"], preds)
+            for sample_id, pred in zip(view.sample_ids, preds)
         ]
     importance = {
         spec.feature_node_id: float(np.linalg.norm(weights[idx]))
@@ -127,4 +131,5 @@ def run_torch_pipeline(
         "metrics": split_metrics,
         "predictions": predictions,
         "importance": importance,
+        "similarity_artifacts": build_similarity_artifacts(dataset_views),
     }

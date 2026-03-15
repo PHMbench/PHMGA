@@ -1,4 +1,9 @@
-"""Feature extraction helpers shared by the ML and trainable paths."""
+"""Compatibility wrapper for feature-matrix construction.
+
+The canonical dataset assembly logic now lives in `src.data.dataset_preparer`.
+This module keeps the old `build_feature_matrix()` entrypoint so existing tests
+and runners can migrate incrementally.
+"""
 
 from __future__ import annotations
 
@@ -6,18 +11,9 @@ from typing import Dict, List, Union
 
 import numpy as np
 
-from src.bridge import FeaturePipelinePlan, FeatureSpec, ModelBuildPlan
-from src.data import SignalRecord
+from src.bridge import FeaturePipelinePlan, ModelBuildPlan
+from src.data import SignalRecord, build_dataset_views
 from src.operators import OperatorCatalog
-
-
-def _apply_spec(window: np.ndarray, spec: FeatureSpec, catalog: OperatorCatalog) -> float:
-    """Apply one compiled feature spec to a single window."""
-    current = window[[spec.channel_index], :]
-    for op_uid in spec.transform_ops:
-        current = catalog.get(op_uid).forward_np(current)
-    feature_value = catalog.get(spec.feature_op).forward_np(current)
-    return float(feature_value[0])
 
 
 def build_feature_matrix(
@@ -25,22 +21,14 @@ def build_feature_matrix(
     split_records: Dict[str, List[SignalRecord]],
     catalog: OperatorCatalog,
 ) -> Dict[str, Dict[str, Union[np.ndarray, List[str]]]]:
-    """Turn split-specific signal windows into downstream feature matrices."""
-    outputs: Dict[str, Dict[str, Union[np.ndarray, List[str]]]] = {}
-    for split_name, records in split_records.items():
-        features: list[list[float]] = []
-        labels: list[int] = []
-        sample_ids: list[str] = []
-        for record in records:
-            for window in record.windows:
-                # Sample ids are duplicated per window on purpose so reports can
-                # still trace predictions back to their source sample.
-                features.append([_apply_spec(window, spec, catalog) for spec in plan.feature_specs])
-                labels.append(record.label)
-                sample_ids.append(record.sample_id)
-        outputs[split_name] = {
-            "X": np.asarray(features, dtype=float),
-            "y": np.asarray(labels, dtype=int),
-            "sample_ids": sample_ids,
+    """Return backward-compatible dict payloads built from dataset views."""
+
+    views = build_dataset_views(plan, split_records, catalog)
+    return {
+        split_name: {
+            "X": view.X,
+            "y": view.y,
+            "sample_ids": view.sample_ids,
         }
-    return outputs
+        for split_name, view in views.items()
+    }

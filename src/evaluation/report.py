@@ -61,9 +61,20 @@ def build_final_report(
             "## Workflow",
             f"- User instruction: {state.user_instruction}",
             f"- Plan steps: {plan_steps}",
+            f"- Workflow rounds: {len(state.round_history)}",
             "",
             "## Analysis Workflow",
-            "!Analysis Workflow",
+            "- Front-end main chain: signal_context -> StepPlan -> execute -> reflect",
+            "- Replan policy: `need_patch` keeps the current round; `need_replan` rolls back to the last stable DAG.",
+            "- Back-end hand-off: validated DAG JSON -> bridge -> graph-dependent artifacts -> final report",
         ]
     )
+    if "similarity_artifacts" in path_artifacts:
+        lines.extend(
+            [
+                "",
+                "## Optional Similarity Artifacts",
+                f"- Keys: {', '.join(sorted(path_artifacts['similarity_artifacts'].keys()))}",
+            ]
+        )
     return "\n".join(lines) + "\n"
