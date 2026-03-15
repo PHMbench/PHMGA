@@ -2,106 +2,64 @@
 
 ## 本文档解决什么问题
 
-本文档冻结论文版前端与后端之间的正式边界：
+本文档冻结论文版前端主链：
 
-1. 四个主路径 agent 的输入、输出和禁止事项
-2. prompt 合同与 agent 输入输出的一致关系
-3. `validated DAG JSON` 为什么仍然是唯一法定中间接口
+- 四个主路径 agent 的输入、输出和禁止事项
+- 多轮 `plan -> execute -> reflect -> replan` 状态机
+- 为什么 `validated DAG JSON` 仍然是前后端唯一法定接口
 
-当前参考资产来自两处：
+## 当前主链
 
-- `feature-NSNet`
-- `/home/user/LQ/C_Agent/PHMGA`
+当前已成立的前端闭环是：
 
-它们提供的是研究资产和 prompt 分工思想，不是整包复制对象。
+`signal_context -> StepPlan -> execute_agent -> validated DAG JSON -> reflect_agent -> report_agent`
 
-## 当前实现态
+它已经不再是旧平台里的字符串 plan + 自治 executor，而是合同驱动的前端链。
 
-前端运行时合同已经从旧的占位文本收敛到：
+## 最终目标状态机
 
-`signal_context + current_dag + reflection -> StepPlan -> execute_agent -> validated DAG JSON -> bridge`
+```mermaid
+flowchart TD
+    A[signal_context]
+    B[plan_agent]
+    C[execute_agent]
+    D[reflect_agent]
+    E[validated DAG JSON]
+    F[bridge]
+    G[dag_only / ml / torch]
+    H[report_agent]
 
-这里有三个关键决定：
-
-1. `graph_path` 由 config/runtime 决定，不作为 `plan_agent` 的显式 prompt 输入字段
-2. 运行时主合同是 `StepPlan`，不是大而全的 `PlanSpec`
-3. `execute_agent` 必须把代表性计算结果写回 state，而不是只生成一个空 DAG 壳
-
-## 参考资产如何吸收
-
-### 来自 `/home/user/LQ/C_Agent/PHMGA/src/prompts/plan_prompt.py`
-
-保留：
-
-- 单轮围绕现有 DAG 做结构扩展
-- 允许从任意现有节点继续扩图
-- 强调 PHM 域时域、频域、时频、跨通道思路
-- 输出 `plan: [{parent, op_name, params}]`
-
-重写：
-
-- 不把 `graph_path` 放入 planner 的显式输入
-- 不让 planner 直接越权影响 `model/`、`training/`
-- 不把 prompt 写成旧平台式自治系统
-
-### 来自 `/home/user/LQ/C_Agent/PHMGA/src/prompts/execute_prompt.py`
-
-只保留：
-
-- 读取 plan、DAG、tools 的输入组织方式
-
-明确删除：
-
-- executor 自己决定“下一步工具”的自治逻辑
-- 从 leaves 自主规划新步骤的能力
-
-### 来自 `/home/user/LQ/C_Agent/PHMGA/src/prompts/reflect_prompt.py`
-
-保留：
-
-- 结构合法性审查
-- 深度/宽度/冗余/目标导向性审查
-- `decision/reason` 这一对 NVTA 风格输出
-
-补强：
-
-- 额外输出 `missing_operators`
-- 额外输出 `shape_risks`
-- 额外输出 `structural_warnings`
-
-### 来自 `/home/user/LQ/C_Agent/PHMGA/src/prompts/report_prompt.py`
-
-保留：
-
-- 报告要基于证据而不是自由发挥
-
-重写：
-
-- 正式输入改为 `graph-dependent artifacts + reflection summary`
-- review context 作为辅输入保留
-- 不再把旧平台的相似度/模型段落当作唯一模板
-
-## 正式 prompt 文件树
-
-```text
-src/prompts/
-├─ __init__.py
-├─ shared.py
-├─ plan_prompt.py
-├─ execute_prompt.py
-├─ reflect_prompt.py
-├─ report_prompt.py
-├─ inquirer_prompt.py      # optional
-└─ reflector_prompt.py     # reference-only
+    A --> B --> C --> D
+    D -- need_patch --> B
+    D -- need_replan --> R[rollback current round] --> B
+    D -- finish --> E --> F --> G --> H
+    D -- halt --> X[stop with reason]
 ```
 
-`templates.py` 只保留兼容转发，不再是正式 prompt 入口。
+这里有两个关键设计：
 
-## 运行时合同类型
+- `need_patch`
+  - 保留本轮新增节点和结果，继续下一轮 DAG 扩展
+- `need_replan`
+  - 回滚本轮新增节点和本轮新增 `execution_results`，恢复到 `last_stable_dag`
+
+## graph path 的位置
+
+`graph_path` 由 config/runtime 决定，不作为 `plan_agent` 的显式 prompt 输入。
+
+它影响三件事：
+
+- planner 的 artifact 倾向
+- executor / bridge 的合法性约束
+- report 的 graph-dependent section
+
+但不改变 planner 的显式输入合同。
+
+## 当前运行时合同类型
 
 ### `SignalContext`
 
-`plan_agent` 不直接接收完整窗口张量，而是接收 prompt-safe 的信号摘要：
+planner 读取的是 prompt-safe 信号摘要，而不是完整窗口张量。
 
 ```python
 class SignalContext:
@@ -114,14 +72,11 @@ class SignalContext:
     representative_sample_id: str | None
 ```
 
-语义：
-
-- 如果 `dag_json` 为空，则 `root_node_ids` 就是初始多通道信号根
-- 这满足“没有初始节点就是多通道信号”的要求
+如果当前 `dag_json` 为空，则 `root_node_ids` 就是初始多通道信号根。
 
 ### `StepPlan`
 
-当前运行时的 planner 正式输出是：
+当前运行时主合同仍然是 NVTA 风格的结构化 step plan：
 
 ```python
 class PlanStep:
@@ -129,16 +84,9 @@ class PlanStep:
     op_name: str
     params: dict[str, Any]
 
-
 class StepPlan:
     plan: list[PlanStep]
 ```
-
-说明：
-
-- `parent` 可以是单父节点 ID，也可以是逗号分隔的多父节点 ID
-- `op_name` 使用 NVTA 风格紧凑名称，例如 `normalize`, `fft`, `mean`, `concatenate`
-- `params` 只保存该 step 明确提供的参数，缺失参数由 execute 阶段补全
 
 ### `ExecutionGap`
 
@@ -153,8 +101,8 @@ class ExecutionGap:
 
 语义：
 
-- `execute_agent` 不能静默跳过非法或无法执行的 step
-- 无法满足的 step 必须显式写成 `ExecutionGap`
+- executor 不能静默跳过非法或无法执行的 step
+- 缺口必须显式写进 state
 
 ### `ReflectionResult`
 
@@ -167,12 +115,30 @@ class ReflectionResult:
     structural_warnings: list[str]
 ```
 
-说明：
+### `RoundTrace`
 
-- `decision/reason` 与 NVTA 风格兼容
-- 其余字段是论文版为结构审查补上的显式证据
+```python
+class RoundTrace:
+    round_index: int
+    input_dag_hash: str
+    step_plan: StepPlan | None
+    added_node_ids: list[str]
+    execution_gaps: list[ExecutionGap]
+    reflection_result: ReflectionResult | None
+    rolled_back: bool
+```
 
-## 四个 agent 的正式输入输出
+### `WorkflowState`
+
+除了 `signal_context / step_plan / execution_results / dag` 外，当前还要显式跟踪：
+
+- `iteration_index`
+- `max_iterations`
+- `round_history`
+- `last_stable_dag`
+- `last_stable_execution_results`
+
+## 四个主路径 agent 的正式输入输出
 
 ### `plan_agent`
 
@@ -187,7 +153,6 @@ class ReflectionResult:
 
 - `graph_path` from config/runtime
 - `operator_catalog_summary`
-- `protocol_summary`
 
 输出：
 
@@ -195,9 +160,8 @@ class ReflectionResult:
 
 禁止事项：
 
-- 不得输出 catalog 中不存在的 `op_name`
-- 不得直接生成训练器参数
-- 不得把自然语言说明冒充为正式 plan
+- 不得发明 catalog 不存在的 `op_name`
+- 不得越权改 training/model internals
 
 ### `execute_agent`
 
@@ -208,10 +172,6 @@ class ReflectionResult:
 - `operator_catalog`
 - `signal_context`
 
-隐式上下文：
-
-- `graph_path` from config/runtime
-
 输出：
 
 - `validated DAG JSON`
@@ -221,17 +181,17 @@ class ReflectionResult:
 必须遵守：
 
 1. 只能消费 `StepPlan`
-2. 先找 parent，再找 operator，再补参数，再执行
+2. 不能新增计划外步骤
 3. 参数补全顺序固定为：
-   - state/protocol/context
-   - operator schema 默认值
-   - LLM 补全缺失必需参数
+   - `StepPlan.params`
+   - state / signal-context derived values
+   - operator schema defaults
+   - LLM 对 `llm_tunable_params` 做补全或优化
 4. 无法执行时必须写 `ExecutionGap`
-5. 不能直接写磁盘 artifact，文件落盘留给 `scripts/run_case.py`
 
 ### `reflect_agent`
 
-显式输入：
+输入：
 
 - `instruction`
 - `stage`
@@ -241,15 +201,11 @@ class ReflectionResult:
 - `min_width`
 - `max_depth`
 - `current_depth`
+- `execution_gaps`
 
 输出：
 
 - `ReflectionResult`
-
-禁止事项：
-
-- 不得直接 patch DAG
-- 不得用训练指标替代结构合法性判断
 
 ### `report_agent`
 
@@ -261,161 +217,51 @@ class ReflectionResult:
 - `path_artifacts`
 - `reflection_summary`
 
-兼容 review context：
+辅输入：
 
-- `stage`
-- `dag_blueprint`
-- `issues_summary`
-- `min_depth`
-- `min_width`
-- `max_depth`
-- `current_depth`
+- `review_context`
 
 输出：
 
 - `report_markdown`
 
-说明：
+## data / model 子能力的位置
 
-- 这允许报告既遵循 graph-dependent artifacts，又兼容 NVTA 风格的 review context
+以下旧额外 agents 已经重组，不再进入 workflow 主路径：
 
-## prompt 与 agent 的一一对应
+- `src/data/dataset_preparer.py`
+  - 负责从 split records / materialized features 构建 dataset views
+- `src/model/shallow_ml.py`
+  - 负责 `ml` path 的 shallow baselines
+- `src/model/inquirer.py`
+  - 负责 optional similarity artifacts
 
-### `plan_prompt.py`
+它们是主链调用的子能力，不是状态迁移节点。
 
-输入字段：
+## 当前 bridge 边界
 
-- `instruction`
-- `signal_context`
-- `dag_json`
-- `tools`
-- `reflection`
-- `current_depth`
-- `min_depth`
-- `min_width`
+bridge 仍然只吃 `validated DAG JSON`。
 
-输出字段：
+前端和后端之间的法定边界仍是：
 
-- `{"plan": [{"parent": "...", "op_name": "...", "params": {...}}]}`
+`WorkflowState -> validated DAG JSON -> compile_dag_for_path()`
 
-对应 agent：
+不允许：
 
-- `plan_agent`
+- 直接把 workflow state 塞给 training
+- 直接把 prompt 输出塞给 training
+- 绕过 DAG 校验
 
-### `execute_prompt.py`
+## 当前已闭合链路
 
-输入字段：
+- `plan_agent` 已能从 preview signal 构建 `SignalContext` 并输出 `StepPlan`
+- `execute_agent` 已能 materialize 单输入链和最小 `multi.concatenate`
+- `reflect_agent` 已能输出结构化 `ReflectionResult`
+- `report_agent` 已能消费 manifest + path artifacts + review context
 
-- `step_plan`
-- `dag_json`
-- `operator_catalog`
-- `signal_context`
-- `graph_path`
+## 当前未闭合但已明确的边界
 
-输出字段：
-
-- `{"node_updates": [...], "execution_gaps": [...]}`
-
-对应 agent：
-
-- `execute_agent`
-
-### `reflect_prompt.py`
-
-输入字段：
-
-- `instruction`
-- `stage`
-- `dag_blueprint`
-- `issues_summary`
-- `min_depth`
-- `min_width`
-- `max_depth`
-- `current_depth`
-
-输出字段：
-
-- `{"decision": "...", "reason": "...", "missing_operators": [], "shape_risks": [], "structural_warnings": []}`
-
-对应 agent：
-
-- `reflect_agent`
-
-### `report_prompt.py`
-
-输入字段：
-
-- `instruction`
-- `graph_path`
-- `compiled_manifest`
-- `path_artifacts`
-- `reflection_summary`
-- `review_context`
-
-输出字段：
-
-- markdown report
-
-对应 agent：
-
-- `report_agent`
-
-## `graph_path` 的正式位置
-
-`graph_path` 只应存在于：
-
-- `config`
-- `runtime_config`
-- `WorkflowState.graph_path`
-- bridge/path-specific backend
-
-它不应重复作为 `plan_agent` 的显式 prompt 输入字段。
-
-原因：
-
-- 前端默认先生成 DAG
-- 后端再根据 `graph_path` 决定是 `dag_only`、`ml` 还是 `torch`
-
-## `execute_agent` 与 state 持久化
-
-当前论文版明确要求：
-
-- `execute_agent` 必须把代表性计算结果写回 state
-- state 中至少保留：
-  - 根输入结果
-  - 新节点结果
-  - `execution_gaps`
-
-但它不负责：
-
-- `dag.json` 落盘
-- manifest 落盘
-- final report 落盘
-
-这些属于外层脚本与 evaluation/artifact 责任。
-
-## bridge 的法定边界
-
-以下边界必须保持不变：
-
-- workflow/front-end 世界只输出 `validated DAG JSON`
-- bridge 只消费 `validated DAG JSON`
-- agents 不得直接把 state 塞给 `model/` 或 `training/`
-
-正式链路：
-
-`states / prompts / agents -> DAGTracker(NetworkX) -> DAG JSON -> validated DAG JSON -> bridge -> {dag_only | ml | torch}`
-
-## 当前缺口与推荐默认
-
-### 仍未完全实现的点
-
-- provider-backed OpenRouter 真实生成仍未接入主测试
-- `decision` 仍是 schema-first / auxiliary terminal
-- richer multi-operator 仍未大规模迁移
-
-### 推荐默认
-
-1. 先稳住 `StepPlan -> execute -> validated DAG JSON`
-2. 再扩更丰富的算子和 provider-backed prompting
-3. 始终保持 prompt 字段、agent 输入输出、测试断言三者同名同义
+- 仍是 representative / preview 级前端执行，不是 dataset-level 全窗口 DAG 执行
+- `decision` 仍是 auxiliary terminal
+- bridge 对 multi-parent lineage 仍是最小支持，不是完整 rich DAG compiler
+- report 已可生成，但仍建立在 path artifacts 先准备好的前提上

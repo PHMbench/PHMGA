@@ -1,143 +1,129 @@
 # 05 Missing Assets And Roadmap
 
-本文件不是功能说明，而是当前论文版仓库尚未补齐的关键合同清单。
+本文件记录当前论文版主链的现状、尚缺和推荐下一步。写法按主链阶段分组，而不是按文件散列。
 
-## 当前缺失资产
+## signal / protocol
 
-### prompts
+### current_status
 
-当前正式 prompt 文件已经补到：
+- canonical protocol 已固定为 `train/val/test`
+- real + synthetic 两类数据入口已统一到 `src/data/protocol.py`
+- `SignalContext` 已从 representative preview signal 构建
 
-- `plan_prompt.py`
-- `execute_prompt.py`
-- `reflect_prompt.py`
-- `report_prompt.py`
-- `shared.py`
+### missing_now
 
-仍未补齐的是：
+- dataset-level DAG execution 仍未实现
+- preview signal 与 full split execution 的边界仍需继续强化
 
-- provider-backed 真正调用链
-- prompt output repair 策略
-- 更丰富的 decision / inquiry prompt 分支
+### recommended_next
 
-### agent contracts
+- 继续保持前端只消费 `SignalContext`
+- 后续单独补 dataset-level materializer，而不是把 raw windows 直接塞进 planner
 
-当前 `WorkflowState` 已补到：
+## plan
 
-- `signal_context`
-- `step_plan`
-- `execution_results`
-- `execution_gaps`
-- `reflection_history: List[str]`
-- `reflection_results`
-- `dag`
+### current_status
 
-当前仍待补齐：
+- `plan_agent` 已输出 `StepPlan`
+- prompt 已经读取 richer operator summary
+- `graph_path` 不再作为 planner 显式输入
 
-- 多轮 replan 状态机
-- richer `decision` 执行语义
-- path-specific report section contract 进一步细化
+### missing_now
 
-### DAG contract
+- richer operator coverage 仍不足
+- provider-backed planner 还未接成默认主链
 
-当前 `DagNode` 已补到：
+### recommended_next
 
-- `operator_category`
-- `legal_paths`
-- `input_bindings`
-- `plan_step_ref`
-- `rationale`
+- 先扩 operator metadata 和少量 PHM 高频算子
+- 等 prompt/contract 稳定后再接真实 provider
 
-仍待补齐：
+## execute
 
-- `shape_symbols` 等更细的符号级 shape 推演
-- multi-parent lineage 在 bridge 中的一等支持
+### current_status
 
-### operator system
+- `execute_agent` 已是 plan-driven materializer
+- 已支持单输入链和最小 `multi.concatenate`
+- 参数补全顺序已固定为：
+  - `StepPlan.params`
+  - context-derived values
+  - operator defaults
+  - LLM tuning for `llm_tunable_params`
 
-当前 `OperatorCatalog` 只覆盖：
+### missing_now
 
-- `signal.normalize`
-- `signal.fft_mag`
-- `feature.mean`
-- `feature.std`
-- `feature.rms`
+- `decision` 仍未进入正式可执行链
+- multi-parent lineage 的后端支持仍然较弱
 
-这只能证明 bridge 路径打通，不能证明论文方法在 PHM 信号处理上有足够的结构表达力。
+### recommended_next
 
-## 推荐默认
+- 保持 `decision` 先作为 auxiliary terminal
+- 等 bridge 升级后再扩 richer multi-parent execution
 
-### prompts
+## reflect
 
-- 主路径只保留 `plan / execute / reflect / report`
-- `inquirer` 只作为 decision path 扩展，不进入第一轮主实验闭环
-- `research/shared` 不进入主路径，只保留为外部研究辅助资产
+### current_status
 
-### agent contracts
+- `reflect_agent` 已输出结构化 `ReflectionResult`
+- `need_patch / need_replan / finish / halt` 语义已经进入状态机
 
-- `plan_agent` 输出 `StepPlan`
-- `execute_agent` 只能消费 `StepPlan`
-- `reflect_agent` 输出 `ReflectionResult`
-- `report_agent` 只消费 graph-dependent artifacts 与 manifest
+### missing_now
 
-### DAG contract
+- reflection 仍主要看结构合同，不看 richer evidence quality
 
-- 继续坚持 `validated DAG JSON` 是前后端唯一法定接口
-- 继续坚持 `NetworkX` 只用于生成期，不进入 bridge 输出合同
-- 继续坚持 schema 校验失败时拒绝进入 bridge，不做隐式修复
+### recommended_next
 
-### operator roadmap
+- 后续把 artifact richness 和 operator diversity 纳入 reflection 规则
 
-第一批应优先补齐：
+## bridge / path artifacts
 
-- `signal.filter`
-- `signal.hilbert_envelope`
-- `signal.psd`
-- `signal.stft`
-- `signal.wavelet_transform`
-- `feature.kurtosis`
-- `feature.crest_factor`
-- `feature.band_power`
-- `feature.spectral_centroid`
-- `multi.concatenate`
+### current_status
+
+- `validated DAG JSON` 仍是唯一法定接口
+- `compiled_dag_manifest.json` 已稳定
+- `ml / torch` 路径已接入 `dataset_preparer`、`shallow_ml`、`inquirer`
+
+### missing_now
+
+- bridge 对 multi-parent lineage 仍不是一等支持
+- `decision` 仍没有正式 compiled side-output plan
+
+### recommended_next
+
+- 先保持 bridge 主链最小可解释
+- 再补 richer lineage 和 decision-side compilation
+
+## report
+
+### current_status
+
+- `report_agent` 已按 `dag_only / ml / torch` 消费 graph-dependent artifacts
+- similarity artifacts 已进入 `ml / torch` 报告证据链
+
+### missing_now
+
+- 报告仍偏实验记录，不是论文附录级 evidence report
+- provider-backed summarization 仍未成为默认主链
+
+### recommended_next
+
+- 先扩 evidence richness
+- 再考虑 provider-backed 摘要生成
+
+## 当前正式目标
+
+以下项已从“纯缺口”转为当前正式目标：
+
+- richer operator schema metadata
+- `dataset_preparer` 进入 `src/data`
+- `inquirer / shallow_ml` 进入 `src/model`
+- multi-round `replan` 状态机
+- execute 阶段对 operator params 的 LLM tuning
 
 ## Decision Pending
 
-以下事项当前应显式记录，而不是在代码里默默脑补：
+只记录真正影响主链的未决项：
 
-- `multi-variable` 节点是否只允许无名 `parents`，还是要正式引入 `input_bindings`
-- `decision` 节点是否进入正式 DAG JSON，还是只作为 `dag_only` / 报告外环 artifact
-- `torch` path 中哪些传统算子需要可微代理，哪些只保留固定前端语义
-- `report_agent` 是否需要 provider-backed 摘要生成，还是继续以模板化报告为主
-
-## LLM backend roadmap
-
-当前后端状态是：
-
-- `OfflineLLM`
-- `mode = offline_stub`
-
-这是合同验证态，不是最终论文态。切换到 provider-backed OpenRouter 的前提必须全部满足：
-
-1. `plan / execute / reflect / report` prompt contract 冻结
-2. `StepPlan / ReflectionResult / DagJson` schema 冻结
-3. `compiled_dag_manifest.json` 与 graph-dependent artifact contract 冻结
-4. 至少一个真实数据集上的真实生成案例进入测试
-5. 对 LLM 输出解析失败、schema repair、replan 触发条件给出显式策略
-
-## Path maturity matrix
-
-| path | 当前成熟度 | 当前可用性 | 主要缺口 | 推荐下一步 |
-| --- | --- | --- | --- | --- |
-| `dag_only` | `M2: contract-usable` | 可导出合法 DAG 与 manifest，且已切到 `StepPlan` 驱动 | 仍缺真实 provider-backed 生成链 | 先稳住 prompts / tests / execute contract |
-| `ml` | `M1: baseline-usable` | 最小 ML 闭环可跑 | 只支持线性单父链特征；缺少 richer operators | 先扩一批统计与频域算子 |
-| `torch` | `M0: placeholder` | artifact contract 可验证 | 仍是 NumPy fallback，不是正式 torch 训练栈 | 等 prompts/DAG/operator 合同稳定后再升级 |
-
-## 文档优先顺序
-
-后续代码改动前，必须先审过以下文档：
-
-1. `del/02_agent_review_findings.md`
-2. `01_dag_and_operators.md`
-3. `02_workflow_and_bridge.md`
-4. `03_training_and_evaluation.md`
+- `decision` 节点何时进入正式可执行链
+- bridge 何时升级到 richer multi-parent lineage
+- provider-backed planner / reflector / reporter 何时接成默认
