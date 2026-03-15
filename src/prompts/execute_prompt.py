@@ -30,6 +30,7 @@ EXECUTE_PROMPT_TEMPLATE = """You are an execution planner for a PHM DAG workflow
 Task:
 - Materialize `step_plan` into DAG node additions.
 - Resolve missing parameters only from operator schema, signal context, or explicit reasoning.
+- Only tune parameters declared in `llm_tunable_params`.
 - If a step cannot be executed, emit an execution gap instead of inventing a fallback branch.
 
 Graph path from config: {graph_path}

@@ -39,6 +39,7 @@ Rules:
 - Return valid JSON only.
 - Each plan item must contain `parent`, `op_name`, and `params`.
 - The plan must remain executable by the operator catalog.
+- Use operator `schema_category`, `description`, and `planning_notes` to choose PHM-relevant expansions.
 
 Instruction: {instruction}
 Signal context: {signal_context}
