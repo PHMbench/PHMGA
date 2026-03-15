@@ -1,9 +1,13 @@
 """Offline-first LLM client used by the rebuilt workflow agents.
 
-The current repository keeps the provider contract intentionally small. The
-offline stub already exposes the structured outputs that the four workflow
-agents need, so unit tests can validate agent IO without requiring a remote
-provider.
+The current repository still defaults to an offline stub, but the client
+already mirrors the paper-oriented agent contracts closely enough to exercise
+the main workflow:
+
+- planner emits `StepPlan`
+- executor fills operator parameters
+- reflector emits `ReflectionResult`
+- reporter renders graph-dependent markdown
 """
 
 from __future__ import annotations
@@ -23,6 +27,14 @@ def _leaf_node_ids(dag_json: Optional[Dict[str, Any]]) -> List[str]:
     return leaves
 
 
+def _catalog_entry(operator_catalog_summary: Iterable[Dict[str, Any]], op_name: str) -> Optional[Dict[str, Any]]:
+    normalized = op_name.strip().lower()
+    for item in operator_catalog_summary:
+        if str(item.get("op_name", "")).strip().lower() == normalized:
+            return item
+    return None
+
+
 @dataclass
 class OfflineLLM:
     """Deterministic stand-in for the future provider-backed client."""
@@ -39,7 +51,6 @@ class OfflineLLM:
         signal_context: SignalContext,
         dag_json: Optional[Dict[str, Any]],
         reflection: Iterable[str],
-        graph_path: str,
         operator_catalog_summary: Iterable[Dict[str, Any]],
     ) -> StepPlan:
         """Return a deterministic NVTA-style plan for the current DAG state."""
@@ -56,7 +67,7 @@ class OfflineLLM:
                 fft_parent = f"fft_{len(roots) + index:02d}_normalize_{index:02d}_{root}"
                 for feature_name in ("mean", "std", "rms"):
                     steps.append({"parent": fft_parent, "op_name": feature_name, "params": {}})
-            if graph_path in {"ml", "torch"} and len(roots) > 1:
+            if len(roots) > 1:
                 rms_parents = [
                     f"rms_{2 * len(roots) + 3 * (index - 1) + 3:02d}_fft_{len(roots) + index:02d}_normalize_{index:02d}_{root}"
                     for index, root in enumerate(roots, start=1)
@@ -79,23 +90,44 @@ class OfflineLLM:
         *,
         op_name: str,
         param_schema: Dict[str, str],
+        param_defaults: Dict[str, Any],
+        param_docs: Dict[str, str],
+        llm_tunable_params: List[str],
         provided_params: Dict[str, Any],
         signal_context: SignalContext,
+        parent_summaries: List[Dict[str, Any]],
     ) -> Dict[str, Any]:
-        """Fill required params from signal metadata or conservative defaults."""
+        """Fill operator params from context, schema defaults, and simple heuristics.
 
+        This is a deterministic stand-in for provider-backed parameter tuning.
+        It only touches operator params and never training/model hyperparameters.
+        """
+
+        del param_docs
         resolved = dict(provided_params)
+        derived: Dict[str, Any] = {
+            "fs": signal_context.sampling_rate,
+            "sampling_rate": signal_context.sampling_rate,
+        }
+        if parent_summaries and any("shape" in item for item in parent_summaries):
+            derived["parent_count"] = len(parent_summaries)
         for param_name in param_schema:
             if param_name in resolved:
                 continue
-            if param_name == "eps":
-                resolved[param_name] = 1e-6
-            elif param_name in {"axis"}:
-                resolved[param_name] = 0
-            elif param_name in {"fs", "sampling_rate"}:
-                resolved[param_name] = signal_context.sampling_rate
-            else:
-                raise ValueError(f"Missing required parameter '{param_name}' for op '{op_name}'.")
+            if param_name in derived:
+                resolved[param_name] = derived[param_name]
+                continue
+            if param_name in param_defaults:
+                resolved[param_name] = param_defaults[param_name]
+                continue
+            if param_name in llm_tunable_params:
+                if param_name == "axis":
+                    resolved[param_name] = 0
+                    continue
+                if param_name == "eps":
+                    resolved[param_name] = 1e-6
+                    continue
+            raise ValueError(f"Missing required parameter '{param_name}' for op '{op_name}'.")
         return resolved
 
     def reflect_workflow(
@@ -180,6 +212,7 @@ class OfflineLLM:
             "",
             "## Workflow Plan",
             f"- Planned steps: {len(step_plan.get('plan', []))}",
+            f"- Workflow rounds: {review_context.get('round_count', 'n/a')}",
         ]
         if graph_path == "dag_only":
             lines.extend(
@@ -199,6 +232,7 @@ class OfflineLLM:
                     f"- Feature specs: {len(path_artifacts.get('feature_pipeline', {}).get('feature_specs', []))}",
                     f"- Metrics keys: {', '.join(sorted(path_artifacts.get('metrics', {}).keys()))}",
                     f"- Importance keys: {', '.join(sorted(path_artifacts.get('importance', {}).keys()))}",
+                    f"- Similarity artifact keys: {', '.join(sorted(path_artifacts.get('similarity_artifacts', {}).keys()))}",
                 ]
             )
         else:
@@ -209,6 +243,7 @@ class OfflineLLM:
                     f"- Build plan keys: {_keys_or_len(path_artifacts.get('model_build_plan', {}))}",
                     f"- Training curves: {_keys_or_len(path_artifacts.get('training_curves', {}))}",
                     f"- Checkpoint keys: {_keys_or_len(path_artifacts.get('checkpoint', {}))}",
+                    f"- Similarity artifact keys: {', '.join(sorted(path_artifacts.get('similarity_artifacts', {}).keys()))}",
                 ]
             )
         lines.extend(
