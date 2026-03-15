@@ -41,6 +41,7 @@ def report_agent(
         "min_width": int(state.data_context.get("min_width", 1)),
         "max_depth": int(state.data_context.get("max_depth", 8)),
         "current_depth": _dag_depth(state),
+        "round_count": len(state.round_history),
     }
     reflection_summary = (
         state.reflection_results[-1].model_dump()

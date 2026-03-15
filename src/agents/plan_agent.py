@@ -70,7 +70,6 @@ def plan_agent(
         signal_context=state.signal_context,
         dag_json=state.dag.model_dump() if state.dag else None,
         reflection=state.reflection_history,
-        graph_path=state.graph_path,
         operator_catalog_summary=catalog.summary(),
     )
     state.status = "planned"

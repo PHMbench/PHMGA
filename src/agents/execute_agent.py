@@ -2,7 +2,13 @@
 
 Unlike the old fixed-template executor, this agent only acts on the planner's
 `StepPlan`. It also stores representative execution results in workflow state so
-reflection and reporting can inspect what was actually materialized.
+reflection and reporting can inspect what was actually materialized. Parameter
+selection follows a fixed order:
+
+1. explicit `StepPlan.params`
+2. state / signal-context derived values
+3. operator schema defaults
+4. LLM tuning for declared `llm_tunable_params`
 """
 
 from __future__ import annotations
@@ -35,14 +41,6 @@ def _node_kind(op_uid: str) -> str:
     return "transform"
 
 
-def _legal_paths(op_uid: str) -> List[str]:
-    if op_uid in {"feature.mean", "feature.std"}:
-        return ["dag_only", "ml"]
-    if op_uid.startswith("decision."):
-        return ["dag_only"]
-    return ["dag_only", "ml", "torch"]
-
-
 def _seed_input_roots(state: WorkflowState, protocol: DatasetProtocol, tracker: DAGTracker) -> None:
     if state.signal_context is None:
         raise ValueError("signal_context must be initialized before execute_agent runs.")
@@ -58,7 +56,7 @@ def _seed_input_roots(state: WorkflowState, protocol: DatasetProtocol, tracker: 
                 op_uid="input.signal",
                 name=f"Input Channel {channel_index + 1}",
                 kind="input",
-                operator_category="input",
+                operator_category="INPUT",
                 params={"channel_index": channel_index},
                 parents=[],
                 in_shape=list(channel_signal.shape),
@@ -143,12 +141,25 @@ def execute_agent(
             )
             continue
 
+        parent_results = [np.asarray(state.execution_results[parent_id], dtype=float) for parent_id in parent_ids]
+        parent_summaries = [
+            {
+                "node_id": parent_id,
+                "shape": list(parent_result.shape),
+            }
+            for parent_id, parent_result in zip(parent_ids, parent_results)
+        ]
+
         try:
             params = llm.resolve_missing_params(
                 op_name=step.op_name,
                 param_schema=operator.spec.param_schema,
+                param_defaults=operator.spec.param_defaults,
+                param_docs=operator.spec.param_docs,
+                llm_tunable_params=operator.spec.llm_tunable_params,
                 provided_params=step.params,
                 signal_context=state.signal_context,
+                parent_summaries=parent_summaries,
             )
         except ValueError as exc:
             state.execution_gaps.append(
@@ -162,7 +173,6 @@ def execute_agent(
             )
             continue
 
-        parent_results = [np.asarray(state.execution_results[parent_id], dtype=float) for parent_id in parent_ids]
         if operator.spec.op_uid.startswith("decision."):
             state.execution_gaps.append(
                 ExecutionGap(
@@ -202,17 +212,21 @@ def execute_agent(
                 op_uid=operator.spec.op_uid,
                 name=operator.spec.name,
                 kind=_node_kind(operator.spec.op_uid),
-                operator_category=_node_kind(operator.spec.op_uid),
+                operator_category=operator.spec.schema_category,
                 params=params,
                 parents=parent_ids,
                 in_shape=in_shape,
                 out_shape=list(np.asarray(result).shape) or [1],
                 backend_availability=operator.spec.backend_availability,
                 execution_role=operator.spec.execution_role,
-                legal_paths=_legal_paths(operator.spec.op_uid),
+                legal_paths=operator.spec.legal_paths,
                 input_bindings=input_bindings,
-                plan_step_ref=f"step_{step_index:02d}",
-                rationale=f"Planner step {step_index}: apply {step.op_name} to {step.parent}.",
+                plan_step_ref=f"round_{state.iteration_index:02d}_step_{step_index:02d}",
+                rationale=(
+                    f"Round {state.iteration_index} planner step {step_index}: "
+                    f"apply {step.op_name} to {step.parent} using schema category "
+                    f"{operator.spec.schema_category}."
+                ),
             )
         )
         state.execution_results[new_node_id] = result
