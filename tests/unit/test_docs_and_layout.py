@@ -29,10 +29,12 @@ def test_legacy_layout_is_gone():
 
 def test_ai_guides_reference_readme_and_drop_legacy_paths():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "<<<<<<<" not in readme
     assert "dag_only" in readme
     assert "scripts/preflight.py" in readme
     assert "scripts/run_case.py" in readme
     assert "config/runs/rm101_dag.yaml" in readme
+    assert "mermaid" in readme
     assert "--dataset" not in readme
 
     for path in (ROOT / "AGENTS.md", ROOT / "CLAUDE.md", ROOT / "GEMINI.md"):

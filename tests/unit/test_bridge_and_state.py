@@ -41,6 +41,8 @@ def test_workflow_state_is_serializable():
     assert payload["step_plan"]["plan"]
     assert payload["dag"]["nodes"]
     assert payload["reflection_results"]
+    assert "round_history" in payload
+    assert payload["max_iterations"] >= 1
 
 
 def test_bridge_compiles_all_paths():

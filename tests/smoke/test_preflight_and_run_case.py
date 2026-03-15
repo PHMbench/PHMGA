@@ -61,8 +61,11 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
         assert (output_dir / "compiled_dag_manifest.json").exists()
         assert (output_dir / "resolved_splits.json").exists()
         assert (output_dir / "resolved_dataset_manifest.json").exists()
+        assert (output_dir / "workflow_state.json").exists()
         assert (output_dir / "final_report.md").exists()
         assert (output_dir / expected_file).exists()
+        if graph_path in {"ml", "torch"}:
+            assert (output_dir / "similarity_artifacts.json").exists()
 
 
 @pytest.mark.skipif(
