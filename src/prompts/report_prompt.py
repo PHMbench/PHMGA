@@ -14,11 +14,12 @@ REPORT_PROMPT_INPUT_FIELDS = (
     "compiled_manifest",
     "path_artifacts",
     "reflection_summary",
+    "dag_quality_summary",
     "review_context",
 )
 REPORT_PROMPT_OUTPUT_FIELDS = ("markdown report",)
 REPORT_PROMPT_PROHIBITIONS = (
-    "claim a full torch trainer when artifacts are NumPy fallback",
+    "claim a full research-grade torch trainer when artifacts come from the minimal torch tensor runtime",
     "reference artifacts that do not exist for the current graph path",
     "emit non-markdown output",
 )
@@ -33,6 +34,7 @@ Graph path: {graph_path}
 Compiled manifest: {compiled_manifest}
 Path artifacts: {path_artifacts}
 Reflection summary: {reflection_summary}
+Dag quality summary: {dag_quality_summary}
 Review context: {review_context}
 """
 
@@ -44,6 +46,7 @@ def render_report_prompt(
     compiled_manifest: Dict[str, Any],
     path_artifacts: Dict[str, Any],
     reflection_summary: Dict[str, Any],
+    dag_quality_summary: Dict[str, Any],
     review_context: Dict[str, Any],
 ) -> str:
     contract = render_contract_header(
@@ -60,5 +63,6 @@ def render_report_prompt(
         compiled_manifest=json.dumps(compiled_manifest, ensure_ascii=False),
         path_artifacts=json.dumps(path_artifacts, ensure_ascii=False),
         reflection_summary=json.dumps(reflection_summary, ensure_ascii=False),
+        dag_quality_summary=json.dumps(dag_quality_summary, ensure_ascii=False),
         review_context=json.dumps(review_context, ensure_ascii=False),
     )

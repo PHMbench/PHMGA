@@ -54,6 +54,7 @@ def report_agent(
         compiled_manifest=manifest.model_dump(),
         path_artifacts=path_artifacts,
         reflection_summary=reflection_summary,
+        dag_quality_summary=state.dag_quality_summary,
         review_context=review_context,
     )
     state.status = "reported"
@@ -64,6 +65,7 @@ def report_agent(
         compiled_manifest=manifest.model_dump(),
         path_artifacts=path_artifacts,
         reflection_summary=reflection_summary,
+        dag_quality_summary=state.dag_quality_summary,
         review_context=review_context,
         step_plan=state.step_plan.model_dump() if state.step_plan else {"plan": []},
     )

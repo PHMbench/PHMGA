@@ -12,6 +12,7 @@ REFLECT_PROMPT_INPUT_FIELDS = (
     "instruction",
     "stage",
     "dag_blueprint",
+    "dag_quality_summary",
     "issues_summary",
     "min_depth",
     "min_width",
@@ -32,12 +33,14 @@ REFLECT_PROMPT_TEMPLATE = """You are an experienced PHM system architect reviewi
 {contract}
 Review guidance:
 - Check structural integrity, operator legality, and planning progress.
-- Use current depth and minimum depth/width as context, not as the only decision rule.
+- Use current depth and minimum depth/width as soft context, not as the only decision rule.
+- Use `dag_quality_summary` to judge whether the current round is healthy enough to finish.
 - If execution gaps exist, surface them explicitly in `missing_operators` or `structural_warnings`.
 
 Instruction: {instruction}
 Stage: {stage}
 DAG blueprint: {dag_blueprint}
+Quality summary: {dag_quality_summary}
 Issues summary: {issues_summary}
 Minimum depth: {min_depth}
 Minimum width: {min_width}
@@ -51,6 +54,7 @@ def render_reflect_prompt(
     instruction: str,
     stage: str,
     dag_blueprint: Dict[str, Any],
+    dag_quality_summary: Dict[str, Any],
     issues_summary: str,
     min_depth: int,
     min_width: int,
@@ -69,6 +73,7 @@ def render_reflect_prompt(
         instruction=instruction,
         stage=stage,
         dag_blueprint=json.dumps(dag_blueprint, ensure_ascii=False),
+        dag_quality_summary=json.dumps(dag_quality_summary, ensure_ascii=False),
         issues_summary=issues_summary,
         min_depth=min_depth,
         min_width=min_width,

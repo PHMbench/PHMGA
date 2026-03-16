@@ -33,7 +33,8 @@ Strategic guidance:
 2. If `dag_json` is empty, treat `signal_context.root_node_ids` as the multi-channel raw signal roots.
 3. Prefer PHM-relevant workflows such as time-domain -> frequency-domain -> feature extraction.
 4. Use any existing node as a parent when that grows the DAG logically.
-5. Respect signal shapes. Do not apply aggregate statistics to nodes that are already reduced features.
+5. Respect signal shapes and rank behavior. Do not apply aggregate statistics to nodes that are already reduced features.
+6. Use `schema_category`, `rank_class`, `input_spec`, and `output_spec` to choose legal next steps.
 
 Rules:
 - Return valid JSON only.
