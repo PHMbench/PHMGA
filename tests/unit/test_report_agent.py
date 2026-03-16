@@ -42,10 +42,13 @@ def test_report_agent_writes_dag_only_sections():
             "node_inventory": compiled.node_inventory,
             "edge_inventory": compiled.edge_inventory,
             "method_description": compiled.method_description,
+            "decision_side_outputs": {"threshold_01": {"decision": True, "score": 0.9}},
         },
         llm,
     )
     assert "## DAG Evidence" in report
+    assert "## DAG Quality" in report
+    assert "## Decision Side Outputs" in report
     assert "Reflection decision" in report
 
 
@@ -64,6 +67,7 @@ def test_report_agent_writes_ml_and_torch_sections():
         llm,
     )
     assert "## ML Evidence" in ml_report
+    assert "## DAG Quality" in ml_report
 
     torch_state, torch_protocol, llm = _reflected_state("config/runs/rm101_synth_torch.yaml")
     torch_manifest = compile_dag_for_path(torch_state.dag, "torch").manifest
@@ -79,3 +83,4 @@ def test_report_agent_writes_ml_and_torch_sections():
         llm,
     )
     assert "## Torch Evidence" in torch_report
+    assert "## DAG Quality" in torch_report

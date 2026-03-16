@@ -62,6 +62,8 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
         assert (output_dir / "resolved_splits.json").exists()
         assert (output_dir / "resolved_dataset_manifest.json").exists()
         assert (output_dir / "workflow_state.json").exists()
+        assert (output_dir / "dag_quality_summary.json").exists()
+        assert (output_dir / "decision_side_outputs.json").exists()
         assert (output_dir / "final_report.md").exists()
         assert (output_dir / expected_file).exists()
         if graph_path in {"ml", "torch"}:
@@ -74,8 +76,8 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
 )
 def test_real_configs_preflight_and_dag_only(tmp_path: Path):
     for config_name, expected_dataset in (
-        ("config/runs/rm101_dag.yaml", "RM_101_THU_GEARBOX"),
-        ("config/runs/ottawa_dag.yaml", "RM_017_Ottawa19"),
+        ("config/runs/rm101_dag_test.yaml", "RM_101_THU_GEARBOX"),
+        ("config/runs/ottawa_dag_test.yaml", "RM_017_Ottawa19"),
     ):
         preflight = subprocess.run(
             [sys.executable, "scripts/preflight.py", "--config", config_name],
@@ -108,5 +110,7 @@ def test_real_configs_preflight_and_dag_only(tmp_path: Path):
         assert payload["graph_path"] == "dag_only"
         assert payload["source_mode"] == "real"
         assert (output_dir / "dag_artifacts.json").exists()
+        assert (output_dir / "decision_side_outputs.json").exists()
         assert (output_dir / "resolved_splits.json").exists()
         assert (output_dir / "resolved_dataset_manifest.json").exists()
+        assert (output_dir / "dag_quality_summary.json").exists()

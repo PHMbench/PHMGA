@@ -34,6 +34,9 @@ def test_execute_agent_materializes_results_and_multi_node():
 
     assert "ch1" in state.execution_results
     assert any(node.kind == "multi" for node in state.dag.nodes)
+    assert any(node.kind == "decision" for node in state.dag.nodes)
+    assert any(node.operator_category == "EXPAND" for node in state.dag.nodes)
+    assert any(node.rank_class == "terminal_decision" for node in state.dag.nodes if node.kind == "decision")
     for node in state.dag.nodes:
         if node.kind == "input":
             continue

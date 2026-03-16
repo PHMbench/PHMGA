@@ -39,7 +39,7 @@ def _ml_state_and_artifacts():
         max_iterations=4,
         data_context={"min_depth": 2, "min_width": 1, "max_depth": 8, "stage": "TEST"},
     )
-    state = _run_frontend_loop(state, protocol, llm, catalog)
+    state = _run_frontend_loop(state, protocol, llm, catalog, config)
     compiled = compile_dag_for_path(state.dag, "ml")
     split_records = materialize_split_signals(protocol)
     return protocol, catalog, compiled, split_records
@@ -77,7 +77,7 @@ def test_frontend_loop_rolls_back_on_need_replan():
         data_context={"min_depth": 2, "min_width": 1, "max_depth": 8, "stage": "TEST"},
     )
 
-    state = _run_frontend_loop(state, protocol, llm, catalog)
+    state = _run_frontend_loop(state, protocol, llm, catalog, config)
 
     assert len(state.round_history) >= 2
     assert state.round_history[0].rolled_back is True

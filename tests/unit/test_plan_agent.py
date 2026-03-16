@@ -36,6 +36,8 @@ def test_plan_agent_outputs_nvta_style_step_plan():
     assert payload["plan"]
     assert all(set(step.keys()) == {"parent", "op_name", "params"} for step in payload["plan"])
     assert payload["plan"][0]["parent"].startswith("ch")
+    planned_ops = {step["op_name"] for step in payload["plan"]}
+    assert {"stft", "patch", "cross_correlation", "threshold"} <= planned_ops
 
 
 def test_plan_prompt_contract_matches_agent_inputs_and_outputs():

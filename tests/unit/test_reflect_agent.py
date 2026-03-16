@@ -56,3 +56,30 @@ def test_reflect_agent_requests_replan_when_execution_gaps_exist():
     result = state.reflection_results[-1]
     assert result.decision == "need_replan"
     assert result.missing_operators
+
+
+def test_reflect_agent_consumes_dag_quality_summary_for_patch_decision():
+    state, llm = _executed_state("config/runs/rm101_synth_dag.yaml")
+    state.execution_gaps.clear()
+    state.dag_quality_summary = {
+        "current_depth": 2,
+        "min_depth": 2,
+        "max_depth": 8,
+        "depth_ok": True,
+        "feature_node_count": 3,
+        "multi_node_count": 1,
+        "operator_categories": ["TRANSFORM", "AGGREGATE", "MULTI_VARIABLE"],
+        "execution_gap_count": 0,
+        "nan_ratio": 0.0,
+        "zero_variance_ratio": 0.0,
+        "proxy_probe_enabled": False,
+        "proxy_probe_macro_f1": None,
+        "issues": ["Proxy evidence is still weak."],
+        "recommendation_hint": "patch_candidate",
+    }
+
+    state = reflect_agent(state, llm)
+
+    result = state.reflection_results[-1]
+    assert result.decision == "need_patch"
+    assert result.structural_warnings
