@@ -99,7 +99,7 @@
 
 - graph-dependent report 还不够细
 - provider-backed LLM 尚未接入
-- `torch` path 仍是 NumPy fallback
+- `torch` path 仍是最小化实现，尚未具备 richer trainer 与 multi-parent compiled support
 
 ## Recommended Default
 

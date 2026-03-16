@@ -121,12 +121,12 @@
 
 重写要点：
 
-- 只消费 `StepPlan`
-- 结果写回 `WorkflowState.execution_results`
-- 输出 `validated DAG JSON`
-- 把不能执行的步骤显式写成 `ExecutionGap`
-- decision 节点当前只作为 auxiliary terminal，不进入正式执行链
-- 磁盘 artifact 落盘交给 `scripts/run_case.py` 和后端层
+- *只消费 `StepPlan`*
+- *结果写回 `WorkflowState.execution_results`*
+- *输出 `validated DAG JSON`*
+- *把不能执行的步骤显式写成 `ExecutionGap`*
+- *decision 节点当前只作为 auxiliary terminal，不进入正式执行链*
+- *磁盘 artifact 落盘交给 `scripts/run_case.py` 和后端层*
 
 #### 差异结论
 

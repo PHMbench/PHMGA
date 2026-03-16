@@ -26,6 +26,7 @@
 
 - `plan_agent` 已输出 `StepPlan`
 - prompt 已经读取 richer operator summary
+- 五类 operator schema 已进入 planner 可见范围
 - `graph_path` 不再作为 planner 显式输入
 
 ### missing_now
@@ -43,7 +44,8 @@
 ### current_status
 
 - `execute_agent` 已是 plan-driven materializer
-- 已支持单输入链和最小 `multi.concatenate`
+- 已支持 richer single-input chain、`multi.concatenate`、`multi.cross_correlation`
+- `decision.threshold` 已进入 terminal side-output 半执行态
 - 参数补全顺序已固定为：
   - `StepPlan.params`
   - context-derived values
@@ -52,13 +54,13 @@
 
 ### missing_now
 
-- `decision` 仍未进入正式可执行链
 - multi-parent lineage 的后端支持仍然较弱
+- richer decision family 仍未扩展，当前只有最小阈值式 terminal node
 
 ### recommended_next
 
-- 保持 `decision` 先作为 auxiliary terminal
-- 等 bridge 升级后再扩 richer multi-parent execution
+- 保持 `decision` 先作为 terminal side-output
+- 等 bridge 升级后再扩 richer multi-parent execution 与 richer decision family
 
 ## reflect
 
@@ -66,14 +68,17 @@
 
 - `reflect_agent` 已输出结构化 `ReflectionResult`
 - `need_patch / need_replan / finish / halt` 语义已经进入状态机
+- `dag_quality_evaluator` 已能输出当前 round 的紧凑质量摘要
 
 ### missing_now
 
-- reflection 仍主要看结构合同，不看 richer evidence quality
+- `dag_quality_evaluator` 仍是最小版本，还没有 richer operator-diversity 与增量收益判断
+- reflection 仍未消费 dataset-level execution 证据
 
 ### recommended_next
 
-- 后续把 artifact richness 和 operator diversity 纳入 reflection 规则
+- 继续保持 `dag_quality_evaluator` 为最小合同
+- 后续再把 artifact richness 和 operator diversity 纳入 reflection 规则
 
 ## bridge / path artifacts
 
@@ -82,16 +87,20 @@
 - `validated DAG JSON` 仍是唯一法定接口
 - `compiled_dag_manifest.json` 已稳定
 - `ml / torch` 路径已接入 `dataset_preparer`、`shallow_ml`、`inquirer`
+- `torch` path 已切到 graph-level operator PT execution，并使用最小 tensor runtime
+- `dag_quality_summary.json` 已进入正式 artifact 列表
+- `decision_side_outputs.json` 已进入正式 artifact 列表
 
 ### missing_now
 
 - bridge 对 multi-parent lineage 仍不是一等支持
-- `decision` 仍没有正式 compiled side-output plan
+- `decision` 目前仍没有 richer compiled side-output plan，只有最小 terminal evidence payload
+- `torch` trainer 仍是最小线性头，不是 richer trainable stack
 
 ### recommended_next
 
-- 先保持 bridge 主链最小可解释
-- 再补 richer lineage 和 decision-side compilation
+- 先补 richer multi-parent compiled lineage
+- 再补 richer decision-side compilation 和 torch trainer
 
 ## report
 
@@ -99,6 +108,7 @@
 
 - `report_agent` 已按 `dag_only / ml / torch` 消费 graph-dependent artifacts
 - similarity artifacts 已进入 `ml / torch` 报告证据链
+- `dag_quality_summary` 已进入报告的简短质量段落
 
 ### missing_now
 
@@ -114,11 +124,14 @@
 
 以下项已从“纯缺口”转为当前正式目标：
 
+- Hydra root config + `main.py` 统一入口
 - richer operator schema metadata
 - `dataset_preparer` 进入 `src/data`
 - `inquirer / shallow_ml` 进入 `src/model`
 - multi-round `replan` 状态机
 - execute 阶段对 operator params 的 LLM tuning
+- compact `dag_quality_evaluator`
+- 五类 operator schema 的 richer metadata 与首轮 runnable subset
 
 ## Decision Pending
 

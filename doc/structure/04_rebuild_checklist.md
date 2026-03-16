@@ -22,7 +22,7 @@ PHMGA/
 - `states/prompts/agents`: 只负责 DAG 生成前端。
 - `data/dag/operators`: 只负责协议、结构表示和算子语义。
 - `bridge/model/training/evaluation`: 只负责后端编译、训练、评估、报告。
-- `scripts`: 只保留 `preflight` 和 `run_case` 两个正式入口。
+- `scripts`: 保留 `preflight` 和 `run_case` 作为兼容入口与底层实现；正式入口在根目录 `main.py`。
 
 ## 固定重建顺序
 
@@ -40,9 +40,10 @@ PHMGA/
 - `doc/structure` 是否同步反映当前实现态，而不是回退成抽象蓝图。
 - `05_missing_assets_and_roadmap.md` 是否已记录 gap、decision pending 与 recommended default。
 - `del/02_agent_review_findings.md` 是否已形成明确的 `P0 / P1 / P2` 修复顺序。
-- `config/runs/*.yaml` 是否作为正式运行配置层存在。
+- `main.py` 是否作为正式 Hydra 入口存在。
+- `config/runs/*.yaml` 是否作为正式 Hydra preset 层存在。
 - 核心源码模块是否具备模块级说明和关键边界注释。
-- `torch` path 是否被准确描述为当前 NumPy fallback 实现。
+- `torch` path 是否被准确描述为 graph-level PT execution + 最小 torch tensor runtime。
 
 ## 最终验收 5 条标准
 

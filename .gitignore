@@ -70,3 +70,7 @@ Thumbs.db
 *.bak
 tmp/
 temp/
+*.pyc
+artifacts/
+.cpython-311.pyc
+scripts/generate_test_report.py

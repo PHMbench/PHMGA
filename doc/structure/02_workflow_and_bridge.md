@@ -12,9 +12,16 @@
 
 当前已成立的前端闭环是：
 
-`signal_context -> StepPlan -> execute_agent -> validated DAG JSON -> reflect_agent -> report_agent`
+`signal_context -> StepPlan -> execute_agent -> dag_quality_evaluator -> validated DAG JSON -> reflect_agent -> report_agent`
 
 它已经不再是旧平台里的字符串 plan + 自治 executor，而是合同驱动的前端链。
+
+当前前端已经能够生成 richer 方法链，而不再局限于 `normalize -> fft -> rms` 这种最小模板。第一轮 enriched DAG 已经允许同时出现：
+
+- `EXPAND` 分支
+- `TRANSFORM -> AGGREGATE` 分支
+- `MULTI_VARIABLE` 节点
+- `DECISION` terminal side-output
 
 ## 最终目标状态机
 
@@ -23,17 +30,18 @@ flowchart TD
     A[signal_context]
     B[plan_agent]
     C[execute_agent]
-    D[reflect_agent]
-    E[validated DAG JSON]
-    F[bridge]
-    G[dag_only / ml / torch]
-    H[report_agent]
+    D[dag_quality_evaluator]
+    E[reflect_agent]
+    F[validated DAG JSON]
+    G[bridge]
+    H[dag_only / ml / torch]
+    I[report_agent]
 
-    A --> B --> C --> D
-    D -- need_patch --> B
-    D -- need_replan --> R[rollback current round] --> B
-    D -- finish --> E --> F --> G --> H
-    D -- halt --> X[stop with reason]
+    A --> B --> C --> D --> E
+    E -- need_patch --> B
+    E -- need_replan --> R[rollback current round] --> B
+    E -- finish --> F --> G --> H --> I
+    E -- halt --> X[stop with reason]
 ```
 
 这里有两个关键设计：
@@ -45,7 +53,7 @@ flowchart TD
 
 ## graph path 的位置
 
-`graph_path` 由 config/runtime 决定，不作为 `plan_agent` 的显式 prompt 输入。
+`graph_path` 由 Hydra root config/runtime 决定，不作为 `plan_agent` 的显式 prompt 输入。
 
 它影响三件事：
 
@@ -104,6 +112,39 @@ class ExecutionGap:
 - executor 不能静默跳过非法或无法执行的 step
 - 缺口必须显式写进 state
 
+### `DagQualitySummary`
+
+`dag_quality_evaluator` 位于 `execute_agent` 和 `reflect_agent` 之间。它不是第五个主路径 agent，而是一个紧凑的当前轮质量摘要函数。
+
+```python
+class DagQualitySummary:
+    current_depth: int
+    min_depth: int
+    max_depth: int
+    depth_ok: bool
+
+    feature_node_count: int
+    multi_node_count: int
+    operator_categories: list[str]
+
+    execution_gap_count: int
+    nan_ratio: float
+    zero_variance_ratio: float
+
+    proxy_probe_enabled: bool
+    proxy_probe_macro_f1: float | None
+
+    issues: list[str]
+    recommendation_hint: Literal["finish_candidate", "patch_candidate", "replan_candidate", "halt_candidate"]
+```
+
+语义：
+
+- 它只总结当前 round 的结构状态和小样本代理证据
+- `min_depth` 继续存在，但只作为软约束，不再单独决定 `finish`
+- `proxy_probe_macro_f1` 只在启用 proxy probe 时出现
+- `recommendation_hint` 只是 reflect 的候选信号，不替代最终 `ReflectionResult`
+
 ### `ReflectionResult`
 
 ```python
@@ -137,6 +178,7 @@ class RoundTrace:
 - `round_history`
 - `last_stable_dag`
 - `last_stable_execution_results`
+- `dag_quality_summary`
 
 ## 四个主路径 agent 的正式输入输出
 
@@ -182,12 +224,26 @@ class RoundTrace:
 
 1. 只能消费 `StepPlan`
 2. 不能新增计划外步骤
-3. 参数补全顺序固定为：
+3. 必须先按 richer operator schema 校验：
+   - `input_spec`
+   - `output_spec`
+   - `rank_class`
+4. 参数补全顺序固定为：
    - `StepPlan.params`
    - state / signal-context derived values
    - operator schema defaults
    - LLM 对 `llm_tunable_params` 做补全或优化
-4. 无法执行时必须写 `ExecutionGap`
+5. 无法执行时必须写 `ExecutionGap`
+
+当前额外边界：
+
+- `EXPAND` 已可执行，并仍通过 `kind="transform"` 进入当前 bridge 的单父链 transform lineage
+- `MULTI_VARIABLE` 已可执行至少两类节点：`concatenate` 与 `cross_correlation`
+- `DECISION` 已进入半执行态：
+  - 允许生成 terminal node
+  - 允许写出 side-output result
+  - 允许进入 manifest 与 report
+  - 不允许进入 `ml / torch` 的训练张量主链
 
 ### `reflect_agent`
 
@@ -202,10 +258,17 @@ class RoundTrace:
 - `max_depth`
 - `current_depth`
 - `execution_gaps`
+- `dag_quality_summary`
 
 输出：
 
 - `ReflectionResult`
+
+当前 decision 规则：
+
+- 有致命 gap 或 evaluator 判定当前 round 不可接受时，返回 `need_replan` 或 `halt`
+- 无致命 gap，但 `depth_ok=False` 或质量偏弱时，返回 `need_patch`
+- 结构健康且 `dag_quality_summary` 达标时，返回 `finish`
 
 ### `report_agent`
 
@@ -216,6 +279,7 @@ class RoundTrace:
 - `compiled_manifest`
 - `path_artifacts`
 - `reflection_summary`
+- `dag_quality_summary`
 
 辅输入：
 
@@ -238,6 +302,22 @@ class RoundTrace:
 
 它们是主链调用的子能力，不是状态迁移节点。
 
+## `dag_quality_evaluator` 的位置
+
+`dag_quality_evaluator` 固定放在 `src/evaluation/dag_quality.py`，由 `run_case` 主循环在 `execute_agent` 之后、`reflect_agent` 之前调用。
+
+它的责任只有三件事：
+
+- 读取当前 DAG、当前 round 的 `execution_results` 和 `execution_gaps`
+- 生成一个最小 `DagQualitySummary`
+- 把这个摘要提供给 `reflect_agent` 和 `report_agent`
+
+它不做的事：
+
+- 不直接改 DAG
+- 不直接决定最终 reflection decision
+- 不绕过 bridge 生成后端 artifacts
+
 ## 当前 bridge 边界
 
 bridge 仍然只吃 `validated DAG JSON`。
@@ -256,8 +336,16 @@ bridge 仍然只吃 `validated DAG JSON`。
 
 - `plan_agent` 已能从 preview signal 构建 `SignalContext` 并输出 `StepPlan`
 - `execute_agent` 已能 materialize 单输入链和最小 `multi.concatenate`
+- `dag_quality_evaluator` 已能输出紧凑的结构 + 代理证据摘要
 - `reflect_agent` 已能输出结构化 `ReflectionResult`
 - `report_agent` 已能消费 manifest + path artifacts + review context
+
+## 当前未闭合但已明确的边界
+
+- 当前前端执行仍是 representative / preview 级执行，不是全 split/window 级 DAG 执行
+- `decision` 仍是 auxiliary terminal，不进入正式可执行链
+- `dag_quality_evaluator` 只做当前 round 摘要，不做平台式多页评分系统
+- 仍缺更强的 dataset-level execution 与 richer bridge lineage
 
 ## 当前未闭合但已明确的边界
 

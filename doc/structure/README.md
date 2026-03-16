@@ -10,11 +10,12 @@
 
 这些文档描述的是当前仓库已经落地的最小研究骨架，而不是抽象愿景：
 
-- `scripts/preflight.py` 与 `scripts/run_case.py` 是仅有的正式脚本入口。
-- `config/runs/*.yaml` 是正式运行配置层。
+- 根目录 `main.py` 是正式 Hydra 入口。
+- `scripts/preflight.py` 与 `scripts/run_case.py` 是兼容入口和底层实现。
+- `config/runs/*.yaml` 是正式 Hydra preset 层。
 - `RM_101_THU_GEARBOX` 与 `RM_017_Ottawa19` 已接入统一 canonical protocol。
 - `dag_only`、`ml`、`torch` 三条 graph path 都已有最小可运行闭环。
-- `torch` path 当前仍使用 NumPy fallback 训练器，目的是保证离线合同和 smoke 通过。
+- `torch` path 已切到 graph-level operator PT execution，并使用最小 torch tensor runtime。
 
 ## 为什么现在要删库重构
 
