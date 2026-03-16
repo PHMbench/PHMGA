@@ -487,3 +487,82 @@ def materialize_split_signals(protocol: DatasetProtocol) -> Dict[str, List[Signa
                 )
             )
     return outputs
+
+
+def _select_proxy_ids(protocol: DatasetProtocol, max_samples_per_split: int) -> Dict[str, List[str]]:
+    """Select a small stratified subset per split for proxy evaluation.
+
+    The proxy evaluator should not force full-dataset materialization on real
+    data. This helper keeps a tiny but label-aware subset per split.
+    """
+
+    if max_samples_per_split <= 0:
+        return {"train": [], "val": [], "test": []}
+
+    sample_by_id = {sample.sample_id: sample for sample in protocol.samples}
+    selected: Dict[str, List[str]] = {}
+    for split_name, ids in (
+        ("train", protocol.splits.train_ids),
+        ("val", protocol.splits.val_ids),
+        ("test", protocol.splits.test_ids),
+    ):
+        label_buckets: Dict[int, List[str]] = {}
+        for sample_id in ids:
+            label = sample_by_id[sample_id].label
+            label_buckets.setdefault(label, []).append(sample_id)
+        ordered_labels = sorted(label_buckets)
+        current: List[str] = []
+        while ordered_labels and len(current) < max_samples_per_split:
+            next_labels: List[int] = []
+            for label in ordered_labels:
+                bucket = label_buckets[label]
+                if bucket and len(current) < max_samples_per_split:
+                    current.append(bucket.pop(0))
+                if bucket:
+                    next_labels.append(label)
+            ordered_labels = next_labels
+        selected[split_name] = current
+    return selected
+
+
+def materialize_proxy_split_signals(
+    protocol: DatasetProtocol,
+    max_samples_per_split: int,
+) -> Dict[str, List[SignalRecord]]:
+    """Materialize a tiny stratified split subset for proxy-quality checks."""
+
+    selected_ids = _select_proxy_ids(protocol, max_samples_per_split)
+    sample_by_id = {sample.sample_id: sample for sample in protocol.samples}
+    outputs: Dict[str, List[SignalRecord]] = {"train": [], "val": [], "test": []}
+
+    if protocol.source_mode == "synthetic":
+        for split_name, ids in selected_ids.items():
+            for sample_id in ids:
+                sample = sample_by_id[sample_id]
+                signal = _generate_signal(sample)
+                outputs[split_name].append(
+                    SignalRecord(
+                        sample_id=sample.sample_id,
+                        label=sample.label,
+                        split=split_name,
+                        windows=_window_signal(signal, protocol.window),
+                    )
+                )
+        return outputs
+
+    if not protocol.h5_path:
+        raise ValueError("Real-data protocol is missing h5_path.")
+    with h5py.File(protocol.h5_path, "r") as handle:
+        for split_name, ids in selected_ids.items():
+            for sample_id in ids:
+                sample = sample_by_id[sample_id]
+                signal = _load_real_signal(handle, sample, protocol.selected_channels)
+                outputs[split_name].append(
+                    SignalRecord(
+                        sample_id=sample.sample_id,
+                        label=sample.label,
+                        split=split_name,
+                        windows=_window_signal(signal, protocol.window),
+                    )
+                )
+    return outputs
