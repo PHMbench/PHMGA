@@ -12,8 +12,9 @@
 
 ## 仓库协作规则
 
-- 正式入口只有 `scripts/preflight.py` 和 `scripts/run_case.py`。
-- 正式配置入口只有 `config/config.yaml` 及其子配置组。
+- 正式人类入口是根目录 `main.py`。
+- `scripts/preflight.py` 和 `scripts/run_case.py` 只作为兼容入口与底层实现保留。
+- 正式配置入口是 Hydra root `config/config.yaml` 及其 config groups / `config/runs/*.yaml` preset。
 - 前端 workflow 只能围绕 `WorkflowState -> DAGTracker -> validated DAG JSON`。
 - bridge 是前后端唯一法定接口层；不要绕过 `compile_dag_for_path()` 直接把 workflow 状态塞进训练端。
 

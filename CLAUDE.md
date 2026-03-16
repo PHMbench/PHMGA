@@ -7,8 +7,8 @@
 ## Claude Code 应关注的事实
 
 - 正式运行入口：
-  - `python scripts/preflight.py --config config/config.yaml`
-  - `python scripts/run_case.py --config config/runs/rm101_dag.yaml`
+  - `python main.py runtime.action=preflight +runs=rm101_dag`
+  - `python main.py +runs=rm101_dag runtime.output_dir=artifacts/rm101_dag`
 - 正式结构说明在 `doc/structure/`，不是历史平台文档。
 - 当前仓库是论文版最小研究闭环，不存在历史平台式工作流。
 

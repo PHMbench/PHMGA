@@ -9,7 +9,7 @@
 - 这是论文导向的 PHM 研究仓库，不是旧版通用 agent 平台。
 - 三条 graph path 为 `dag_only`、`ml`、`torch`。
 - 前后端法定边界是 `validated DAG JSON`，bridge 负责把它编译到不同 path。
-- 运行对象由 `config/runs/*.yaml` 决定，而不是通过 CLI 临时改写数据集名。
+- 运行对象由 Hydra root config 与 `config/runs/*.yaml` preset 决定，而不是通过 CLI 临时改写数据集名。
 
 ## Gemini 代理的工作边界
 
@@ -19,6 +19,6 @@
 
 ## 当前实现事实
 
-- 运行入口只有 `scripts/preflight.py` 和 `scripts/run_case.py`。
+- 正式人类入口是根目录 `main.py`；`scripts/preflight.py` 和 `scripts/run_case.py` 只作为兼容入口保留。
 - `config/data/rm101.yaml` 对应 `RM_101_THU_GEARBOX`，`config/data/ottawa.yaml` 对应 `RM_017_Ottawa19`。
 - `torch` path 当前是最小 trainable surrogate，不是完整 PyTorch 训练框架。

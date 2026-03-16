@@ -2,7 +2,7 @@
 
 PHMGA 是一个面向论文复现与方法验证的工业时间序列研究仓库，不再承担旧版“通用多智能体平台”的定位。当前仓库只围绕一条清晰主链组织：
 
-`problem -> protocol -> workflow -> dag -> operators -> bridge -> model -> training -> evaluation -> report`
+`protocol -> signal_context -> plan_agent -> execute_agent -> dag_quality_evaluator -> reflect_agent -> validated DAG JSON -> bridge -> graph-dependent artifacts -> report_agent`
 
 ## 当前定位
 
@@ -10,27 +10,70 @@ PHMGA 是一个面向论文复现与方法验证的工业时间序列研究仓�
 - 前端：`states + prompts + agents` 生成结构先验 DAG。
 - 中间：`dag + operators + bridge` 将结构先验固化为 validated DAG JSON，并编译到不同 graph path。
 - 后端：`model + training + evaluation` 输出 graph-dependent artifacts 和最终报告。
+- `dag_quality_evaluator` 位于 `execute` 和 `reflect` 之间，只负责生成当前 round 的紧凑质量摘要。
+- 当前 `report_agent` 默认仍走 deterministic / rule-based renderer，经由 `OfflineLLM.render_report()` 输出 markdown；这是一种有意选择，用于保证可测、可复现、可比较。
+
+## 当前算子系统
+
+当前算子系统保持统一执行骨架：
+
+`BaseIsomorphicOperator + OperatorSpec + OperatorCatalog`
+
+但 schema 语义已经按 `/home/user/LQ/C_Agent/PHMGA/src/tools/readme.md` 收敛到五类：
+
+- `EXPAND`
+- `TRANSFORM`
+- `AGGREGATE`
+- `MULTI_VARIABLE`
+- `DECISION`
+
+这里保留 `BaseIsomorphicOperator` 的原因是：同一算子语义仍要同时服务 `np / pt / sym` 多后端，以及 planner / executor / bridge / report 多表示合同；分类与 rank 行为改由 `schema_category + rank_class + input_spec + output_spec` 表达，而不是回退到旧多基类体系。
+
+当前首轮已实现的高价值算子包括：
+
+- `signal.stft`
+- `signal.patch`
+- `signal.filter`
+- `signal.hilbert_envelope`
+- `signal.psd`
+- `feature.kurtosis`
+- `feature.crest_factor`
+- `feature.band_power`
+- `feature.spectral_centroid`
+- `multi.cross_correlation`
+- `decision.threshold`
+
+当前 operator contract 现在要求：
+
+- `np / pt / sym` 三种 execution surface 都要明确声明
+- `.venv` 默认环境必须安装 GPU 版 `torch+cu118`
+- 当前仓库的标准执行环境是仓库根目录下的 `.venv`，不是外部 `conda` 环境
+- 这里的 operator-level `forward_pt` 已进入 graph-level `torch` path 的单父 feature execution，但不代表 multi-parent compiled support 已完成
+- 当前 operator-level `forward_pt` 已优先 native 化 `stft / psd / hilbert_envelope` 等热点；`filter` 与 `kurtosis` 仍短期保留统一 CPU bridge
 
 ## 三条 graph path
 
 - `dag_only`
-  - 生成 DAG JSON、结构图、节点边清单、方法说明和 `final_report.md`。
+  - 生成 DAG JSON、结构图、节点边清单、decision side outputs、方法说明和 `final_report.md`。
 - `ml`
   - 将 DAG 编译成特征流水线，运行轻量 ML 基线，输出 `feature_pipeline.json`、`metrics.json`、`predictions.json`、`importance.json`。
 - `torch`
   - 将 DAG 编译成可训练构建计划，运行最小训练后端，输出 `model_build_plan.json`、`training_curves.json`、`checkpoint.json`、`importance.json`、`metrics.json`。
-  - 当前实现为 NumPy fallback 训练器，用于离线 smoke 和结构合同验证；它不是完整 PyTorch 训练栈。
+  - 当前实现已切到 graph-level operator PT execution，并使用最小 torch tensor runtime 训练线性头。
+  - 它仍不是完整 research-grade PyTorch 训练栈；当前只支持单进程单设备，且 multi-parent compiled support 仍未完成。
 
 ## 当前仓库骨架
 
 - `doc/structure/`
   - 论文版结构文档与删除账本，是当前设计权威说明。
 - `config/`
-  - 基础配置 `config/config.yaml`，再按 `data/`、`experiment/`、`model/` 分组；`config/runs/` 负责把某个数据配置与某条 graph path 组合成可直接运行的 config 文件。
+  - Hydra root config 位于 `config/config.yaml`，再按 `data/`、`experiment/`、`model/` 分组；`config/runs/` 作为论文实验 preset。
+- `main.py`
+  - 正式 Hydra 入口；根据 `runtime.action` 分派 `preflight` 或 `run_case`。
 - `scripts/preflight.py`
-  - 环境、配置、协议和 graph path 预检入口。
+  - 兼容入口与底层实现。
 - `scripts/run_case.py`
-  - 单一运行入口，负责把同一份 validated DAG JSON 编译并执行到某条 graph path。
+  - 兼容入口与底层实现，负责多轮 `plan -> execute -> dag_quality -> reflect`，并在 `finish` 后把同一份 validated DAG JSON 编译并执行到某条 graph path。
 - `src/`
   - 最小研究核心，不保留旧 `main.py`、`src/tools`、`src/cases`、`src/graph` 等平台式入口。
 - `tests/unit/` 与 `tests/smoke/`
@@ -38,27 +81,28 @@ PHMGA 是一个面向论文复现与方法验证的工业时间序列研究仓�
 
 ## 配置组织
 
-正式运行入口是一个完整配置文件。当前推荐直接使用 `config/runs/*.yaml`。
+正式运行入口是根目录 `main.py` 配合 Hydra 配置。当前推荐使用 `config/runs/*.yaml` 作为 preset。
 
 配置组织分为两层：
 
 - `config/config.yaml`
-  - 基础项目、LLM、artifact、模型参数。
+  - Hydra root config，包含默认组合、`runtime.action`、LLM、artifact、模型参数以及 `evaluation.dag_quality`。
 - `config/data/*.yaml`
   - 数据协议与数据来源。
 - `config/experiment/*.yaml`
   - graph path 选择。
 - `config/runs/*.yaml`
-  - 只负责选择一个 `data` 配置和一个 `graph_path`。
+  - 作为 Hydra preset，固定一组论文实验组合。
 
 当前最重要的几个字段：
 
-- `defaults.dataset`
-  - 选择一个数据配置，例如 `rm101`、`ottawa`、`rm101_synth`。
-- `defaults.graph_path`
-  - 选择 `dag_only`、`ml`、`torch`。
+- `runtime.action`
+  - 选择 `preflight` 或 `run_case`。
 - `llm`
   - 当前默认 `offline_stub`，用于无外部依赖的最小闭环。
+- `evaluation.dag_quality`
+  - DAG 质量摘要的开关，以及小样本 proxy probe 的控制项。
+  - 当前默认语义是：synthetic 关闭 proxy probe，real 开启 proxy probe；当 `use_proxy_probe: null` 时按 `source_mode` 自动推断。
 - `model.ml`
   - 轻量 ML 路径的训练参数。
 - `model.torch`
@@ -81,22 +125,52 @@ synthetic 仍然保留，但只作为 smoke fallback，配置在：
 - `config/data/rm101_synth.yaml`
 - `config/data/ottawa_synth.yaml`
 
+## 当前主链图
+
+```mermaid
+flowchart TD
+    A[protocol / signal_context]
+    B[plan_agent]
+    C[execute_agent]
+    D[dag_quality_evaluator]
+    E[reflect_agent]
+    F[validated DAG JSON]
+    G[bridge]
+    H[dag_only / ml / torch]
+    I[report_agent]
+
+    A --> B --> C --> D --> E
+    E -- need_patch --> B
+    E -- need_replan --> R[rollback current round] --> B
+    E -- finish --> F --> G --> H --> I
+```
+
+## 下一阶段方法目标
+
+当前最小闭环已经不再只是 smoke 级 `normalize -> fft -> rms`。下一阶段的正式目标是：
+
+- planner 稳定产出包含 `EXPAND / TRANSFORM / AGGREGATE / MULTI_VARIABLE / DECISION` 的 richer PHM DAG
+- executor 基于 `input_spec / output_spec / rank_class` 做更强约束
+- `DECISION` 继续保持 terminal side-output，不进入 `ml / torch` 训练张量主链
+- 先稳定 enriched `dag_only`，再稳定 enriched `ml`
+
 ## 运行方式
 
 ```bash
+python main.py runtime.action=preflight +runs=rm101_dag
+
+python main.py +runs=rm101_dag runtime.output_dir=artifacts/rm101_dag
+
+python main.py +runs=ottawa_ml runtime.output_dir=artifacts/ottawa_ml
+
+python main.py +runs=rm101_synth_torch runtime.output_dir=artifacts/rm101_synth_torch
+```
+
+兼容入口仍然保留：
+
+```bash
 python scripts/preflight.py --config config/runs/rm101_dag.yaml
-
-python scripts/run_case.py \
-  --config config/runs/rm101_dag.yaml \
-  --output-dir artifacts/rm101_dag
-
-python scripts/run_case.py \
-  --config config/runs/ottawa_ml.yaml \
-  --output-dir artifacts/ottawa_ml
-
-python scripts/run_case.py \
-  --config config/runs/rm101_synth_torch.yaml \
-  --output-dir artifacts/rm101_synth_torch
+python scripts/run_case.py --config config/runs/rm101_dag.yaml --output-dir artifacts/rm101_dag
 ```
 
 ## 测试方式
@@ -104,6 +178,13 @@ python scripts/run_case.py \
 ```bash
 pytest -q
 ```
+
+当前默认开发环境要求：
+
+- `.venv` 中必须能导入 GPU 版 `torch+cu118`
+- 日常运行、测试和后续 agent 调用都应以当前仓库 `.venv` 为准，不应把外部 `conda` 环境当作默认事实源
+- operator-level PT tests 默认属于常规回归的一部分
+- 当前标准 wheel 与 CUDA 路径以 `11.8` 为准；如果 `torch.cuda.is_available()` 仍为 `False`，应视为 GPU runtime / NVML 可见性问题，而不是 wheel 版本不匹配
 
 当前测试矩阵覆盖：
 
