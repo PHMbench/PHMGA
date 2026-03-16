@@ -37,6 +37,7 @@ def build_final_report(
         f"- Graph path: {state.graph_path}",
         f"- DAG hash: `{manifest.dag_hash}`",
         f"- Nodes: {len(manifest.nodes)}",
+        f"- Operator categories: {', '.join(sorted({node.operator_category for node in manifest.nodes}))}",
     ]
     metrics = path_artifacts.get("metrics")
     if isinstance(metrics, dict):
@@ -62,9 +63,14 @@ def build_final_report(
             f"- User instruction: {state.user_instruction}",
             f"- Plan steps: {plan_steps}",
             f"- Workflow rounds: {len(state.round_history)}",
+            f"- Decision side outputs: {sum(1 for node in manifest.nodes if node.kind == 'decision')}",
+            "",
+            "## DAG Quality",
+            f"- Recommendation: {state.dag_quality_summary.get('recommendation_hint', 'n/a')}",
+            f"- Quality issues: {', '.join(state.dag_quality_summary.get('issues', []))}",
             "",
             "## Analysis Workflow",
-            "- Front-end main chain: signal_context -> StepPlan -> execute -> reflect",
+            "- Front-end main chain: signal_context -> StepPlan -> execute -> dag_quality_evaluator -> reflect",
             "- Replan policy: `need_patch` keeps the current round; `need_replan` rolls back to the last stable DAG.",
             "- Back-end hand-off: validated DAG JSON -> bridge -> graph-dependent artifacts -> final report",
         ]

@@ -17,13 +17,25 @@ from src.agents import execute_agent, plan_agent, reflect_agent, report_agent
 from src.bridge import DagArtifacts, FeaturePipelinePlan, ModelBuildPlan, compile_dag_for_path
 from src.config import load_runtime_config
 from src.data import build_protocol_from_config, materialize_split_signals
-from src.evaluation import render_mermaid_dag
+from src.evaluation import build_dag_quality_summary, render_mermaid_dag
 from src.llm import get_llm
 from src.operators import get_operator_catalog
 from src.states import RoundTrace, WorkflowState
 from src.training import run_ml_pipeline, run_torch_pipeline
 from src.utils import ensure_dir, write_json, write_text
 from src.utils import hash_payload
+
+
+def _decision_side_outputs(state: WorkflowState) -> Dict[str, Any]:
+    if not state.dag:
+        return {}
+    outputs: Dict[str, Any] = {}
+    for node in state.dag.nodes:
+        if node.kind != "decision":
+            continue
+        if node.node_id in state.execution_results:
+            outputs[node.node_id] = state.execution_results[node.node_id]
+    return outputs
 
 
 def _write_common_artifacts(output_dir: Path, state: WorkflowState, compiled: Any, protocol) -> None:
@@ -33,6 +45,9 @@ def _write_common_artifacts(output_dir: Path, state: WorkflowState, compiled: An
     write_text(render_mermaid_dag(state.dag), output_dir / "dag_graph.md")
     write_json(protocol.splits.model_dump(), output_dir / "resolved_splits.json")
     write_json(protocol.model_dump(), output_dir / "resolved_dataset_manifest.json")
+    decision_outputs = _decision_side_outputs(state)
+    if decision_outputs:
+        write_json(decision_outputs, output_dir / "decision_side_outputs.json")
 
 
 def _run_path(
@@ -63,6 +78,7 @@ def _run_path(
         catalog,
         epochs=int(runtime_config["model"]["torch"]["epochs"]),
         learning_rate=float(runtime_config["model"]["torch"]["learning_rate"]),
+        device=str(runtime_config["model"]["torch"].get("device", "auto")),
     )
 
 
@@ -77,6 +93,7 @@ def _run_frontend_loop(
     protocol,
     llm,
     catalog,
+    runtime_config: Dict[str, Any],
 ) -> WorkflowState:
     """Execute the front-end agent loop with rollback-aware replan handling."""
 
@@ -90,6 +107,15 @@ def _run_frontend_loop(
 
         state = plan_agent(state, protocol, llm, catalog)
         state = execute_agent(state, protocol, catalog, llm)
+        if bool(runtime_config.get("evaluation", {}).get("dag_quality", {}).get("enabled", True)):
+            state.dag_quality_summary = build_dag_quality_summary(
+                state,
+                protocol,
+                runtime_config,
+                catalog,
+            ).model_dump()
+        else:
+            state.dag_quality_summary = {}
         state = reflect_agent(state, llm)
 
         current_reflection = state.reflection_results[-1]
@@ -134,12 +160,12 @@ def _run_frontend_loop(
 
 
 def run_case(
-    config_path: str,
+    config_input: Union[str, Path, Dict[str, Any]],
     *,
     output_dir: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Run the full paper-oriented workflow for one config-defined case."""
-    runtime_config = load_runtime_config(config_path, output_dir=output_dir)
+    runtime_config = load_runtime_config(config_input, output_dir=output_dir)
     protocol = build_protocol_from_config(runtime_config)
     llm = get_llm(runtime_config)
     catalog = get_operator_catalog()
@@ -159,11 +185,14 @@ def run_case(
             "stage": "RUN_CASE",
         },
     )
-    state = _run_frontend_loop(state, protocol, llm, catalog)
+    state = _run_frontend_loop(state, protocol, llm, catalog, runtime_config)
     # The validated DAG JSON is the only legal hand-off into backend execution.
     compiled = compile_dag_for_path(state.dag, state.graph_path)
     split_records = None if state.graph_path == "dag_only" else materialize_split_signals(protocol)
     path_artifacts = _run_path(state.graph_path, compiled, split_records, runtime_config, catalog)
+    decision_outputs = _decision_side_outputs(state)
+    if decision_outputs:
+        path_artifacts["decision_side_outputs"] = decision_outputs
 
     output_root = ensure_dir(runtime_config["runtime"]["output_dir"])
     _write_common_artifacts(output_root, state, compiled, protocol)
@@ -197,6 +226,8 @@ def run_case(
         ),
         output_root / "workflow_state.json",
     )
+    if state.dag_quality_summary:
+        write_json(state.dag_quality_summary, output_root / "dag_quality_summary.json")
 
     return {
         "config_name": runtime_config["runtime"]["config_name"],

@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any, Dict, Union
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -16,9 +17,9 @@ from src.data import build_protocol_from_config
 from src.operators import get_operator_catalog
 
 
-def run_preflight(config_path: str) -> dict:
+def run_preflight(config_input: Union[str, Path, Dict[str, Any]]) -> dict:
     """Validate one resolved config against the shared runtime contract."""
-    runtime_config = load_runtime_config(config_path)
+    runtime_config = load_runtime_config(config_input)
     protocol = build_protocol_from_config(runtime_config)
     catalog = get_operator_catalog()
     return {

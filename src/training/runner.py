@@ -14,9 +14,14 @@ import numpy as np
 from sklearn.metrics import accuracy_score, f1_score
 
 from src.bridge import FeaturePipelinePlan, ModelBuildPlan
-from src.data import SignalRecord, build_dataset_views
+from src.data import DatasetView, SignalRecord, TorchDatasetView, build_dataset_views
 from src.model import build_similarity_artifacts, run_shallow_ml_baseline
 from src.operators import OperatorCatalog
+
+try:
+    import torch
+except ModuleNotFoundError:  # pragma: no cover
+    torch = None
 
 
 def _compute_metrics(y_true: np.ndarray, y_pred: np.ndarray) -> Dict[str, float]:
@@ -36,7 +41,7 @@ def run_ml_pipeline(
     max_iter: int = 200,
 ) -> Dict[str, object]:
     """Run the lightweight ML baseline on bridge-generated feature matrices."""
-    dataset_views = build_dataset_views(plan, split_records, catalog)
+    dataset_views = build_dataset_views(plan, split_records, catalog, backend="np")
     baseline = run_shallow_ml_baseline(
         dataset_views,
         algorithm,
@@ -57,17 +62,39 @@ def run_ml_pipeline(
     }
 
 
-def _softmax(logits: np.ndarray) -> np.ndarray:
-    """Numerically stable softmax used by the fallback trainable path."""
-    shifted = logits - logits.max(axis=1, keepdims=True)
-    exp = np.exp(shifted)
-    return exp / exp.sum(axis=1, keepdims=True)
+def _require_torch():
+    if torch is None:
+        raise ModuleNotFoundError("PyTorch is required for the graph-level torch path.")
+    return torch
 
 
-def _one_hot(labels: np.ndarray, num_classes: int) -> np.ndarray:
-    """Expand integer labels into one-hot rows for cross-entropy training."""
-    eye = np.eye(num_classes, dtype=float)
-    return eye[labels]
+def _resolve_torch_device(device_spec: str) -> "torch.device":
+    torch_module = _require_torch()
+    normalized = device_spec.strip().lower()
+    if normalized == "auto":
+        return torch_module.device("cuda" if torch_module.cuda.is_available() else "cpu")
+    if normalized == "cpu":
+        return torch_module.device("cpu")
+    if normalized == "cuda":
+        return torch_module.device("cuda")
+    if normalized.startswith("cuda:"):
+        return torch_module.device(normalized)
+    raise ValueError(f"Unsupported model.torch.device setting: {device_spec}")
+
+
+def _compute_tensor_metrics(y_true: "torch.Tensor", y_pred: "torch.Tensor") -> Dict[str, float]:
+    return _compute_metrics(y_true.detach().cpu().numpy(), y_pred.detach().cpu().numpy())
+
+
+def _torch_views_to_numpy(dataset_views: Dict[str, TorchDatasetView]) -> Dict[str, DatasetView]:
+    return {
+        split_name: DatasetView(
+            X=view.X.detach().cpu().numpy(),
+            y=view.y.detach().cpu().numpy(),
+            sample_ids=view.sample_ids,
+        )
+        for split_name, view in dataset_views.items()
+    }
 
 
 def run_torch_pipeline(
@@ -77,59 +104,60 @@ def run_torch_pipeline(
     *,
     epochs: int = 12,
     learning_rate: float = 0.2,
+    device: str = "auto",
 ) -> Dict[str, object]:
-    """Run the current trainable path implementation.
+    """Run the current trainable path with operator-level PT execution."""
 
-    Despite the path name, the rebuilt repository currently uses a NumPy
-    fallback here so smoke tests can validate the full artifact contract
-    without requiring a PyTorch runtime.
-    """
-    dataset_views = build_dataset_views(plan, split_records, catalog)
-    x_train = dataset_views["train"].X
-    y_train = dataset_views["train"].y
-    num_classes = int(np.max(y_train)) + 1
-    weights = np.zeros((x_train.shape[1], num_classes), dtype=float)
-    bias = np.zeros((num_classes,), dtype=float)
+    torch_module = _require_torch()
+    resolved_device = _resolve_torch_device(device)
+    dataset_views = build_dataset_views(plan, split_records, catalog, backend="pt", device=resolved_device)
+    train_view = dataset_views["train"]
+    x_train = train_view.X
+    y_train = train_view.y
+    num_classes = int(torch_module.max(y_train).item()) + 1
+    model = torch_module.nn.Linear(x_train.shape[1], num_classes, device=resolved_device)
+    optimizer = torch_module.optim.SGD(model.parameters(), lr=learning_rate)
+    loss_fn = torch_module.nn.CrossEntropyLoss()
     curves: list[dict[str, float]] = []
     for epoch in range(epochs):
-        # This is a minimal linear classifier trained by gradient descent. It
-        # exists to exercise the trainable artifact path, not to be a final
-        # research-grade deep model.
-        logits = x_train @ weights + bias
-        probs = _softmax(logits)
-        targets = _one_hot(y_train, num_classes)
-        error = probs - targets
-        grad_w = x_train.T @ error / x_train.shape[0]
-        grad_b = error.mean(axis=0)
-        weights -= learning_rate * grad_w
-        bias -= learning_rate * grad_b
-        preds = np.argmax(probs, axis=1)
-        metrics = _compute_metrics(y_train, preds)
-        loss = float(-np.mean(np.sum(targets * np.log(np.clip(probs, 1e-8, 1.0)), axis=1)))
-        curves.append({"epoch": epoch + 1, "loss": loss, "accuracy": metrics["accuracy"]})
+        optimizer.zero_grad()
+        logits = model(x_train)
+        loss = loss_fn(logits, y_train)
+        loss.backward()
+        optimizer.step()
+        with torch_module.no_grad():
+            preds = torch_module.argmax(logits, dim=1)
+            metrics = _compute_tensor_metrics(y_train, preds)
+        curves.append({"epoch": epoch + 1, "loss": float(loss.item()), "accuracy": metrics["accuracy"]})
     split_metrics: Dict[str, Dict[str, float]] = {}
     predictions: Dict[str, list[dict[str, object]]] = {}
     for split_name in ("train", "val", "test"):
         view = dataset_views[split_name]
-        logits = view.X @ weights + bias
-        probs = _softmax(logits)
-        preds = np.argmax(probs, axis=1)
-        split_metrics[split_name] = _compute_metrics(view.y, preds)
+        with torch_module.no_grad():
+            logits = model(view.X)
+            preds = torch_module.argmax(logits, dim=1)
+        split_metrics[split_name] = _compute_tensor_metrics(view.y, preds)
         predictions[split_name] = [
             {"sample_id": sample_id, "prediction": int(pred)}
-            for sample_id, pred in zip(view.sample_ids, preds)
+            for sample_id, pred in zip(view.sample_ids, preds.detach().cpu().tolist())
         ]
+    weight_matrix = model.weight.detach().cpu().numpy()
     importance = {
-        spec.feature_node_id: float(np.linalg.norm(weights[idx]))
+        spec.feature_node_id: float(np.linalg.norm(weight_matrix[:, idx]))
         for idx, spec in enumerate(plan.feature_specs)
+    }
+    checkpoint = {
+        "weight": model.weight.detach().cpu().tolist(),
+        "bias": model.bias.detach().cpu().tolist(),
+        "device": str(resolved_device),
     }
     return {
         "model_build_plan": plan.model_dump(),
-        "runtime_backend": "numpy_fallback",
+        "runtime_backend": "torch_tensor_runtime",
         "training_curves": curves,
-        "checkpoint": {"weights": weights.tolist(), "bias": bias.tolist()},
+        "checkpoint": checkpoint,
         "metrics": split_metrics,
         "predictions": predictions,
         "importance": importance,
-        "similarity_artifacts": build_similarity_artifacts(dataset_views),
+        "similarity_artifacts": build_similarity_artifacts(_torch_views_to_numpy(dataset_views)),
     }

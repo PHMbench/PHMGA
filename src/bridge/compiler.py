@@ -15,6 +15,9 @@ class ManifestNode(BaseModel):
     node_id: str
     op_uid: str
     kind: str
+    operator_category: str
+    rank_class: str
+    legal_paths: List[str]
     backend_availability: List[str]
     shape_inference: Dict[str, List[int]]
 
@@ -67,6 +70,9 @@ def _build_manifest(dag: DagJson, path_type: Literal["dag_only", "ml", "torch"])
             node_id=node.node_id,
             op_uid=node.op_uid,
             kind=node.kind,
+            operator_category=node.operator_category,
+            rank_class=node.rank_class,
+            legal_paths=node.legal_paths,
             backend_availability=node.backend_availability,
             shape_inference={"in": node.in_shape, "out": node.out_shape},
         )
