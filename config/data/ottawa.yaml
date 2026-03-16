@@ -1,22 +1,22 @@
-data:
-  dataset_name: RM_017_Ottawa19
-  catalog: PHM-Vibench
-  metadata_schema_version: v1
-  metadata_path: /home/user/data/PHMbenchdata/PHM-Vibench/metadata.xlsx
-  h5_path: /home/user/data/PHMbenchdata/PHM-Vibench/RM_017_Ottawa19.h5
-  selected_channels: null
-  selection:
-    name: RM_017_Ottawa19
-    dataset_id: 13
-    drop_invalid_labels: true
-  split:
-    strategy: stratified_fixed_per_class
-    seed: 17
-    train_per_class: 8
-    val_per_class: 2
-    test_per_class: 2
-  window:
-    window_size: 32768
-    stride: 16384
-    slice_mode: sliding
-    drop_last_window: false
+key: ottawa
+dataset_name: RM_017_Ottawa19
+catalog: PHM-Vibench
+metadata_schema_version: v1
+metadata_path: /home/user/data/PHMbenchdata/PHM-Vibench/metadata.xlsx
+h5_path: /home/user/data/PHMbenchdata/PHM-Vibench/RM_017_Ottawa19.h5
+selected_channels: null
+selection:
+  name: RM_017_Ottawa19
+  dataset_id: 13
+  drop_invalid_labels: true
+split:
+  strategy: stratified_fixed_per_class
+  seed: 17
+  train_per_class: 8
+  val_per_class: 2
+  test_per_class: 2
+window:
+  window_size: 32768
+  stride: 16384
+  slice_mode: sliding
+  drop_last_window: false

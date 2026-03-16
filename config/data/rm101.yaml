@@ -1,22 +1,22 @@
-data:
-  dataset_name: RM_101_THU_GEARBOX
-  catalog: PHM-Vibench
-  metadata_schema_version: v1
-  metadata_path: /home/user/data/PHMbenchdata/PHM-Vibench/gear_metadata.xlsx
-  h5_path: /home/user/data/PHMbenchdata/PHM-Vibench/RM_101_THU_GEARBOX.h5
-  selected_channels: null
-  selection:
-    name: RM_101_THU_GEARBOX
-    dataset_id: 101
-    drop_invalid_labels: true
-  split:
-    strategy: stratified_ratio
-    seed: 101
-    train_ratio: 0.7
-    val_ratio: 0.15
-    test_ratio: 0.15
-  window:
-    window_size: 4096
-    stride: 2048
-    slice_mode: sliding
-    drop_last_window: false
+key: rm101
+dataset_name: RM_101_THU_GEARBOX
+catalog: PHM-Vibench
+metadata_schema_version: v1
+metadata_path: /home/user/data/PHMbenchdata/PHM-Vibench/gear_metadata.xlsx
+h5_path: /home/user/data/PHMbenchdata/PHM-Vibench/RM_101_THU_GEARBOX.h5
+selected_channels: null
+selection:
+  name: RM_101_THU_GEARBOX
+  dataset_id: 101
+  drop_invalid_labels: true
+split:
+  strategy: stratified_ratio
+  seed: 101
+  train_ratio: 0.7
+  val_ratio: 0.15
+  test_ratio: 0.15
+window:
+  window_size: 4096
+  stride: 2048
+  slice_mode: sliding
+  drop_last_window: false

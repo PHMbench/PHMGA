@@ -1,2 +1,1 @@
-experiment:
-  graph_path: torch
+graph_path: torch

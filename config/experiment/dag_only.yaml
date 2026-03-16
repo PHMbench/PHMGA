@@ -1,2 +1,1 @@
-experiment:
-  graph_path: dag_only
+graph_path: dag_only

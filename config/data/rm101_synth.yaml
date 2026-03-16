@@ -1,28 +1,28 @@
-data:
-  dataset_name: RM101_SYNTH
-  catalog: synthetic
-  metadata_schema_version: synth_v1
-  selected_channels: null
-  synthetic:
-    sampling_rate: 12800
-    length: 512
-    channels: 2
-    operating_condition: synthetic_gearbox
-  splits:
-    train_ids: [rm101_synth_001, rm101_synth_002, rm101_synth_003, rm101_synth_004]
-    val_ids: [rm101_synth_005, rm101_synth_006]
-    test_ids: [rm101_synth_007, rm101_synth_008]
-  labels:
-    rm101_synth_001: 0
-    rm101_synth_002: 0
-    rm101_synth_003: 1
-    rm101_synth_004: 1
-    rm101_synth_005: 0
-    rm101_synth_006: 1
-    rm101_synth_007: 0
-    rm101_synth_008: 1
-  window:
-    window_size: 256
-    stride: 128
-    slice_mode: sliding
-    drop_last_window: false
+key: rm101_synth
+dataset_name: RM101_SYNTH
+catalog: synthetic
+metadata_schema_version: synth_v1
+selected_channels: null
+synthetic:
+  sampling_rate: 12800
+  length: 512
+  channels: 2
+  operating_condition: synthetic_gearbox
+splits:
+  train_ids: [rm101_synth_001, rm101_synth_002, rm101_synth_003, rm101_synth_004]
+  val_ids: [rm101_synth_005, rm101_synth_006]
+  test_ids: [rm101_synth_007, rm101_synth_008]
+labels:
+  rm101_synth_001: 0
+  rm101_synth_002: 0
+  rm101_synth_003: 1
+  rm101_synth_004: 1
+  rm101_synth_005: 0
+  rm101_synth_006: 1
+  rm101_synth_007: 0
+  rm101_synth_008: 1
+window:
+  window_size: 256
+  stride: 128
+  slice_mode: sliding
+  drop_last_window: false

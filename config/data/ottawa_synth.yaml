@@ -1,28 +1,28 @@
-data:
-  dataset_name: OTTAWA_SYNTH
-  catalog: synthetic
-  metadata_schema_version: synth_v1
-  selected_channels: null
-  synthetic:
-    sampling_rate: 10000
-    length: 512
-    channels: 2
-    operating_condition: synthetic_variable_speed
-  splits:
-    train_ids: [ottawa_synth_001, ottawa_synth_002, ottawa_synth_003, ottawa_synth_004]
-    val_ids: [ottawa_synth_005, ottawa_synth_006]
-    test_ids: [ottawa_synth_007, ottawa_synth_008]
-  labels:
-    ottawa_synth_001: 0
-    ottawa_synth_002: 1
-    ottawa_synth_003: 0
-    ottawa_synth_004: 1
-    ottawa_synth_005: 0
-    ottawa_synth_006: 1
-    ottawa_synth_007: 0
-    ottawa_synth_008: 1
-  window:
-    window_size: 256
-    stride: 128
-    slice_mode: sliding
-    drop_last_window: false
+key: ottawa_synth
+dataset_name: OTTAWA_SYNTH
+catalog: synthetic
+metadata_schema_version: synth_v1
+selected_channels: null
+synthetic:
+  sampling_rate: 10000
+  length: 512
+  channels: 2
+  operating_condition: synthetic_variable_speed
+splits:
+  train_ids: [ottawa_synth_001, ottawa_synth_002, ottawa_synth_003, ottawa_synth_004]
+  val_ids: [ottawa_synth_005, ottawa_synth_006]
+  test_ids: [ottawa_synth_007, ottawa_synth_008]
+labels:
+  ottawa_synth_001: 0
+  ottawa_synth_002: 1
+  ottawa_synth_003: 0
+  ottawa_synth_004: 1
+  ottawa_synth_005: 0
+  ottawa_synth_006: 1
+  ottawa_synth_007: 0
+  ottawa_synth_008: 1
+window:
+  window_size: 256
+  stride: 128
+  slice_mode: sliding
+  drop_last_window: false

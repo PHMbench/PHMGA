@@ -1,10 +1,14 @@
+defaults:
+  - data: rm101_synth
+  - experiment: dag_only
+  - model: default
+  - override hydra/job_logging: disabled
+  - override hydra/hydra_logging: disabled
+  - _self_
+
 project:
   name: PHMGA
   version: journal_thesis_rebuild
-
-defaults:
-  dataset: rm101_synth
-  graph_path: dag_only
 
 llm:
   provider: openrouter
@@ -26,6 +30,22 @@ model:
     epochs: 12
     learning_rate: 0.2
     hidden_dim: 8
+    device: auto
 
 runtime:
+  action: run_case
+  output_dir: null
   max_iterations: 4
+
+evaluation:
+  dag_quality:
+    enabled: true
+    use_proxy_probe: null
+    proxy_subset_per_split: 8
+
+hydra:
+  run:
+    dir: .
+  output_subdir: null
+  job:
+    chdir: false

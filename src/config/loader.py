@@ -1,107 +1,129 @@
-"""Configuration loader for the rebuilt paper-oriented repository."""
+"""Hydra-backed runtime config composition for the paper-oriented repository."""
 
 from __future__ import annotations
 
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Optional, Set, Union
+from typing import Any, Dict, Iterable, Optional, Union
 
 import re
-import yaml
+
+from hydra import compose, initialize_config_dir
+from omegaconf import DictConfig, OmegaConf
 
 
-def _load_yaml(path: Path) -> Dict[str, Any]:
-    """Load a YAML file and enforce a mapping-shaped top level."""
-    with path.open("r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"Expected mapping in {path}")
-    return data
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
 
-def _deep_merge(base: Dict[str, Any], extra: Dict[str, Any]) -> Dict[str, Any]:
-    """Merge nested config groups while preserving scalar overrides."""
-    merged = deepcopy(base)
-    for key, value in extra.items():
-        if isinstance(value, dict) and isinstance(merged.get(key), dict):
-            merged[key] = _deep_merge(merged[key], value)
-        else:
-            merged[key] = deepcopy(value)
-    return merged
-
-
-def _resolve_config_root(start_dir: Path) -> Path:
-    for candidate in (start_dir, *start_dir.parents):
-        if (candidate / "data").is_dir() and (candidate / "experiment").is_dir():
-            return candidate
-    raise ValueError(f"Could not find config root above {start_dir}")
-
-
-def _load_raw_config(path: Path, seen: Optional[Set[Path]] = None) -> Dict[str, Any]:
-    resolved = path.resolve()
-    trail = seen or set()
-    if resolved in trail:
-        raise ValueError(f"Recursive base_config detected at {resolved}")
-    trail = set(trail)
-    trail.add(resolved)
-
-    data = _load_yaml(resolved)
-    base_ref = data.pop("base_config", None)
-    if not base_ref:
-        return data
-    base_path = (resolved.parent / str(base_ref)).resolve()
-    base = _load_raw_config(base_path, trail)
-    return _deep_merge(base, data)
+def _config_root() -> Path:
+    return _repo_root() / "config"
 
 
 def _slugify(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
 
 
-def load_runtime_config(
-    config_path: Union[str, Path],
+def _path_to_overrides(path: Path) -> list[str]:
+    config_root = _config_root().resolve()
+    resolved = path.resolve()
+    if resolved == (config_root / "config.yaml").resolve():
+        return []
+
+    try:
+        relative = resolved.relative_to(config_root)
+    except ValueError as exc:
+        raise ValueError(f"Config path {resolved} is outside {config_root}") from exc
+
+    if not relative.suffix == ".yaml":
+        raise ValueError(f"Config path must point to a .yaml file: {resolved}")
+
+    group = relative.parts[0]
+    name = relative.stem
+    if group == "runs":
+        return [f"+runs={name}"]
+    if group == "data":
+        return [f"data={name}"]
+    if group == "experiment":
+        return [f"experiment={name}"]
+    if group == "model":
+        return [f"model={name}"]
+    raise ValueError(f"Unsupported config group for path-based loading: {resolved}")
+
+
+def compose_runtime_config(
+    config_input: Optional[Union[str, Path]] = None,
+    *,
+    overrides: Optional[Iterable[str]] = None,
+) -> DictConfig:
+    """Compose a Hydra config for scripts, tests, or the root `main.py`."""
+
+    final_overrides = list(overrides or [])
+    if config_input is not None:
+        final_overrides.extend(_path_to_overrides(Path(config_input)))
+
+    with initialize_config_dir(config_dir=str(_config_root()), version_base=None):
+        return compose(config_name="config", overrides=final_overrides)
+
+
+def to_runtime_dict(
+    config_input: Union[DictConfig, Dict[str, Any]],
     *,
     output_dir: Optional[str] = None,
+    config_path: Optional[Union[str, Path]] = None,
 ) -> Dict[str, Any]:
-    """Resolve the single runtime config used by scripts and tests."""
-    root = Path(config_path).resolve()
-    config_root = _resolve_config_root(root.parent)
-    merged_raw = _load_raw_config(root)
+    """Resolve Hydra/OmegaConf config into the plain dict expected by business code."""
 
-    data_override = deepcopy(merged_raw.pop("data", {}))
-    experiment_override = deepcopy(merged_raw.pop("experiment", {}))
-    model_override = deepcopy(merged_raw.pop("model", {}))
-
-    defaults = dict(merged_raw.get("defaults", {}))
-    dataset_key = str(defaults.get("dataset", "")).strip().lower()
-    graph_key = str(defaults.get("graph_path", "")).strip().lower()
-    if not dataset_key:
-        raise ValueError(f"Config {root} is missing defaults.dataset")
-    if not graph_key:
-        raise ValueError(f"Config {root} is missing defaults.graph_path")
-
-    dataset_cfg = _load_yaml(config_root / "data" / f"{dataset_key}.yaml")
-    experiment_cfg = _load_yaml(config_root / "experiment" / f"{graph_key}.yaml")
-    model_cfg = _load_yaml(config_root / "model" / "default.yaml")
-
-    merged = _deep_merge(merged_raw, dataset_cfg)
-    merged = _deep_merge(merged, experiment_cfg)
-    merged = _deep_merge(merged, model_cfg)
-    merged = _deep_merge(merged, {"data": data_override, "experiment": experiment_override, "model": model_override})
+    if isinstance(config_input, DictConfig):
+        merged = OmegaConf.to_container(config_input, resolve=True)
+    else:
+        merged = deepcopy(config_input)
+    if not isinstance(merged, dict):
+        raise ValueError("Expected config composition to resolve into a mapping.")
 
     merged.setdefault("runtime", {})
-    merged["runtime"]["dataset_key"] = dataset_key
-    merged["runtime"]["dataset_name"] = merged["data"]["dataset_name"]
-    merged["runtime"]["graph_path"] = merged["experiment"]["graph_path"]
-    merged["runtime"]["config_path"] = str(root)
-    merged["runtime"]["config_name"] = root.stem
-    if output_dir:
-        merged["runtime"]["output_dir"] = output_dir
+    runtime = merged["runtime"]
+    if not isinstance(runtime, dict):
+        raise ValueError("Expected runtime config to be a mapping.")
+
+    data_cfg = dict(merged.get("data", {}))
+    experiment_cfg = dict(merged.get("experiment", {}))
+    runtime["dataset_key"] = str(data_cfg.get("key", _slugify(str(data_cfg.get("dataset_name", "")))))
+    runtime["dataset_name"] = data_cfg["dataset_name"]
+    runtime["graph_path"] = experiment_cfg["graph_path"]
+    runtime.setdefault("action", "run_case")
+
+    if config_path is not None:
+        resolved = Path(config_path).resolve()
+        runtime["config_path"] = str(resolved)
+        runtime["config_name"] = resolved.stem
     else:
-        dataset_slug = _slugify(str(merged["data"]["dataset_name"]))
-        graph_slug = _slugify(str(merged["experiment"]["graph_path"]))
-        merged["runtime"].setdefault(
-            "output_dir",
-            str(config_root.parent / "artifacts" / f"{dataset_slug}_{graph_slug}"),
-        )
+        runtime.setdefault("config_path", "<hydra>")
+        runtime.setdefault("config_name", "hydra_main")
+
+    if output_dir:
+        runtime["output_dir"] = output_dir
+    elif not runtime.get("output_dir"):
+        dataset_slug = _slugify(str(data_cfg["dataset_name"]))
+        graph_slug = _slugify(str(experiment_cfg["graph_path"]))
+        runtime["output_dir"] = str(_repo_root() / "artifacts" / f"{dataset_slug}_{graph_slug}")
+
     return merged
+
+
+def load_runtime_config(
+    config_input: Union[str, Path, DictConfig, Dict[str, Any]],
+    *,
+    output_dir: Optional[str] = None,
+    overrides: Optional[Iterable[str]] = None,
+) -> Dict[str, Any]:
+    """Resolve a config path or Hydra DictConfig into the shared runtime dict."""
+
+    if isinstance(config_input, DictConfig):
+        return to_runtime_dict(config_input, output_dir=output_dir)
+    if isinstance(config_input, dict):
+        return to_runtime_dict(config_input, output_dir=output_dir)
+
+    path = Path(config_input).resolve()
+    composed = compose_runtime_config(path, overrides=overrides)
+    return to_runtime_dict(composed, output_dir=output_dir, config_path=path)

@@ -1,5 +1,5 @@
-"""Config-loading exports for scripts and tests."""
+"""Hydra-backed config-loading exports for scripts, tests, and the root CLI."""
 
-from .loader import load_runtime_config
+from .loader import compose_runtime_config, load_runtime_config, to_runtime_dict
 
-__all__ = ["load_runtime_config"]
+__all__ = ["compose_runtime_config", "load_runtime_config", "to_runtime_dict"]
