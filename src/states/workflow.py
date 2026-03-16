@@ -104,6 +104,7 @@ class WorkflowState(BaseModel):
     execution_gaps: List[ExecutionGap] = Field(default_factory=list)
     reflection_history: List[str] = Field(default_factory=list)
     reflection_results: List[ReflectionResult] = Field(default_factory=list)
+    dag_quality_summary: Dict[str, Any] = Field(default_factory=dict)
     iteration_index: int = 0
     max_iterations: int = 4
     round_history: List[RoundTrace] = Field(default_factory=list)

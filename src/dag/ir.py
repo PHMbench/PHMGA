@@ -18,6 +18,7 @@ GraphPath = Literal["dag_only", "ml", "torch"]
 OperatorCategory = Literal["INPUT", "EXPAND", "TRANSFORM", "AGGREGATE", "MULTI_VARIABLE", "DECISION", "ARTIFACT"]
 NodeKind = Literal["input", "transform", "feature", "multi", "decision", "artifact"]
 ExecutionRole = Literal["trainable", "fixed", "proxy", "outer_only"]
+RankClass = Literal["rank_up", "rank_same", "rank_down", "multi_input", "terminal_decision"]
 
 
 class DagNode(BaseModel):
@@ -28,6 +29,7 @@ class DagNode(BaseModel):
     name: str
     kind: NodeKind
     operator_category: OperatorCategory
+    rank_class: RankClass
     params: Dict[str, Any] = Field(default_factory=dict)
     parents: List[str] = Field(default_factory=list)
     in_shape: List[int]
