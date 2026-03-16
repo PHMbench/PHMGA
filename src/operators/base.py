@@ -21,15 +21,20 @@ BackendAvailability = Literal["np", "pt", "sym"]
 ExecutionRole = Literal["trainable", "fixed", "proxy", "outer_only"]
 GraphPath = Literal["dag_only", "ml", "torch"]
 SchemaCategory = Literal["EXPAND", "TRANSFORM", "AGGREGATE", "MULTI_VARIABLE", "DECISION"]
+RankClass = Literal["rank_up", "rank_same", "rank_down", "multi_input", "terminal_decision"]
 
 
 class OperatorSpec(BaseModel):
     """Static metadata required by workflow, bridge, and reporting."""
 
     op_uid: str
+    op_name: str
     name: str
     schema_category: SchemaCategory
+    rank_class: RankClass
     description: str
+    input_spec: Dict[str, Any] = Field(default_factory=dict)
+    output_spec: Dict[str, Any] = Field(default_factory=dict)
     param_schema: Dict[str, str] = Field(default_factory=dict)
     param_defaults: Dict[str, Any] = Field(default_factory=dict)
     param_docs: Dict[str, str] = Field(default_factory=dict)
@@ -47,11 +52,11 @@ class BaseIsomorphicOperator:
 
     spec: OperatorSpec
 
-    def forward_np(self, x: np.ndarray, **kwargs: Any) -> np.ndarray:
+    def forward_np(self, x: Any, **kwargs: Any) -> Any:
         raise NotImplementedError
 
     def forward_pt(self, x: Any, **kwargs: Any) -> Any:
         raise NotImplementedError
 
-    def forward_sym(self, x_sym: str, **kwargs: Any) -> str:
+    def forward_sym(self, x_sym: Any, **kwargs: Any) -> str:
         raise NotImplementedError
