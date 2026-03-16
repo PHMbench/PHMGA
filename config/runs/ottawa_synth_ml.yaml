@@ -1,4 +1,5 @@
-base_config: ../config.yaml
+# @package _global_
 defaults:
-  dataset: ottawa_synth
-  graph_path: ml
+  - override /data: ottawa_synth
+  - override /experiment: ml
+  - _self_

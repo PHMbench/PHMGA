@@ -1,4 +1,5 @@
-base_config: ../config.yaml
+# @package _global_
 defaults:
-  dataset: ottawa
-  graph_path: ml
+  - override /data: ottawa
+  - override /experiment: ml
+  - _self_

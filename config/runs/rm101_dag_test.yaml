@@ -3,3 +3,7 @@ defaults:
   - override /data: rm101
   - override /experiment: dag_only
   - _self_
+
+evaluation:
+  dag_quality:
+    use_proxy_probe: false
