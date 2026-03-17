@@ -1,0 +1,26 @@
+# @package _global_
+defaults:
+  - override /data: rm101
+  - override /experiment: ml
+  - _self_
+
+data:
+  split:
+    strategy: stratified_fixed_per_class
+    seed: 101
+    train_per_class: 2
+    val_per_class: 1
+    test_per_class: 1
+  window:
+    window_size: 4096
+    stride: 2048
+    slice_mode: centered
+    drop_last_window: false
+
+evaluation:
+  dag_quality:
+    use_proxy_probe: false
+
+model:
+  ml:
+    max_iter: 50
