@@ -26,6 +26,14 @@ from src.utils import ensure_dir, write_json, write_text
 from src.utils import hash_payload
 
 
+def _resolve_output_policy(runtime_config: Dict[str, Any], graph_path: str) -> str:
+    if graph_path == "ml":
+        return str(runtime_config["model"]["ml"].get("output_policy", "terminal_only"))
+    if graph_path == "torch":
+        return str(runtime_config["model"]["torch"].get("output_policy", "terminal_only"))
+    return "terminal_only"
+
+
 def _decision_side_outputs(state: WorkflowState) -> Dict[str, Any]:
     if not state.dag:
         return {}
@@ -79,6 +87,12 @@ def _run_path(
         epochs=int(runtime_config["model"]["torch"]["epochs"]),
         learning_rate=float(runtime_config["model"]["torch"]["learning_rate"]),
         device=str(runtime_config["model"]["torch"].get("device", "auto")),
+        phase=str(runtime_config["model"]["torch"].get("phase", "compiled")),
+        module_runtime_enabled=bool(runtime_config["model"]["torch"].get("module_runtime", {}).get("enabled", False)),
+        control_default_mode=str(runtime_config["model"]["torch"].get("control", {}).get("default_mode", "fixed")),
+        tau=float(runtime_config["model"]["torch"].get("control", {}).get("tau", 1.0)),
+        attention_heads=int(runtime_config["model"]["torch"].get("control", {}).get("attention_heads", 1)),
+        attention_dropout=float(runtime_config["model"]["torch"].get("control", {}).get("attention_dropout", 0.0)),
     )
 
 
@@ -187,7 +201,11 @@ def run_case(
     )
     state = _run_frontend_loop(state, protocol, llm, catalog, runtime_config)
     # The validated DAG JSON is the only legal hand-off into backend execution.
-    compiled = compile_dag_for_path(state.dag, state.graph_path)
+    compiled = compile_dag_for_path(
+        state.dag,
+        state.graph_path,
+        output_policy=_resolve_output_policy(runtime_config, state.graph_path),
+    )
     split_records = None if state.graph_path == "dag_only" else materialize_split_signals(protocol)
     path_artifacts = _run_path(state.graph_path, compiled, split_records, runtime_config, catalog)
     decision_outputs = _decision_side_outputs(state)
@@ -213,6 +231,8 @@ def run_case(
         write_json(path_artifacts["importance"], output_root / "importance.json")
         write_json(path_artifacts["metrics"], output_root / "metrics.json")
         write_json(path_artifacts["similarity_artifacts"], output_root / "similarity_artifacts.json")
+        if "control_statistics" in path_artifacts:
+            write_json(path_artifacts["control_statistics"], output_root / "control_statistics.json")
 
     final_report = report_agent(state, protocol, compiled.manifest, path_artifacts, llm)
     write_text(final_report, output_root / "final_report.md")

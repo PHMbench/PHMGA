@@ -15,6 +15,13 @@ llm:
   mode: offline_stub
   model: offline-stub
   api_key_env: OPENROUTER_API_KEY
+  base_url: https://openrouter.ai/api/v1
+  timeout_sec: 30
+  temperature: 0.0
+  max_tokens_structured: 800
+  max_tokens_report: 2000
+  http_referer: null
+  app_title: PHMGA
 
 artifacts:
   keep:
@@ -26,11 +33,21 @@ model:
   ml:
     algorithm: logistic_regression
     max_iter: 200
+    output_policy: terminal_only
   torch:
+    phase: compiled
     epochs: 12
     learning_rate: 0.2
     hidden_dim: 8
     device: auto
+    output_policy: terminal_only
+    module_runtime:
+      enabled: false
+    control:
+      default_mode: fixed
+      tau: 1.0
+      attention_heads: 1
+      attention_dropout: 0.0
 
 runtime:
   action: run_case
