@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.data import DatasetProtocol, materialize_preview_signal
-from src.llm import OfflineLLM
+from src.llm import LLMClient
 from src.operators import OperatorCatalog
 from src.prompts import render_plan_prompt
 from src.states import SignalContext, WorkflowState
@@ -44,7 +44,7 @@ def _build_signal_context(state: WorkflowState, protocol: DatasetProtocol) -> Si
 def plan_agent(
     state: WorkflowState,
     protocol: DatasetProtocol,
-    llm: OfflineLLM,
+    llm: LLMClient,
     catalog: OperatorCatalog,
 ) -> WorkflowState:
     """Generate a structured step plan from signal context and the current DAG."""
@@ -55,7 +55,7 @@ def plan_agent(
     current_depth = _dag_depth(state)
     min_depth = int(state.data_context.get("min_depth", 2))
     min_width = int(state.data_context.get("min_width", 1))
-    render_plan_prompt(
+    prompt = render_plan_prompt(
         instruction=state.user_instruction,
         signal_context=state.signal_context.model_dump(),
         dag_json=state.dag.model_dump() if state.dag else None,
@@ -66,6 +66,7 @@ def plan_agent(
         min_width=min_width,
     )
     state.step_plan = llm.generate_step_plan(
+        prompt=prompt,
         instruction=state.user_instruction,
         signal_context=state.signal_context,
         dag_json=state.dag.model_dump() if state.dag else None,

@@ -13,9 +13,9 @@ import numpy as np
 
 from src.dag import DAGTracker, DagNode
 from src.data import DatasetProtocol, materialize_preview_signal
-from src.llm import OfflineLLM
+from src.llm import LLMClient
 from src.operators import OperatorCatalog
-from src.prompts import render_execute_prompt
+from src.prompts import render_param_resolution_prompt
 from src.states import ExecutionGap, WorkflowState
 
 
@@ -107,7 +107,7 @@ def execute_agent(
     state: WorkflowState,
     protocol: DatasetProtocol,
     catalog: OperatorCatalog,
-    llm: OfflineLLM,
+    llm: LLMClient,
 ) -> WorkflowState:
     """Execute the planner output step by step and persist results in state."""
 
@@ -115,14 +115,6 @@ def execute_agent(
         raise ValueError("execute_agent requires state.step_plan.")
     if state.signal_context is None:
         raise ValueError("execute_agent requires state.signal_context.")
-
-    render_execute_prompt(
-        step_plan=state.step_plan.model_dump(),
-        dag_json=state.dag.model_dump() if state.dag else None,
-        operator_catalog=catalog.summary(),
-        signal_context=state.signal_context.model_dump(),
-        graph_path=state.graph_path,
-    )
 
     tracker = DAGTracker()
     _existing_nodes(state, tracker)
@@ -181,7 +173,24 @@ def execute_agent(
         ]
 
         try:
+            unresolved_tunable = [
+                param_name
+                for param_name in operator.spec.param_schema
+                if param_name not in step.params and param_name in operator.spec.llm_tunable_params
+            ]
+            prompt = render_param_resolution_prompt(
+                op_name=step.op_name,
+                requested_params=unresolved_tunable,
+                param_schema=operator.spec.param_schema,
+                param_defaults=operator.spec.param_defaults,
+                param_docs=operator.spec.param_docs,
+                llm_tunable_params=operator.spec.llm_tunable_params,
+                provided_params=step.params,
+                signal_context=state.signal_context.model_dump(),
+                parent_summaries=parent_summaries,
+            )
             params = llm.resolve_missing_params(
+                prompt=prompt,
                 op_name=step.op_name,
                 param_schema=operator.spec.param_schema,
                 param_defaults=operator.spec.param_defaults,

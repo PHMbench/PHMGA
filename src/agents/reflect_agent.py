@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from src.llm import OfflineLLM
+from src.llm import LLMClient
 from src.prompts import render_reflect_prompt
 from src.states import WorkflowState
 
@@ -19,7 +19,7 @@ def _dag_depth(state: WorkflowState) -> int:
     return max(depth_by_node.values(), default=0)
 
 
-def reflect_agent(state: WorkflowState, llm: OfflineLLM) -> WorkflowState:
+def reflect_agent(state: WorkflowState, llm: LLMClient) -> WorkflowState:
     """Review the current DAG, execution gaps, and planning progress."""
 
     dag_blueprint = state.dag.model_dump() if state.dag else {"nodes": [], "edges": []}
@@ -29,7 +29,7 @@ def reflect_agent(state: WorkflowState, llm: OfflineLLM) -> WorkflowState:
     min_width = int(state.data_context.get("min_width", 1))
     max_depth = int(state.data_context.get("max_depth", 8))
     stage = str(state.data_context.get("stage", "POST_EXECUTE"))
-    render_reflect_prompt(
+    prompt = render_reflect_prompt(
         instruction=state.user_instruction,
         stage=stage,
         dag_blueprint=dag_blueprint,
@@ -41,6 +41,7 @@ def reflect_agent(state: WorkflowState, llm: OfflineLLM) -> WorkflowState:
         current_depth=current_depth,
     )
     result = llm.reflect_workflow(
+        prompt=prompt,
         instruction=state.user_instruction,
         stage=stage,
         dag_blueprint=dag_blueprint,

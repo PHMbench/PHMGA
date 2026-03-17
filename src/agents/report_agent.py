@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 from src.bridge import CompiledDagManifest
 from src.data import DatasetProtocol
-from src.llm import OfflineLLM
+from src.llm import LLMClient
 from src.prompts import render_report_prompt
 from src.states import WorkflowState
 
@@ -28,7 +28,7 @@ def report_agent(
     protocol: DatasetProtocol,
     manifest: CompiledDagManifest,
     path_artifacts: Dict[str, Any],
-    llm: OfflineLLM,
+    llm: LLMClient,
 ) -> str:
     """Build the final markdown report from artifacts plus reflection context."""
 
@@ -48,7 +48,7 @@ def report_agent(
         if state.reflection_results
         else {"decision": "unknown", "reason": "No reflection was recorded."}
     )
-    render_report_prompt(
+    prompt = render_report_prompt(
         instruction=state.user_instruction,
         graph_path=state.graph_path,
         compiled_manifest=manifest.model_dump(),
@@ -59,6 +59,7 @@ def report_agent(
     )
     state.status = "reported"
     return llm.render_report(
+        prompt=prompt,
         instruction=state.user_instruction,
         dataset_name=protocol.dataset_name,
         graph_path=state.graph_path,
