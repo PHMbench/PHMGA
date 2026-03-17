@@ -33,11 +33,13 @@
 
 - richer operator coverage 仍不足
 - provider-backed planner 还未接成默认主链
+- provider-backed planner 仍不是默认主链；当前默认仍是 `offline_stub`
 
 ### recommended_next
 
-- 先扩 operator metadata 和少量 PHM 高频算子
-- 等 prompt/contract 稳定后再接真实 provider
+- 先把 fixed compiled/runtime graph 跑稳
+- 再稳住 provider-backed LLM 的错误处理、回归测试和文档
+- 然后再扩 operator metadata 和少量 PHM 高频算子
 
 ## execute
 
@@ -69,6 +71,7 @@
 - `reflect_agent` 已输出结构化 `ReflectionResult`
 - `need_patch / need_replan / finish / halt` 语义已经进入状态机
 - `dag_quality_evaluator` 已能输出当前 round 的紧凑质量摘要
+- provider mode 下已可走 OpenRouter-backed reflector
 
 ### missing_now
 
@@ -88,19 +91,43 @@
 - `compiled_dag_manifest.json` 已稳定
 - `ml / torch` 路径已接入 `dataset_preparer`、`shallow_ml`、`inquirer`
 - `torch` path 已切到 graph-level operator PT execution，并使用最小 tensor runtime
+- `ml / torch` compiled plan 已切到：
+  - `execution_nodes`
+  - `output_specs`
+  - `output_policy`
 - `dag_quality_summary.json` 已进入正式 artifact 列表
 - `decision_side_outputs.json` 已进入正式 artifact 列表
 
 ### missing_now
 
-- bridge 对 multi-parent lineage 仍不是一等支持
 - `decision` 目前仍没有 richer compiled side-output plan，只有最小 terminal evidence payload
 - `torch` trainer 仍是最小线性头，不是 richer trainable stack
+- `output_policy` 目前只支持：
+  - `terminal_only`
+  - `include_intermediate_features`
+- `GraphModule / module factory / learnable control` 已有最小实现，但还没有形成研究级 trainer 与 planner 默认主链
+- `WaveFilters / Ricker / Chirplet / Laplace / Morlet` 已进入统一 operator/runtime 路线，但仍缺默认 planner 采用与系统化 ablation
 
 ### recommended_next
 
-- 先补 richer multi-parent compiled lineage
-- 再补 richer decision-side compilation 和 torch trainer
+- 先稳住 multi-parent compiled lineage 与 output policy contract
+- 固定阶段顺序为：
+  - `phase_1_fixed_compiled_runtime`
+  - `phase_2_provider_backed_llm`
+  - `phase_3_module_runtime`
+  - `phase_4_learnable_control`
+- 再补 richer decision-side compilation、ablation ledger 和 torch trainer
+- 后续 torch runtime 再逐步过渡到：
+  - `compiled execution plan`
+  - `GraphModule / module factory`
+  - optional gate / attention controls
+- `WaveFilters` family 已统一归入 `src/operators/transform_ops.py`
+- 未来参数策略继续统一走：
+  - `OperatorSpec.param_schema`
+  - `OperatorSpec.param_defaults`
+  - `OperatorSpec.param_docs`
+  - `OperatorSpec.llm_tunable_params`
+- 不新增单独 `wavefilters.*` config 面
 
 ## report
 
@@ -109,15 +136,17 @@
 - `report_agent` 已按 `dag_only / ml / torch` 消费 graph-dependent artifacts
 - similarity artifacts 已进入 `ml / torch` 报告证据链
 - `dag_quality_summary` 已进入报告的简短质量段落
+- provider mode 下已可走 OpenRouter-backed reporter，默认仍是 deterministic renderer
 
 ### missing_now
 
 - 报告仍偏实验记录，不是论文附录级 evidence report
 - provider-backed summarization 仍未成为默认主链
+- `report_agent` 仍未真正走 OpenRouter-backed summarization
 
 ### recommended_next
 
-- 先扩 evidence richness
+- 先扩 evidence richness，并继续保持 deterministic baseline
 - 再考虑 provider-backed 摘要生成
 
 ## 当前正式目标
@@ -132,6 +161,15 @@
 - execute 阶段对 operator params 的 LLM tuning
 - compact `dag_quality_evaluator`
 - 五类 operator schema 的 richer metadata 与首轮 runnable subset
+- multi-parent compiled support 的正式设计边界：
+  - `plan_agent` 继续只生成方法 DAG
+  - bridge 负责 path-specific compiled output 选择
+  - `decision` 继续只做 side-output
+- 固定 graph first 的阶段顺序：
+  - 先 fixed compiled/runtime
+  - 再 provider-backed LLM
+  - 再 GraphModule / module factory
+  - 最后 gate / attention / learnable control
 
 ## Decision Pending
 
@@ -140,3 +178,5 @@
 - `decision` 节点何时进入正式可执行链
 - bridge 何时升级到 richer multi-parent lineage
 - provider-backed planner / reflector / reporter 何时接成默认
+- torch runtime 何时从当前最小实现升级到更强 trainer / batch runtime / richer module stack
+- `GraphModule + learnable control` 何时进入论文主表而不是增强实验

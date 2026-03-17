@@ -49,6 +49,18 @@ PHMGA/
 
 1. 新结构文档能单独解释论文版仓库。
 2. 仓库中不存在旧 facade、多入口主链和 split 兼容层。
-3. `RM101` 与 `Ottawa` 都能跑通三条 graph path。
+3. `Ottawa` 与 `RM101` 真实数据已能跑通三条 graph path。
 4. 所有进入 bridge 的 DAG JSON 都经过 schema 校验。
 5. 单命令可生成 graph-dependent artifacts 与最终报告。
+
+## 真实数据 smoke 边界
+
+- 已完成：
+  - `RM_017_Ottawa19`
+    - `dag_only`
+    - `ml`
+    - `torch`
+  - `RM_101_THU_GEARBOX`
+    - `dag_only`
+    - `ml`
+    - `torch`

@@ -63,6 +63,68 @@ flowchart TD
 
 但不改变 planner 的显式输入合同。
 
+## DAG、bridge 与 path compilation 的分工
+
+这里必须严格区分三层：
+
+- `validated DAG JSON`
+  - 表达方法结构、节点依赖与节点合同
+  - 冻结 `node_id / op_uid / parents / input_bindings / shape / legal_paths`
+  - 不表达 path-specific 的最终输出选择
+- `bridge compiled plan`
+  - 负责把统一 DAG 合同翻译成某个 graph path 的后端执行合同
+  - 当前 `dag_only` 已稳定；`ml / torch` 已切到 compiled subgraph + output policy 合同
+- `path runner`
+  - 负责执行 compiled plan 并写出 path-specific artifacts
+
+因此：
+
+- `plan_agent` 只负责生成方法 DAG，不负责决定哪些节点进入 `ml / torch` 的最终特征矩阵
+- output policy 与 compiled output 选择发生在 `bridge / dataset_preparer / path runner`
+- 这些问题不属于 `plan_agent` 的职责
+
+## `compiled subgraph` 与 `compiled output feature`
+
+bridge 当前已经开始显式区分两个概念：
+
+- `compiled subgraph`
+  - 为某个 graph path 选出的最小可执行子图
+  - 回答“为了得到后端要用的结果，哪些节点必须执行”
+- `compiled output feature`
+  - `compiled subgraph` 执行完后真正进入 `X` 的输出节点
+  - 当前目标允许来自 `feature | multi`
+
+这两个概念不能继续被旧 `FeatureSpec` 混成一层。原因是：
+
+- single-parent 场景里，一个最终输出常常刚好等于一个 `feature` 节点
+- multi-parent 场景里，最终输出可能来自：
+  - `multi.concatenate`
+  - `multi.cross_correlation`
+- `decision` 节点虽然可执行，但仍只做 terminal side-output，不进入训练张量主链
+
+最小例子：
+
+```text
+ch1 -> normalize -> rms ----\
+                              -> concatenate
+ch2 -> normalize -> rms ----/
+```
+
+这里：
+
+- `compiled subgraph`
+  - `ch1`
+  - `normalize(ch1)`
+  - `rms(ch1)`
+  - `ch2`
+  - `normalize(ch2)`
+  - `rms(ch2)`
+  - `concatenate`
+- `compiled output feature`
+  - `concatenate`
+
+也就是说，bridge 需要同时回答“整段怎么执行”和“最后取什么作为输出”，而不是只回答“哪个 `feature` 节点存在”。
+
 ## 当前运行时合同类型
 
 ### `SignalContext`
@@ -245,6 +307,12 @@ class RoundTrace:
   - 允许进入 manifest 与 report
   - 不允许进入 `ml / torch` 的训练张量主链
 
+这里需要强调：
+
+- `execute_agent` 负责把 richer DAG 正确 materialize 出来
+- 它不负责把 multi-parent 节点编译成 `ml / torch` 的最终输出
+- `concatenate`、`cross_correlation` 是否进入后端训练特征，是 bridge/path compilation 的问题
+
 ### `reflect_agent`
 
 输入：
@@ -332,6 +400,26 @@ bridge 仍然只吃 `validated DAG JSON`。
 - 直接把 prompt 输出塞给 training
 - 绕过 DAG 校验
 
+当前 bridge 对 `ml / torch` 已切到：
+
+- `execution_nodes`
+- `output_specs`
+- `output_policy`
+
+也就是说：
+
+- compiled plan 已不再只等价于“一个 input channel + 一串 transform + 一个 `feature` 节点”
+- `multi.concatenate`
+- `multi.cross_correlation`
+
+都已经可以进入 compiled output feature。
+
+当前下一阶段 bridge/runtime 的正式目标转为：
+
+- 稳住 output policy 与 compiled runtime contract
+- 保持 `decision` 继续作为 side-output，而不是训练张量主链的一部分
+- 后续再把 torch runtime 过渡到 `GraphModule / module factory`
+
 ## 当前已闭合链路
 
 - `plan_agent` 已能从 preview signal 构建 `SignalContext` 并输出 `StepPlan`
@@ -342,14 +430,8 @@ bridge 仍然只吃 `validated DAG JSON`。
 
 ## 当前未闭合但已明确的边界
 
-- 当前前端执行仍是 representative / preview 级执行，不是全 split/window 级 DAG 执行
-- `decision` 仍是 auxiliary terminal，不进入正式可执行链
+- 当前前端执行仍是 representative / preview 级，不是 dataset-level 全窗口 DAG 执行
+- `decision` 仍是 auxiliary terminal，不进入训练张量主链
 - `dag_quality_evaluator` 只做当前 round 摘要，不做平台式多页评分系统
-- 仍缺更强的 dataset-level execution 与 richer bridge lineage
-
-## 当前未闭合但已明确的边界
-
-- 仍是 representative / preview 级前端执行，不是 dataset-level 全窗口 DAG 执行
-- `decision` 仍是 auxiliary terminal
-- bridge 对 multi-parent lineage 仍是最小支持，不是完整 rich DAG compiler
+- compiled runtime 已支持当前 multi-parent 输出策略，但 richer `GraphModule` / learnable control 仍未接入
 - report 已可生成，但仍建立在 path artifacts 先准备好的前提上

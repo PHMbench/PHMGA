@@ -165,6 +165,11 @@
 - `signal.filter`
 - `signal.hilbert_envelope`
 - `signal.psd`
+- `signal.wavefilters`
+- `signal.wavelet_ricker`
+- `signal.wavelet_chirplet`
+- `signal.wavelet_laplace`
+- `signal.wavelet_morlet`
 - `feature.mean`
 - `feature.std`
 - `feature.rms`
@@ -175,6 +180,49 @@
 - `multi.concatenate`
 - `multi.cross_correlation`
 - `decision.threshold`
+
+## `TRANSFORM` family：WaveFilters 路线
+
+以下模块现在已经进入统一 operator 系统，但当前默认仍不要求 planner 主动生成：
+
+- `WaveFilters`
+- `RickerWaveletFilter`
+- `ChirpletWaveletFilter`
+- `LaplaceWaveletFilter`
+- `MorletWaveletFilter`
+
+它们的定位固定为：
+
+- 属于 `TRANSFORM` family
+- 统一归入 [transform_ops.py](/home/user/LQ/B_Signal/PHMGA/src/operators/transform_ops.py)
+- 不单独开 `wavefilters` 配置文件或独立 config subtree
+
+它们继续服从当前统一 operator contract：
+
+- `op_uid`
+- `schema_category=TRANSFORM`
+- `rank_class=rank_same`
+- `input_spec`
+- `output_spec`
+- `param_schema`
+- `param_defaults`
+- `param_docs`
+- `llm_tunable_params`
+
+参数策略写死为：
+
+- 参数来源只允许：
+  - `param_defaults`
+  - `StepPlan.params`
+  - `execute_agent` 基于 `signal_context / parent summary / operator schema` 的补全
+- 不新增单独 config 面去承载：
+  - `wavefilters.family`
+  - `wavefilters.sigma`
+  - `wavefilters.f_c`
+  - `wavefilters.f_b`
+  - 等专用树状配置
+
+也就是说，这组模块已经是“统一 operator contract 下的可调 TRANSFORM nodes”，而不是独立子系统。其 learnable behavior 继续由 torch runtime wrapper 叠加，而不是在 operator schema 里再造第二套体系。
 
 当前 role / path 约束如下：
 

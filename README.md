@@ -60,7 +60,10 @@ PHMGA 是一个面向论文复现与方法验证的工业时间序列研究仓�
 - `torch`
   - 将 DAG 编译成可训练构建计划，运行最小训练后端，输出 `model_build_plan.json`、`training_curves.json`、`checkpoint.json`、`importance.json`、`metrics.json`。
   - 当前实现已切到 graph-level operator PT execution，并使用最小 torch tensor runtime 训练线性头。
-  - 它仍不是完整 research-grade PyTorch 训练栈；当前只支持单进程单设备，且 multi-parent compiled support 仍未完成。
+  - 它仍不是完整 research-grade PyTorch 训练栈；当前只支持单进程单设备。
+  - `ml / torch` 已切到 multi-parent compiled plan，并支持 config-driven `output_policy`：
+    - `terminal_only`
+    - `include_intermediate_features`
 
 ## 当前仓库骨架
 
@@ -100,13 +103,20 @@ PHMGA 是一个面向论文复现与方法验证的工业时间序列研究仓�
   - 选择 `preflight` 或 `run_case`。
 - `llm`
   - 当前默认 `offline_stub`，用于无外部依赖的最小闭环。
+  - `mode=provider` 且 `provider=openrouter` 时，会走 provider-backed planner / param resolver / reflector / reporter。
+  - `offline_stub` 仍保留为 deterministic baseline。
 - `evaluation.dag_quality`
   - DAG 质量摘要的开关，以及小样本 proxy probe 的控制项。
   - 当前默认语义是：synthetic 关闭 proxy probe，real 开启 proxy probe；当 `use_proxy_probe: null` 时按 `source_mode` 自动推断。
 - `model.ml`
   - 轻量 ML 路径的训练参数。
+  - 当前也承载 `output_policy`。
 - `model.torch`
   - 当前最小 trainable path 的训练参数。
+  - 当前承载：
+    - `phase`
+    - `device`
+    - `output_policy`
 
 真实数据配置已经接入两套 PHM-Vibench 数据：
 
@@ -152,7 +162,25 @@ flowchart TD
 - planner 稳定产出包含 `EXPAND / TRANSFORM / AGGREGATE / MULTI_VARIABLE / DECISION` 的 richer PHM DAG
 - executor 基于 `input_spec / output_spec / rank_class` 做更强约束
 - `DECISION` 继续保持 terminal side-output，不进入 `ml / torch` 训练张量主链
-- 先稳定 enriched `dag_only`，再稳定 enriched `ml`
+- 先把 fixed compiled/runtime graph 跑稳，再继续扩 provider-backed LLM 与 learnable runtime
+
+当前推荐阶段顺序固定为：
+
+1. `phase_1_fixed_compiled_runtime`
+   - 固定 compiled graph / output policy / dataset_preparer / `ml/torch` runner contract
+2. `phase_2_provider_backed_llm`
+   - 已接通 OpenRouter client，但不改变 DAG/bridge 合同
+3. `phase_3_module_runtime`
+   - 已提供最小 `GraphModule / module factory`，通过 `model.torch.phase=module_runtime` 显式开启
+4. `phase_4_learnable_control`
+   - 已提供 runtime-level gate / `softmax(logits / tau)` / attention，默认仍保持关闭
+
+其中：
+
+- OpenRouter provider path 已接通，但默认模式仍是 `offline_stub`
+- `offline_stub` 仍要保留为 deterministic baseline
+- 当前默认基线仍是 `phase=compiled`
+- `module_runtime / learnable_control` 作为 opt-in 增强层，不改变当前 bridge compiled contract
 
 ## 运行方式
 
@@ -193,6 +221,12 @@ pytest -q
 - bridge 对三条 graph path 的编译产物
 - synthetic run configs 在三条 graph path 下的 smoke 闭环
 - 真实 `RM_101_THU_GEARBOX` 与 `RM_017_Ottawa19` 的 protocol / `dag_only` 集成检查
+- 真实 `RM_017_Ottawa19` 与 `RM_101_THU_GEARBOX` 的 `ml / torch` smoke 闭环
+
+当前自动化覆盖边界：
+
+- 真实 Ottawa 已补齐三条 graph path smoke
+- 真实 RM101 已补齐 `ml / torch` 的轻量 smoke；正式长跑仍需手动实验与 ledger 记录
 - 入口文档与结构文档的基本一致性
 
 ## 阅读顺序
