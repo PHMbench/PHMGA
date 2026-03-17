@@ -60,7 +60,11 @@ def test_report_agent_writes_ml_and_torch_sections():
         ml_protocol,
         ml_manifest,
         {
-            "feature_pipeline": {"feature_specs": [{"feature_node_id": "n1"}]},
+            "feature_pipeline": {
+                "execution_nodes": [{"node_id": "ch1"}],
+                "output_specs": [{"output_node_id": "n1", "output_kind": "feature"}],
+                "output_policy": "terminal_only",
+            },
             "metrics": {"test": {"accuracy": 0.8, "macro_f1": 0.7}},
             "importance": {"feature.rms": 0.5},
         },

@@ -5,7 +5,8 @@ from pathlib import Path
 import pytest
 
 from src.config import load_runtime_config
-from src.data import build_protocol_from_config, materialize_split_signals
+from src.data import DatasetProtocol, SplitManifest, WindowSpec, build_protocol_from_config, materialize_split_signals
+from src.data.protocol import SampleMeta
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -50,3 +51,46 @@ def test_real_protocol_reads_metadata_columns_and_h5_shape():
     assert rm101.samples[0].observed_channels == 8
     assert ottawa.samples[0].observed_length == 2000000
     assert ottawa.samples[0].observed_channels == 2
+
+
+def test_materialize_split_signals_skips_samples_outside_split_manifest():
+    protocol = DatasetProtocol(
+        dataset_name="CUSTOM_SYNTH",
+        catalog="synthetic",
+        metadata_schema_version="synth_v1",
+        samples=[
+            SampleMeta(
+                sample_id="s1",
+                dataset="CUSTOM_SYNTH",
+                label=0,
+                sampling_rate=1000,
+                length=256,
+                channels=2,
+                operating_condition="nominal",
+                source_h5="",
+                observed_length=256,
+                observed_channels=2,
+            ),
+            SampleMeta(
+                sample_id="s2",
+                dataset="CUSTOM_SYNTH",
+                label=1,
+                sampling_rate=1000,
+                length=256,
+                channels=2,
+                operating_condition="fault",
+                source_h5="",
+                observed_length=256,
+                observed_channels=2,
+            ),
+        ],
+        splits=SplitManifest(train_ids=["s1"], val_ids=[], test_ids=[]),
+        window=WindowSpec(window_size=128, stride=64, slice_mode="centered", drop_last_window=False),
+        source_mode="synthetic",
+    )
+
+    records = materialize_split_signals(protocol)
+
+    assert [record.sample_id for record in records["train"]] == ["s1"]
+    assert records["val"] == []
+    assert records["test"] == []
