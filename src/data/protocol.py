@@ -447,6 +447,13 @@ def materialize_preview_signal(protocol: DatasetProtocol) -> tuple[str, np.ndarr
     raise ValueError("Protocol does not contain any split samples.")
 
 
+def _sample_split_name(sample_id: str, split_lookup: Dict[str, set[str]]) -> Optional[str]:
+    for split_name, ids in split_lookup.items():
+        if sample_id in ids:
+            return split_name
+    return None
+
+
 def materialize_split_signals(protocol: DatasetProtocol) -> Dict[str, List[SignalRecord]]:
     """Materialize split-specific signal windows from the canonical protocol."""
     split_lookup: Dict[str, set[str]] = {
@@ -458,7 +465,9 @@ def materialize_split_signals(protocol: DatasetProtocol) -> Dict[str, List[Signa
 
     if protocol.source_mode == "synthetic":
         for sample in protocol.samples:
-            split_name = next(name for name, ids in split_lookup.items() if sample.sample_id in ids)
+            split_name = _sample_split_name(sample.sample_id, split_lookup)
+            if split_name is None:
+                continue
             signal = _generate_signal(sample)
             windows = _window_signal(signal, protocol.window)
             outputs[split_name].append(
@@ -475,7 +484,9 @@ def materialize_split_signals(protocol: DatasetProtocol) -> Dict[str, List[Signa
         raise ValueError("Real-data protocol is missing h5_path.")
     with h5py.File(protocol.h5_path, "r") as handle:
         for sample in protocol.samples:
-            split_name = next(name for name, ids in split_lookup.items() if sample.sample_id in ids)
+            split_name = _sample_split_name(sample.sample_id, split_lookup)
+            if split_name is None:
+                continue
             signal = _load_real_signal(handle, sample, protocol.selected_channels)
             windows = _window_signal(signal, protocol.window)
             outputs[split_name].append(

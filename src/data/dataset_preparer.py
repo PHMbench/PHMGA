@@ -18,7 +18,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     torch = None
 
-from src.bridge import FeaturePipelinePlan, FeatureSpec, ModelBuildPlan
+from src.bridge import CompiledExecutionNode, CompiledOutputSpec, FeaturePipelinePlan, ModelBuildPlan
 from src.operators import OperatorCatalog
 
 from .protocol import SignalRecord
@@ -48,27 +48,98 @@ def _require_torch():
     return torch
 
 
-def _apply_spec_np(window: np.ndarray, spec: FeatureSpec, catalog: OperatorCatalog) -> float:
-    """Apply one compiled feature spec to a single window with NumPy execution."""
+def _ordered_inputs_np(values_by_node: Dict[str, np.ndarray], node: CompiledExecutionNode) -> List[np.ndarray]:
+    if node.input_bindings:
+        binding_items = sorted(
+            node.input_bindings.items(),
+            key=lambda item: int(item[0].removeprefix("arg")),
+        )
+        return [values_by_node[parent_id] for _, parent_id in binding_items]
+    return [values_by_node[parent_id] for parent_id in node.parents]
 
-    current = window[[spec.channel_index], :]
-    for op_uid in spec.transform_ops:
-        current = catalog.get(op_uid).forward_np(current)
-    feature_value = catalog.get(spec.feature_op).forward_np(current)
-    return float(np.asarray(feature_value, dtype=float).reshape(-1)[0])
+
+def _execute_compiled_plan_np(
+    window: np.ndarray,
+    execution_nodes: List[CompiledExecutionNode],
+    output_specs: List[CompiledOutputSpec],
+    catalog: OperatorCatalog,
+) -> np.ndarray:
+    """Execute one compiled subgraph for a single window with NumPy operators."""
+
+    values_by_node: Dict[str, np.ndarray] = {}
+    for node in execution_nodes:
+        if node.kind == "input":
+            if node.channel_index is None:
+                raise ValueError(f"Input node {node.node_id} is missing channel_index.")
+            values_by_node[node.node_id] = np.asarray(window[[node.channel_index], :], dtype=float)
+            continue
+        operator = catalog.get(node.op_uid)
+        if node.kind == "multi":
+            parent_values = _ordered_inputs_np(values_by_node, node)
+            values_by_node[node.node_id] = np.asarray(operator.forward_np(parent_values, **node.params), dtype=float)
+            continue
+        if len(node.parents) != 1:
+            raise ValueError(f"Node {node.node_id} expects exactly one parent, got {len(node.parents)}.")
+        parent_value = values_by_node[node.parents[0]]
+        values_by_node[node.node_id] = np.asarray(operator.forward_np(parent_value, **node.params), dtype=float)
+
+    outputs = [np.asarray(values_by_node[spec.output_node_id], dtype=float).reshape(-1) for spec in output_specs]
+    if not outputs:
+        return np.zeros((0,), dtype=float)
+    return np.concatenate(outputs, axis=0)
 
 
-def _apply_spec_pt(window: np.ndarray, spec: FeatureSpec, catalog: OperatorCatalog, *, device: "torch.device") -> "torch.Tensor":
-    """Apply one compiled feature spec to a single window with tensor execution."""
+def _ordered_inputs_pt(
+    values_by_node: Dict[str, "torch.Tensor"],
+    node: CompiledExecutionNode,
+) -> List["torch.Tensor"]:
+    if node.input_bindings:
+        binding_items = sorted(
+            node.input_bindings.items(),
+            key=lambda item: int(item[0].removeprefix("arg")),
+        )
+        return [values_by_node[parent_id] for _, parent_id in binding_items]
+    return [values_by_node[parent_id] for parent_id in node.parents]
+
+
+def _execute_compiled_plan_pt(
+    window: np.ndarray,
+    execution_nodes: List[CompiledExecutionNode],
+    output_specs: List[CompiledOutputSpec],
+    catalog: OperatorCatalog,
+    *,
+    device: "torch.device",
+) -> "torch.Tensor":
+    """Execute one compiled subgraph for a single window with tensor operators."""
 
     torch_module = _require_torch()
-    current = torch_module.as_tensor(window[[spec.channel_index], :], dtype=torch_module.float32, device=device)
-    for op_uid in spec.transform_ops:
-        current = catalog.get(op_uid).forward_pt(current)
-    feature_value = catalog.get(spec.feature_op).forward_pt(current)
-    if not torch_module.is_tensor(feature_value):
-        raise TypeError(f"Feature operator {spec.feature_op} must return a tensor for torch execution.")
-    return feature_value.reshape(-1).to(dtype=torch_module.float32)
+    values_by_node: Dict[str, "torch.Tensor"] = {}
+    for node in execution_nodes:
+        if node.kind == "input":
+            if node.channel_index is None:
+                raise ValueError(f"Input node {node.node_id} is missing channel_index.")
+            values_by_node[node.node_id] = torch_module.as_tensor(
+                window[[node.channel_index], :],
+                dtype=torch_module.float32,
+                device=device,
+            )
+            continue
+        operator = catalog.get(node.op_uid)
+        if node.kind == "multi":
+            parent_values = _ordered_inputs_pt(values_by_node, node)
+            result = operator.forward_pt(parent_values, **node.params)
+        else:
+            if len(node.parents) != 1:
+                raise ValueError(f"Node {node.node_id} expects exactly one parent, got {len(node.parents)}.")
+            result = operator.forward_pt(values_by_node[node.parents[0]], **node.params)
+        if not torch_module.is_tensor(result):
+            raise TypeError(f"Operator {node.op_uid} must return a tensor for torch execution.")
+        values_by_node[node.node_id] = result.to(dtype=torch_module.float32)
+
+    outputs = [values_by_node[spec.output_node_id].reshape(-1).to(dtype=torch_module.float32) for spec in output_specs]
+    if not outputs:
+        return torch_module.zeros((0,), dtype=torch_module.float32, device=device)
+    return torch_module.cat(outputs, dim=0)
 
 
 def build_dataset_views_np(
@@ -85,11 +156,16 @@ def build_dataset_views_np(
         sample_ids: list[str] = []
         for record in records:
             for window in record.windows:
-                features.append([_apply_spec_np(window, spec, catalog) for spec in plan.feature_specs])
+                features.append(_execute_compiled_plan_np(window, plan.execution_nodes, plan.output_specs, catalog).tolist())
                 labels.append(record.label)
                 sample_ids.append(record.sample_id)
+        feature_dim = sum(
+            int(np.prod(node.shape_inference["out"]))
+            for node in plan.manifest.nodes
+            if any(spec.output_node_id == node.node_id for spec in plan.output_specs)
+        )
         outputs[split_name] = DatasetView(
-            X=np.asarray(features, dtype=float),
+            X=np.asarray(features, dtype=float).reshape(len(features), feature_dim) if features else np.zeros((0, feature_dim), dtype=float),
             y=np.asarray(labels, dtype=int),
             sample_ids=sample_ids,
         )
@@ -114,11 +190,16 @@ def build_dataset_views_pt(
         sample_ids: list[str] = []
         for record in records:
             for window in record.windows:
-                parts = [_apply_spec_pt(window, spec, catalog, device=resolved_device) for spec in plan.feature_specs]
-                features.append(torch_module.cat(parts, dim=0))
+                features.append(
+                    _execute_compiled_plan_pt(window, plan.execution_nodes, plan.output_specs, catalog, device=resolved_device)
+                )
                 labels.append(record.label)
                 sample_ids.append(record.sample_id)
-        feature_dim = len(plan.feature_specs)
+        feature_dim = sum(
+            int(np.prod(node.shape_inference["out"]))
+            for node in plan.manifest.nodes
+            if any(spec.output_node_id == node.node_id for spec in plan.output_specs)
+        )
         x_tensor = (
             torch_module.stack(features, dim=0)
             if features
