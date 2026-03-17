@@ -72,5 +72,6 @@ tmp/
 temp/
 *.pyc
 artifacts/
-.cpython-311.pyc
+*.cpython-311.pyc
 scripts/generate_test_report.py
+doc/test_report/

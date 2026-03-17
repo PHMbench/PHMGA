@@ -119,7 +119,11 @@ def _proxy_probe_score(
         issues.append("Proxy probe skipped because the DAG does not contain feature nodes.")
         return None, issues
 
-    compiled = compile_dag_for_path(state.dag, "ml")
+    compiled = compile_dag_for_path(
+        state.dag,
+        "ml",
+        output_policy=str(runtime_config.get("model", {}).get("ml", {}).get("output_policy", "terminal_only")),
+    )
     subset_size = int(runtime_config.get("evaluation", {}).get("dag_quality", {}).get("proxy_subset_per_split", 8))
     split_records = materialize_proxy_split_signals(protocol, subset_size)
     dataset_views = build_dataset_views(compiled, split_records, catalog)
