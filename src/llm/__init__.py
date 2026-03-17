@@ -1,5 +1,12 @@
-"""LLM client exports for the minimal offline workflow."""
+"""LLM client exports for offline and provider-backed workflow modes."""
 
-from .client import OfflineLLM, get_llm
+from .client import LLMClient, LLMProviderError, LLMSchemaError, OfflineLLM, OpenRouterLLM, get_llm
 
-__all__ = ["OfflineLLM", "get_llm"]
+__all__ = [
+    "LLMClient",
+    "LLMProviderError",
+    "LLMSchemaError",
+    "OfflineLLM",
+    "OpenRouterLLM",
+    "get_llm",
+]
