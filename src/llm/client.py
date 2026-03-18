@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Protocol, runtime_checkable
+from typing import Any, Dict, Iterable, List, Literal, Optional, Protocol, runtime_checkable
 
 import httpx
 
@@ -59,32 +60,151 @@ def _strip_json_fence(text: str) -> str:
     return stripped
 
 
+def _structured_mode_for_model(model: str) -> Literal["json_mode", "text_mode"]:
+    normalized = model.strip().lower()
+    # Models known to require text_mode (don't support response_format=json_object)
+    text_mode_models = {
+        "stepfun/step-3.5-flash:free",
+        "stepfun/step-3.5-flash",  # all stepfun variants
+    }
+    if any(normalized == m or normalized.startswith(m.split(":")[0]) for m in text_mode_models):
+        return "text_mode"
+    # Default to json_mode for most models (includes gemma, llama, mistral, etc.)
+    return "json_mode"
+
+
 def _extract_message_text(payload: Dict[str, Any]) -> str:
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
         raise LLMSchemaError("Provider response did not include any choices.")
     message = choices[0].get("message", {})
+
+    # First try standard content field
     content = message.get("content")
-    if isinstance(content, str):
+
+    # Handle string content
+    if isinstance(content, str) and content.strip():
         return content
+
+    # Handle list content (common for multi-modal or streaming responses)
     if isinstance(content, list):
         chunks: list[str] = []
         for item in content:
-            if isinstance(item, dict) and item.get("type") == "text":
-                chunks.append(str(item.get("text", "")))
+            if isinstance(item, dict):
+                if item.get("type") == "text":
+                    text = item.get("text", "")
+                    if text:
+                        chunks.append(str(text))
+                # Alternative format some providers use
+                elif "text" in item:
+                    chunks.append(str(item.get("text", "")))
+            elif isinstance(item, str):
+                chunks.append(item)
         if chunks:
-            return "".join(chunks)
-    raise LLMSchemaError("Provider response did not include textual message content.")
+            result = "".join(chunks)
+            if result.strip():
+                return result
+
+    # If content is None or empty, check alternative fields
+    # Some models use reasoning or other fields for the actual response
+    # IMPORTANT: For reasoning models, we need to check if there's a separate answer field
+    for field in ["text", "refusal", "answer", "output"]:
+        alt = message.get(field)
+        if isinstance(alt, str) and alt.strip():
+            return alt
+
+    # Check reasoning field LAST - it often contains thought process, not final answer
+    reasoning = message.get("reasoning")
+    if isinstance(reasoning, str) and reasoning.strip():
+        # For reasoning models, try to extract JSON from the reasoning text
+        # The model may embed its answer within the reasoning
+        json_obj = _extract_json_object_from_text(reasoning)
+        if json_obj is not None:
+            # Return the JSON string directly
+            import json as json_mod
+            return json_mod.dumps(json_obj)
+        # If no JSON found, return reasoning as fallback (may fail later)
+        return reasoning
+
+    # Check if content exists at message level (not nested)
+    if not content or not isinstance(content, (str, list)):
+        # Some providers put content directly at message root
+        for key in message:
+            if key == "role":
+                continue
+            val = message[key]
+            if isinstance(val, str) and val.strip() and len(val) > 10:
+                return val
+            elif isinstance(val, list) and val:
+                # Try to extract text from list
+                for item in val:
+                    if isinstance(item, dict) and item.get("type") == "text":
+                        text = item.get("text", "")
+                        if text:
+                            return str(text)
+
+    # If we still haven't found content, provide detailed error
+    raise LLMSchemaError(
+        f"Provider response did not include textual message content. "
+        f"Message keys: {list(message.keys())}, Content type: {type(content)}, "
+        f"Content value: {repr(content)[:200]}"
+    )
 
 
-def _parse_json_object(text: str) -> Dict[str, Any]:
+def _json_text_preview(text: str, limit: int = 200) -> str:
+    compact = " ".join(text.strip().split())
+    return compact[:limit]
+
+
+def _parse_json_candidate(text: str) -> Optional[Dict[str, Any]]:
     normalized = _strip_json_fence(text)
+    if not normalized:
+        return None
     try:
         parsed = json.loads(normalized)
-    except json.JSONDecodeError as exc:  # pragma: no cover - exercised via tests
-        raise LLMSchemaError(f"Provider response was not valid JSON: {exc}") from exc
+    except json.JSONDecodeError:
+        return None
     if not isinstance(parsed, dict):
-        raise LLMSchemaError("Provider response must decode to a JSON object.")
+        return None
+    return parsed
+
+
+def _extract_json_object_from_text(text: str) -> Optional[Dict[str, Any]]:
+    direct = _parse_json_candidate(text)
+    if direct is not None:
+        return direct
+
+    fenced_blocks = re.findall(r"```(?:json)?\s*(.*?)```", text, flags=re.IGNORECASE | re.DOTALL)
+    for block in fenced_blocks:
+        parsed = _parse_json_candidate(block)
+        if parsed is not None:
+            return parsed
+
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _parse_json_object(
+    text: str,
+    *,
+    model: str,
+    structured_mode: Literal["json_mode", "text_mode"],
+) -> Dict[str, Any]:
+    parsed = _extract_json_object_from_text(text)
+    if parsed is None:
+        raise LLMSchemaError(
+            "Provider response did not contain a valid JSON object. "
+            f"model={model}, structured_mode={structured_mode}, text_preview={_json_text_preview(text)!r}"
+        )
     return parsed
 
 
@@ -609,13 +729,14 @@ class OpenRouterLLM:
         return self.http_client
 
     def _request_text(self, *, prompt: str, max_tokens: int, expect_json: bool) -> str:
+        structured_mode = _structured_mode_for_model(self.model)
         body: Dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": self.temperature,
             "max_tokens": max_tokens,
         }
-        if expect_json:
+        if expect_json and structured_mode == "json_mode":
             body["response_format"] = {"type": "json_object"}
 
         try:
@@ -636,10 +757,27 @@ class OpenRouterLLM:
             payload = response.json()
         except json.JSONDecodeError as exc:
             raise LLMSchemaError(f"Provider returned non-JSON HTTP payload: {exc}") from exc
+
         return _extract_message_text(payload)
 
     def _request_json_object(self, *, prompt: str, max_tokens: int) -> Dict[str, Any]:
-        return _parse_json_object(self._request_text(prompt=prompt, max_tokens=max_tokens, expect_json=True))
+        structured_mode = _structured_mode_for_model(self.model)
+        # For text_mode models, wrap prompt with explicit JSON format instruction and example
+        effective_prompt = prompt
+        if structured_mode == "text_mode":
+            effective_prompt = (
+                "You are a JSON API. Output ONLY valid JSON. No text before or after.\n\n"
+                "Example format:\n"
+                '{\n  "field1": "value1",\n  "field2": "value2"\n}\n\n'
+                f"Task:\n{prompt}\n\n"
+                "Response (JSON only, start with {{):"
+            )
+        text = self._request_text(
+            prompt=effective_prompt,
+            max_tokens=max_tokens,
+            expect_json=(structured_mode == "json_mode"),
+        )
+        return _parse_json_object(text, model=self.model, structured_mode=structured_mode)
 
     def generate_step_plan(
         self,

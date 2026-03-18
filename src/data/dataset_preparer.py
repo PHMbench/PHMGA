@@ -2,8 +2,8 @@
 
 This module absorbs the useful part of the old `dataset_preparer_agent`
 without turning it back into a workflow agent. Its role is narrower: turn
-split records plus compiled feature specs into train/val/test dataset views
-that downstream runners can consume.
+window-level split records plus compiled feature specs into train/val/test
+dataset views that downstream runners can consume.
 """
 
 from __future__ import annotations
@@ -155,10 +155,11 @@ def build_dataset_views_np(
         labels: list[int] = []
         sample_ids: list[str] = []
         for record in records:
-            for window in record.windows:
-                features.append(_execute_compiled_plan_np(window, plan.execution_nodes, plan.output_specs, catalog).tolist())
-                labels.append(record.label)
-                sample_ids.append(record.sample_id)
+            features.append(
+                _execute_compiled_plan_np(record.window, plan.execution_nodes, plan.output_specs, catalog).tolist()
+            )
+            labels.append(record.label)
+            sample_ids.append(record.window_id)
         feature_dim = sum(
             int(np.prod(node.shape_inference["out"]))
             for node in plan.manifest.nodes
@@ -189,12 +190,17 @@ def build_dataset_views_pt(
         labels: list[int] = []
         sample_ids: list[str] = []
         for record in records:
-            for window in record.windows:
-                features.append(
-                    _execute_compiled_plan_pt(window, plan.execution_nodes, plan.output_specs, catalog, device=resolved_device)
+            features.append(
+                _execute_compiled_plan_pt(
+                    record.window,
+                    plan.execution_nodes,
+                    plan.output_specs,
+                    catalog,
+                    device=resolved_device,
                 )
-                labels.append(record.label)
-                sample_ids.append(record.sample_id)
+            )
+            labels.append(record.label)
+            sample_ids.append(record.window_id)
         feature_dim = sum(
             int(np.prod(node.shape_inference["out"]))
             for node in plan.manifest.nodes

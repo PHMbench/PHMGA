@@ -1,8 +1,8 @@
 """Canonical data protocol plus real/synthetic signal materialization.
 
-Besides full split materialization, the workflow front-end also needs a tiny
-representative signal window so the execute agent can cache intermediate
-results in state without eagerly loading the full dataset.
+The protocol owns split assignment and window slicing. Downstream dataset
+assembly should consume window-level samples rather than re-slicing raw sample
+records.
 """
 
 from __future__ import annotations
@@ -130,12 +130,26 @@ class DatasetProtocol(BaseModel):
 
 @dataclass
 class SignalRecord:
-    """Materialized per-sample windows used by the downstream runners."""
+    """Window-level sample used by downstream runners."""
 
-    sample_id: str
-    label: int
+    source_sample_id: str
+    window_index: int
+    window_id: str
     split: str
-    windows: list[np.ndarray]
+    label: int
+    window: np.ndarray
+
+    @property
+    def sample_id(self) -> str:
+        """Backward-compatible alias for the window-level sample id."""
+
+        return self.window_id
+
+    @property
+    def windows(self) -> list[np.ndarray]:
+        """Backward-compatible singleton view for older callers."""
+
+        return [self.window]
 
 
 def _unique_ids(split_cfg: Dict[str, Any]) -> List[str]:
@@ -403,6 +417,31 @@ def _window_signal(signal: np.ndarray, window: WindowSpec) -> list[np.ndarray]:
     return windows
 
 
+def _window_record_id(sample_id: str, window_index: int) -> str:
+    return f"{sample_id}__w{window_index:04d}"
+
+
+def _materialize_window_records(
+    sample: SampleMeta,
+    split_name: str,
+    signal: np.ndarray,
+    window: WindowSpec,
+) -> list[SignalRecord]:
+    records: list[SignalRecord] = []
+    for window_index, window_value in enumerate(_window_signal(signal, window)):
+        records.append(
+            SignalRecord(
+                source_sample_id=sample.sample_id,
+                window_index=window_index,
+                window_id=_window_record_id(sample.sample_id, window_index),
+                split=split_name,
+                label=sample.label,
+                window=np.asarray(window_value, dtype=float),
+            )
+        )
+    return records
+
+
 def _load_real_signal(handle: h5py.File, sample: SampleMeta, selected_channels: Optional[List[int]]) -> np.ndarray:
     raw = handle[sample.sample_id][()]
     signal = _normalize_h5_array(raw)
@@ -455,7 +494,7 @@ def _sample_split_name(sample_id: str, split_lookup: Dict[str, set[str]]) -> Opt
 
 
 def materialize_split_signals(protocol: DatasetProtocol) -> Dict[str, List[SignalRecord]]:
-    """Materialize split-specific signal windows from the canonical protocol."""
+    """Materialize split-specific window samples from the canonical protocol."""
     split_lookup: Dict[str, set[str]] = {
         "train": set(protocol.splits.train_ids),
         "val": set(protocol.splits.val_ids),
@@ -469,15 +508,7 @@ def materialize_split_signals(protocol: DatasetProtocol) -> Dict[str, List[Signa
             if split_name is None:
                 continue
             signal = _generate_signal(sample)
-            windows = _window_signal(signal, protocol.window)
-            outputs[split_name].append(
-                SignalRecord(
-                    sample_id=sample.sample_id,
-                    label=sample.label,
-                    split=split_name,
-                    windows=windows,
-                )
-            )
+            outputs[split_name].extend(_materialize_window_records(sample, split_name, signal, protocol.window))
         return outputs
 
     if not protocol.h5_path:
@@ -488,15 +519,7 @@ def materialize_split_signals(protocol: DatasetProtocol) -> Dict[str, List[Signa
             if split_name is None:
                 continue
             signal = _load_real_signal(handle, sample, protocol.selected_channels)
-            windows = _window_signal(signal, protocol.window)
-            outputs[split_name].append(
-                SignalRecord(
-                    sample_id=sample.sample_id,
-                    label=sample.label,
-                    split=split_name,
-                    windows=windows,
-                )
-            )
+            outputs[split_name].extend(_materialize_window_records(sample, split_name, signal, protocol.window))
     return outputs
 
 
@@ -551,14 +574,7 @@ def materialize_proxy_split_signals(
             for sample_id in ids:
                 sample = sample_by_id[sample_id]
                 signal = _generate_signal(sample)
-                outputs[split_name].append(
-                    SignalRecord(
-                        sample_id=sample.sample_id,
-                        label=sample.label,
-                        split=split_name,
-                        windows=_window_signal(signal, protocol.window),
-                    )
-                )
+                outputs[split_name].extend(_materialize_window_records(sample, split_name, signal, protocol.window))
         return outputs
 
     if not protocol.h5_path:
@@ -568,12 +584,5 @@ def materialize_proxy_split_signals(
             for sample_id in ids:
                 sample = sample_by_id[sample_id]
                 signal = _load_real_signal(handle, sample, protocol.selected_channels)
-                outputs[split_name].append(
-                    SignalRecord(
-                        sample_id=sample.sample_id,
-                        label=sample.label,
-                        split=split_name,
-                        windows=_window_signal(signal, protocol.window),
-                    )
-                )
+                outputs[split_name].extend(_materialize_window_records(sample, split_name, signal, protocol.window))
     return outputs

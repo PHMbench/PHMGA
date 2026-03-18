@@ -136,10 +136,9 @@ def _build_raw_tensor_views(split_records: Dict[str, List[SignalRecord]], *, dev
         labels: list[int] = []
         sample_ids: list[str] = []
         for record in records:
-            for window in record.windows:
-                windows.append(torch_module.as_tensor(window, dtype=torch_module.float32, device=device))
-                labels.append(record.label)
-                sample_ids.append(record.sample_id)
+            windows.append(torch_module.as_tensor(record.window, dtype=torch_module.float32, device=device))
+            labels.append(record.label)
+            sample_ids.append(record.window_id)
         x_tensor = (
             torch_module.stack(windows, dim=0)
             if windows
