@@ -32,8 +32,8 @@
 ### missing_now
 
 - richer operator coverage 仍不足
-- provider-backed planner 还未接成默认主链
-- provider-backed planner 仍不是默认主链；当前默认仍是 `offline_stub`
+- formal main 已经默认走 provider-backed planner / reflector / reporter
+- `offline_stub` 继续只保留为 pilot / deterministic baseline
 
 ### recommended_next
 
@@ -136,18 +136,18 @@
 - `report_agent` 已按 `dag_only / ml / torch` 消费 graph-dependent artifacts
 - similarity artifacts 已进入 `ml / torch` 报告证据链
 - `dag_quality_summary` 已进入报告的简短质量段落
-- provider mode 下已可走 OpenRouter-backed reporter，默认仍是 deterministic renderer
+- `report_agent` 已统一为 `ChatPromptTemplate | llm` 风格，provider transport 仍集中在 `src/llm/client.py`
+- root 默认配置下仍保留 deterministic renderer；formal main presets 已显式切到 provider-backed reporter
 
 ### missing_now
 
 - 报告仍偏实验记录，不是论文附录级 evidence report
-- provider-backed summarization 仍未成为默认主链
-- `report_agent` 仍未真正走 OpenRouter-backed summarization
+- provider-backed report 的真实网络稳定性仍需继续积累 smoke 与 ledger 证据
 
 ### recommended_next
 
-- 先扩 evidence richness，并继续保持 deterministic baseline
-- 再考虑 provider-backed 摘要生成
+- 先扩 evidence richness，并继续保持 root default 的 deterministic baseline
+- formal main 继续用 provider-backed reporter；后续重点转向 smoke、回归测试和 incident note，而不是再回退到“未接通 provider”
 
 ## 当前正式目标
 

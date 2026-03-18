@@ -4,10 +4,10 @@
 
 | experiment_id | dataset | path | phase | output_policy | llm_mode | accuracy | macro_f1 | note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ottawa_ml_main_v1 | Ottawa | ml | compiled | terminal_only | offline_stub |  |  |  |
-| ottawa_torch_main_v1 | Ottawa | torch | compiled | terminal_only | offline_stub |  |  |  |
-| rm101_ml_main_v1 | RM101 | ml | compiled | terminal_only | offline_stub |  |  |  |
-| rm101_torch_main_v1 | RM101 | torch | compiled | terminal_only | offline_stub |  |  |  |
+| ottawa_ml_main_v1 | Ottawa | ml | compiled | terminal_only | provider |  |  | provider-backed main |
+| ottawa_torch_main_v1 | Ottawa | torch | compiled | terminal_only | provider |  |  | provider-backed main |
+| rm101_ml_main_v1 | RM101 | ml | compiled | terminal_only | provider |  |  | provider-backed main |
+| rm101_torch_main_v1 | RM101 | torch | compiled | terminal_only | provider |  |  | provider-backed main |
 
 ## Table 2: Method Ablations
 

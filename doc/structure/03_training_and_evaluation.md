@@ -71,6 +71,8 @@
 
 `execute_agent -> dag_quality_evaluator -> reflect_agent`
 
+当前这个前端顺序已经由 LangGraph `StateGraph` 显式编排；后端训练与 evaluation 合同不因此改变。
+
 它输出 `dag_quality_summary.json`，供：
 
 - `reflect_agent` 做当前 round 的 finish / patch / replan 辅助判断
@@ -130,7 +132,7 @@
   - `class_centroid_similarity`
   - `test_to_train_mean_similarity`
 
-它是报告证据的 side artifact，不是第五个主路径 agent。
+当前真正的 agent 层入口已经恢复为 `src/agents/inquirer_agent.py`；`src/model/inquirer.py` 负责底层数值与 artifact 构建。它仍不是 planner / executor / reflect 的并列 DAG 决策节点，只是 downstream evidence branch。
 
 ## Proxy probe 开关
 

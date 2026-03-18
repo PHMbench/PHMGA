@@ -1,5 +1,7 @@
 # Plan Agent 决策流程
 
+Historical note: 本文件描述的是迁移前的 `WorkflowState` / 旧调用链。当前实现已切到 `PHMState + ChatPromptTemplate | llm + LangGraph StateGraph`，这里只保留为历史流程草图。
+
 ## 初始化阶段
 ```
 WorkflowState (input)

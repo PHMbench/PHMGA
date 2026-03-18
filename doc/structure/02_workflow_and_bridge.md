@@ -12,7 +12,7 @@
 
 当前已成立的前端闭环是：
 
-`signal_context -> StepPlan -> execute_agent -> dag_quality_evaluator -> validated DAG JSON -> reflect_agent -> report_agent`
+`PHMState -> StateGraph(plan -> execute -> dag_quality -> reflect -> rollback|compile_ready) -> validated DAG JSON -> bridge -> inquirer_agent -> report_agent`
 
 它已经不再是旧平台里的字符串 plan + 自治 executor，而是合同驱动的前端链。
 
@@ -40,7 +40,7 @@ flowchart TD
     A --> B --> C --> D --> E
     E -- need_patch --> B
     E -- need_replan --> R[rollback current round] --> B
-    E -- finish --> F --> G --> H --> I
+    E -- finish --> F --> G --> H --> J[inquirer_agent] --> I
     E -- halt --> X[stop with reason]
 ```
 
@@ -50,6 +50,10 @@ flowchart TD
   - 保留本轮新增节点和结果，继续下一轮 DAG 扩展
 - `need_replan`
   - 回滚本轮新增节点和本轮新增 `execution_results`，恢复到 `last_stable_dag`
+
+当前这一套状态机已经由 LangGraph 显式承载，不再由脚本循环隐式维护。
+
+当前 agent 调用风格也已经统一为参考仓库式的 `ChatPromptTemplate | llm`。但 provider transport、OpenRouter capability routing、以及 StepFun 的 text/json structured fallback 仍只允许集中在 `src/llm/client.py`，不能在 graph node 内重复实现。
 
 ## graph path 的位置
 
@@ -231,7 +235,25 @@ class RoundTrace:
     rolled_back: bool
 ```
 
-### `WorkflowState`
+### `PHMState`
+
+当前前端总状态已按参考仓库风格回迁为 `PHMState`，但仍承载论文版的现有字段语义：
+
+- `last_stable_dag`
+- `last_stable_execution_results`
+- `round_history`
+- `dag_quality_summary`
+- `execution_gaps`
+- `artifact_index`
+- `graph_path`
+- `signal_context`
+
+同时显式持有：
+
+- `DAGState`
+- LangGraph round metadata
+- downstream `path_artifacts`
+- `final_report`
 
 除了 `signal_context / step_plan / execution_results / dag` 外，当前还要显式跟踪：
 
@@ -372,7 +394,7 @@ class RoundTrace:
 
 ## `dag_quality_evaluator` 的位置
 
-`dag_quality_evaluator` 固定放在 `src/evaluation/dag_quality.py`，由 `run_case` 主循环在 `execute_agent` 之后、`reflect_agent` 之前调用。
+`dag_quality_evaluator` 固定放在 `src/evaluation/dag_quality.py`，由 LangGraph 前端在 `execute_agent` 之后、`reflect_agent` 之前调用。
 
 它的责任只有三件事：
 
@@ -392,7 +414,7 @@ bridge 仍然只吃 `validated DAG JSON`。
 
 前端和后端之间的法定边界仍是：
 
-`WorkflowState -> validated DAG JSON -> compile_dag_for_path()`
+`PHMState -> validated DAG JSON -> compile_dag_for_path()`
 
 不允许：
 

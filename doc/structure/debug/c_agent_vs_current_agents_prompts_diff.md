@@ -1,5 +1,9 @@
 # C_Agent 与当前仓库的 Agents / Prompts 差异分析
 
+> Historical note
+>
+> 本文主要记录迁移前后对比。自 2026-03-18 起，当前仓库前端已回迁到 `PHMState + ChatPromptTemplate | llm + LangGraph StateGraph`，并恢复了 `inquirer_agent` 作为 downstream evidence agent 入口。因此文中把“当前仓库”描述为 `WorkflowState + StepPlan + validated DAG JSON + bridge` 的部分，属于历史阶段，不代表当前实现。
+
 ## 参考源
 
 本对比只基于以下两组目录：
@@ -23,9 +27,9 @@
 
 ## 1. 结论摘要
 
-当前仓库相对 C_Agent 的核心变化是：
+当前仓库相对 C_Agent 的核心变化曾经是：
 
-**从 `PHMState + tool schema + file-saving execution` 的状态驱动平台执行体系，收敛为 `WorkflowState + StepPlan + validated DAG JSON + bridge` 的论文版合同驱动前端。**
+**从 `PHMState + tool schema + file-saving execution` 的状态驱动平台执行体系，先收敛为 `WorkflowState + StepPlan + validated DAG JSON + bridge` 的论文版合同驱动前端；随后又在不破坏论文主链的前提下，回迁到 `PHMState + ChatPromptTemplate | llm + LangGraph StateGraph` 的显式编排实现。**
 
 这意味着当前仓库做了四个方向的收缩：
 

@@ -1,5 +1,9 @@
 # Reflect & Report Agents 深入分析
 
+> Historical note
+>
+> 本文写于前端回迁到 `PHMState + LangChain-style agents + LangGraph StateGraph` 之前。文中的 `WorkflowState` 和旧反射/报告调用链保留为迁移前分析，不代表当前实现。当前权威说明见 `README.md` 与 `doc/structure/02_workflow_and_bridge.md`。
+
 ## 目录
 
 1. [Reflect Agent](#reflect-agent)

@@ -1,13 +1,30 @@
 # Manual Experiment Runbook
 
-## Fixed Baselines
+`scripts/sh/` 只提供对本 runbook 常用命令的薄包装；正式、权威的实验命令与顺序仍以本文件为准。
 
-- `llm.mode=offline_stub`
+默认执行语义只有两条：
+
+- pilot = `offline_stub` smoke
+- formal main = provider-backed research run，默认 `stepfun/step-3.5-flash:free`
+
+前端 orchestration 已统一为 `PHMState + LangGraph StateGraph`；本 runbook 只关心正式入口 `main.py` 的实验执行，不再描述旧脚本循环。
+
+## Pilot Baseline
+
+- Pilot 默认基线：`llm.mode=offline_stub`
 - `model.ml.output_policy=terminal_only`
 - `model.torch.phase=compiled`
 - `model.torch.output_policy=terminal_only`
 
-## Stage A: Pilot
+## Formal Main Default
+
+- formal main runs 统一使用 provider-backed LLM：
+  - `llm.mode=provider`
+  - `llm.provider=openrouter`
+  - `llm.model=stepfun/step-3.5-flash:free`
+- 如果手动做 provider ablation，建议显式写出同一组 provider 覆盖项，避免依赖默认值
+
+## Stage A: Pilot Smoke
 
 ### Exit Criteria
 
@@ -41,7 +58,11 @@ python main.py +runs=rm101_torch_test runtime.output_dir=artifacts/paper/rm101_t
 ### Entry Rule
 
 - 只有当对应 dataset 的 pilot 已通过并已记账，才进入 formal run
-- formal run 统一使用 `offline_stub + terminal_only + compiled`
+- formal main 默认就是 `provider-backed LLM + terminal_only + compiled`
+- 当前正式 main preset 已在 `config/runs/{ottawa,rm101}_{ml,torch}.yaml` 中显式写入：
+  - `llm.mode=provider`
+  - `llm.provider=openrouter`
+  - `llm.model=stepfun/step-3.5-flash:free`
 
 ```bash
 python main.py +runs=ottawa_ml runtime.output_dir=artifacts/paper/ottawa_ml_main_v1
@@ -90,8 +111,8 @@ python main.py +runs=ottawa_torch model.torch.phase=module_runtime model.torch.m
 ## Stage D: Framework Ablation
 
 ```bash
-python main.py +runs=ottawa_ml llm.mode=provider llm.provider=openrouter runtime.output_dir=artifacts/paper/ottawa_ml_openrouter_v1
-python main.py +runs=rm101_ml llm.mode=provider llm.provider=openrouter runtime.output_dir=artifacts/paper/rm101_ml_openrouter_v1
+python main.py +runs=ottawa_ml llm.mode=provider llm.provider=openrouter llm.model=stepfun/step-3.5-flash:free runtime.output_dir=artifacts/paper/ottawa_ml_openrouter_v1
+python main.py +runs=rm101_ml llm.mode=provider llm.provider=openrouter llm.model=stepfun/step-3.5-flash:free runtime.output_dir=artifacts/paper/rm101_ml_openrouter_v1
 ```
 
 ## Recording Rule

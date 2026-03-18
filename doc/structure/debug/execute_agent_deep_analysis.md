@@ -1,5 +1,9 @@
 # Execute Agent 深入分析
 
+> Historical note
+>
+> 本文写于前端回迁到 `PHMState + LangChain-style agents + LangGraph StateGraph` 之前。文中出现的 `WorkflowState`、旧 loop 与旧调用链，仅保留为迁移前分析，不代表当前实现。当前权威说明见 `README.md` 与 `doc/structure/02_workflow_and_bridge.md`。
+
 ## 目录
 
 1. [架构概览](#架构概览)

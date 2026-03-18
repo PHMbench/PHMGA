@@ -11,7 +11,8 @@
 
 ## 2. System
 
-- `WorkflowState -> validated DAG JSON -> bridge -> compiled plan -> path runtime`
+- `protocol -> PHMState / StateGraph -> plan / execute / dag_quality / reflect / rollback|compile_ready -> validated DAG JSON -> bridge -> compiled plan -> path runtime`
+- `ChatPromptTemplate | llm` 的前端 agent 编排与 `compile_dag_for_path()` 的法定边界
 - `offline_stub` 与 provider-backed LLM 的角色边界
 
 ## 3. Method
@@ -45,6 +46,7 @@
 ## 5. Analysis
 
 - DAG evidence
+- StateGraph / rollback evidence
 - report evidence
 - failure cases
 - keep / reject ledger
