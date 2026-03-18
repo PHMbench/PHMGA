@@ -20,7 +20,8 @@ REFLECT_PROMPT_INPUT_FIELDS = (
     "current_depth",
 )
 REFLECT_PROMPT_OUTPUT_FIELDS = (
-    '{"decision": "finish|need_patch|need_replan|halt", "reason": "...", "missing_operators": [], "shape_risks": [], "structural_warnings": []}',
+    '{"decision": "finish", "reason": "...", "missing_operators": [], "shape_risks": [], "structural_warnings": []}',
+    'Note: decision must be EXACTLY one of these four strings: "finish", "need_patch", "need_replan", or "halt"',
 )
 REFLECT_PROMPT_PROHIBITIONS = (
     "patch the DAG directly",
