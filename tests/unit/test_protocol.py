@@ -91,6 +91,42 @@ def test_materialize_split_signals_skips_samples_outside_split_manifest():
 
     records = materialize_split_signals(protocol)
 
-    assert [record.sample_id for record in records["train"]] == ["s1"]
+    assert [record.sample_id for record in records["train"]] == ["s1__w0000"]
+    assert [record.source_sample_id for record in records["train"]] == ["s1"]
+    assert [record.window_index for record in records["train"]] == [0]
+    assert records["train"][0].window.shape == (2, 128)
     assert records["val"] == []
     assert records["test"] == []
+
+
+def test_materialize_split_signals_expands_sliding_windows_into_window_samples():
+    protocol = DatasetProtocol(
+        dataset_name="CUSTOM_SYNTH",
+        catalog="synthetic",
+        metadata_schema_version="synth_v1",
+        samples=[
+            SampleMeta(
+                sample_id="s1",
+                dataset="CUSTOM_SYNTH",
+                label=0,
+                sampling_rate=1000,
+                length=160,
+                channels=2,
+                operating_condition="nominal",
+                source_h5="",
+                observed_length=160,
+                observed_channels=2,
+            ),
+        ],
+        splits=SplitManifest(train_ids=["s1"], val_ids=[], test_ids=[]),
+        window=WindowSpec(window_size=64, stride=32, slice_mode="sliding", drop_last_window=False),
+        source_mode="synthetic",
+    )
+
+    records = materialize_split_signals(protocol)
+    train_records = records["train"]
+
+    assert len(train_records) == 4
+    assert [record.source_sample_id for record in train_records] == ["s1", "s1", "s1", "s1"]
+    assert [record.window_index for record in train_records] == [0, 1, 2, 3]
+    assert [record.window_id for record in train_records] == ["s1__w0000", "s1__w0001", "s1__w0002", "s1__w0003"]

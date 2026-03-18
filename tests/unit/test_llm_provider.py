@@ -69,6 +69,39 @@ def test_openrouter_planner_parses_structured_step_plan(monkeypatch: pytest.Monk
     assert plan.plan[0].op_name == "normalize"
 
 
+def test_openrouter_stepfun_text_mode_planner_uses_reasoning(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "response_format" not in payload
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": None,
+                            "reasoning": json.dumps({"plan": [{"parent": "ch1", "op_name": "normalize", "params": {}}]}),
+                        }
+                    }
+                ]
+            },
+        )
+
+    llm = OpenRouterLLM(model="stepfun/step-3.5-flash:free", http_client=_mock_client(handler))
+    plan = llm.generate_step_plan(
+        prompt="planner prompt",
+        instruction="plan",
+        signal_context=_signal_context(),
+        dag_json=None,
+        reflection=[],
+        operator_catalog_summary=[],
+    )
+    assert isinstance(plan, StepPlan)
+    assert plan.plan[0].op_name == "normalize"
+
+
 def test_openrouter_param_resolution_accepts_only_requested_tunable_keys(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
 
@@ -81,6 +114,41 @@ def test_openrouter_param_resolution_accepts_only_requested_tunable_keys(monkeyp
         )
 
     llm = OpenRouterLLM(http_client=_mock_client(handler))
+    params = llm.resolve_missing_params(
+        prompt="param prompt",
+        op_name="custom.wavefilter",
+        param_schema={"custom_tau": "float"},
+        param_defaults={},
+        param_docs={"custom_tau": "Temperature-like scalar."},
+        llm_tunable_params=["custom_tau"],
+        provided_params={},
+        signal_context=_signal_context(),
+        parent_summaries=[{"node_id": "ch1", "shape": [1, 128]}],
+    )
+    assert params["custom_tau"] == 0.25
+
+
+def test_openrouter_text_mode_param_resolution_parses_fenced_json(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "response_format" not in payload
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Use this value:\n```json\n{\"custom_tau\": 0.25}\n```",
+                            "reasoning": None,
+                        }
+                    }
+                ]
+            },
+        )
+
+    llm = OpenRouterLLM(model="stepfun/step-3.5-flash:free", http_client=_mock_client(handler))
     params = llm.resolve_missing_params(
         prompt="param prompt",
         op_name="custom.wavefilter",
@@ -116,6 +184,43 @@ def test_openrouter_param_resolution_rejects_illegal_keys(monkeypatch: pytest.Mo
             provided_params={},
             signal_context=_signal_context(),
             parent_summaries=[{"node_id": "ch1", "shape": [1, 128]}],
+        )
+
+
+def test_openrouter_text_mode_reflector_rejects_non_json_reasoning(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "response_format" not in payload
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": None,
+                            "reasoning": "plain prose without json",
+                        }
+                    }
+                ]
+            },
+        )
+
+    llm = OpenRouterLLM(model="stepfun/step-3.5-flash:free", http_client=_mock_client(handler))
+    with pytest.raises(LLMSchemaError):
+        llm.reflect_workflow(
+            prompt="reflect prompt",
+            instruction="reflect",
+            stage="POST_EXECUTE",
+            dag_blueprint={"nodes": [{"node_id": "ch1"}], "edges": []},
+            dag_quality_summary={"issues": []},
+            issues_summary="",
+            min_depth=2,
+            min_width=1,
+            max_depth=8,
+            current_depth=2,
+            execution_gaps=[],
         )
 
 
