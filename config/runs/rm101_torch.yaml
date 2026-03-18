@@ -3,3 +3,8 @@ defaults:
   - override /data: rm101
   - override /experiment: torch
   - _self_
+
+llm:
+  mode: provider
+  provider: openrouter
+  model: stepfun/step-3.5-flash:free
