@@ -6,16 +6,21 @@ history into an NVTA-style structured step plan.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
+from langchain_core.prompts import ChatPromptTemplate
+
+from src.configuration import Configuration
 from src.data import DatasetProtocol, materialize_preview_signal
 from src.llm import LLMClient
+from src.model import LangChainLLMAdapter, get_llm
 from src.operators import OperatorCatalog
 from src.prompts import render_plan_prompt
-from src.states import SignalContext, WorkflowState
+from src.states import PHMState, SignalContext, StepPlan
 
 
-def _dag_depth(state: WorkflowState) -> int:
+def _dag_depth(state: PHMState) -> int:
     if not state.dag or not state.dag.nodes:
         return 0
     depth_by_node: dict[str, int] = {}
@@ -27,7 +32,7 @@ def _dag_depth(state: WorkflowState) -> int:
     return max(depth_by_node.values(), default=0)
 
 
-def _build_signal_context(state: WorkflowState, protocol: DatasetProtocol) -> SignalContext:
+def _build_signal_context(state: PHMState, protocol: DatasetProtocol) -> SignalContext:
     sample_id, preview_window = materialize_preview_signal(protocol)
     channel_count = int(preview_window.shape[0])
     return SignalContext(
@@ -41,12 +46,18 @@ def _build_signal_context(state: WorkflowState, protocol: DatasetProtocol) -> Si
     )
 
 
+def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LangChainLLMAdapter:
+    if llm is not None:
+        return LangChainLLMAdapter(llm)
+    return get_llm(Configuration.from_runtime_config(state.runtime_config))
+
+
 def plan_agent(
-    state: WorkflowState,
+    state: PHMState,
     protocol: DatasetProtocol,
-    llm: LLMClient,
+    llm: LLMClient | None,
     catalog: OperatorCatalog,
-) -> WorkflowState:
+) -> PHMState:
     """Generate a structured step plan from signal context and the current DAG."""
 
     if state.signal_context is None:
@@ -65,13 +76,16 @@ def plan_agent(
         min_depth=min_depth,
         min_width=min_width,
     )
-    state.step_plan = llm.generate_step_plan(
-        prompt=prompt,
+    llm_adapter = _resolve_llm(state, llm)
+    chain = ChatPromptTemplate.from_template("{prompt}") | llm_adapter.bind_task(
+        "plan",
         instruction=state.user_instruction,
         signal_context=state.signal_context,
         dag_json=state.dag.model_dump() if state.dag else None,
         reflection=state.reflection_history,
         operator_catalog_summary=catalog.summary(),
     )
+    response = chain.invoke({"prompt": prompt})
+    state.step_plan = StepPlan.model_validate(json.loads(response.content))
     state.status = "planned"
     return state

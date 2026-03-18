@@ -7,16 +7,20 @@ before adding each node to the validated DAG candidate.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List
 
 import numpy as np
+from langchain_core.prompts import ChatPromptTemplate
 
+from src.configuration import Configuration
 from src.dag import DAGTracker, DagNode
 from src.data import DatasetProtocol, materialize_preview_signal
 from src.llm import LLMClient
+from src.model import LangChainLLMAdapter, get_llm
 from src.operators import OperatorCatalog
 from src.prompts import render_param_resolution_prompt
-from src.states import ExecutionGap, WorkflowState
+from src.states import ExecutionGap, PHMState
 
 
 def _node_id(step_index: int, op_name: str, parent: str) -> str:
@@ -53,7 +57,7 @@ def _validate_parent_contract(operator, parent_results: List[np.ndarray]) -> str
     return None
 
 
-def _seed_input_roots(state: WorkflowState, protocol: DatasetProtocol, tracker: DAGTracker) -> None:
+def _seed_input_roots(state: PHMState, protocol: DatasetProtocol, tracker: DAGTracker) -> None:
     if state.signal_context is None:
         raise ValueError("signal_context must be initialized before execute_agent runs.")
     sample_id, preview_window = materialize_preview_signal(protocol)
@@ -84,11 +88,17 @@ def _seed_input_roots(state: WorkflowState, protocol: DatasetProtocol, tracker: 
         state.execution_results[root_id] = channel_signal
 
 
-def _existing_nodes(state: WorkflowState, tracker: DAGTracker) -> None:
+def _existing_nodes(state: PHMState, tracker: DAGTracker) -> None:
     if not state.dag:
         return
     for node in state.dag.nodes:
         tracker.add_node(node)
+
+
+def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LangChainLLMAdapter:
+    if llm is not None:
+        return LangChainLLMAdapter(llm)
+    return get_llm(Configuration.from_runtime_config(state.runtime_config))
 
 
 def _execute_single(op, parent_result: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
@@ -104,11 +114,11 @@ def _execute_decision(op, parent_result: np.ndarray, params: Dict[str, Any]) -> 
 
 
 def execute_agent(
-    state: WorkflowState,
+    state: PHMState,
     protocol: DatasetProtocol,
     catalog: OperatorCatalog,
-    llm: LLMClient,
-) -> WorkflowState:
+    llm: LLMClient | None = None,
+) -> PHMState:
     """Execute the planner output step by step and persist results in state."""
 
     if state.step_plan is None:
@@ -120,6 +130,7 @@ def execute_agent(
     _existing_nodes(state, tracker)
     _seed_input_roots(state, protocol, tracker)
     state.execution_gaps = []
+    llm_adapter = _resolve_llm(state, llm)
 
     for step_index, step in enumerate(state.step_plan.plan, start=1):
         parent_ids = [item.strip() for item in step.parent.split(",") if item.strip()]
@@ -189,8 +200,8 @@ def execute_agent(
                 signal_context=state.signal_context.model_dump(),
                 parent_summaries=parent_summaries,
             )
-            params = llm.resolve_missing_params(
-                prompt=prompt,
+            chain = ChatPromptTemplate.from_template("{prompt}") | llm_adapter.bind_task(
+                "param",
                 op_name=step.op_name,
                 param_schema=operator.spec.param_schema,
                 param_defaults=operator.spec.param_defaults,
@@ -200,6 +211,8 @@ def execute_agent(
                 signal_context=state.signal_context,
                 parent_summaries=parent_summaries,
             )
+            response = chain.invoke({"prompt": prompt})
+            params = json.loads(response.content)
         except ValueError as exc:
             state.execution_gaps.append(
                 ExecutionGap(

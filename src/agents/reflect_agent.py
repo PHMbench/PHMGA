@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import json
+
+from langchain_core.prompts import ChatPromptTemplate
+
+from src.configuration import Configuration
 from src.llm import LLMClient
+from src.model import LangChainLLMAdapter, get_llm
 from src.prompts import render_reflect_prompt
-from src.states import WorkflowState
+from src.states import PHMState, ReflectionResult
 
 
-def _dag_depth(state: WorkflowState) -> int:
+def _dag_depth(state: PHMState) -> int:
     if not state.dag or not state.dag.nodes:
         return 0
     depth_by_node: dict[str, int] = {}
@@ -19,7 +25,13 @@ def _dag_depth(state: WorkflowState) -> int:
     return max(depth_by_node.values(), default=0)
 
 
-def reflect_agent(state: WorkflowState, llm: LLMClient) -> WorkflowState:
+def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LangChainLLMAdapter:
+    if llm is not None:
+        return LangChainLLMAdapter(llm)
+    return get_llm(Configuration.from_runtime_config(state.runtime_config))
+
+
+def reflect_agent(state: PHMState, llm: LLMClient | None = None) -> PHMState:
     """Review the current DAG, execution gaps, and planning progress."""
 
     dag_blueprint = state.dag.model_dump() if state.dag else {"nodes": [], "edges": []}
@@ -40,8 +52,9 @@ def reflect_agent(state: WorkflowState, llm: LLMClient) -> WorkflowState:
         max_depth=max_depth,
         current_depth=current_depth,
     )
-    result = llm.reflect_workflow(
-        prompt=prompt,
+    llm_adapter = _resolve_llm(state, llm)
+    chain = ChatPromptTemplate.from_template("{prompt}") | llm_adapter.bind_task(
+        "reflect",
         instruction=state.user_instruction,
         stage=stage,
         dag_blueprint=dag_blueprint,
@@ -53,6 +66,8 @@ def reflect_agent(state: WorkflowState, llm: LLMClient) -> WorkflowState:
         current_depth=current_depth,
         execution_gaps=state.execution_gaps,
     )
+    response = chain.invoke({"prompt": prompt})
+    result = ReflectionResult.model_validate(json.loads(response.content))
     state.reflection_results.append(result)
     state.reflection_history.append(result.reason)
     state.status = "reflected"

@@ -4,14 +4,18 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+from langchain_core.prompts import ChatPromptTemplate
+
 from src.bridge import CompiledDagManifest
+from src.configuration import Configuration
 from src.data import DatasetProtocol
 from src.llm import LLMClient
+from src.model import LangChainLLMAdapter, get_llm
 from src.prompts import render_report_prompt
-from src.states import WorkflowState
+from src.states import PHMState
 
 
-def _dag_depth(state: WorkflowState) -> int:
+def _dag_depth(state: PHMState) -> int:
     if not state.dag or not state.dag.nodes:
         return 0
     depth_by_node: dict[str, int] = {}
@@ -23,12 +27,18 @@ def _dag_depth(state: WorkflowState) -> int:
     return max(depth_by_node.values(), default=0)
 
 
+def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LangChainLLMAdapter:
+    if llm is not None:
+        return LangChainLLMAdapter(llm)
+    return get_llm(Configuration.from_runtime_config(state.runtime_config))
+
+
 def report_agent(
-    state: WorkflowState,
+    state: PHMState,
     protocol: DatasetProtocol,
     manifest: CompiledDagManifest,
     path_artifacts: Dict[str, Any],
-    llm: LLMClient,
+    llm: LLMClient | None = None,
 ) -> str:
     """Build the final markdown report from artifacts plus reflection context."""
 
@@ -58,8 +68,9 @@ def report_agent(
         review_context=review_context,
     )
     state.status = "reported"
-    return llm.render_report(
-        prompt=prompt,
+    llm_adapter = _resolve_llm(state, llm)
+    chain = ChatPromptTemplate.from_template("{prompt}") | llm_adapter.bind_task(
+        "report",
         instruction=state.user_instruction,
         dataset_name=protocol.dataset_name,
         graph_path=state.graph_path,
@@ -70,3 +81,5 @@ def report_agent(
         review_context=review_context,
         step_plan=state.step_plan.model_dump() if state.step_plan else {"plan": []},
     )
+    response = chain.invoke({"prompt": prompt})
+    return response.content
