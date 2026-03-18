@@ -6,10 +6,14 @@ import json
 
 import hydra
 from omegaconf import DictConfig
+from dotenv import load_dotenv
 
 from scripts.preflight import run_preflight
 from scripts.run_case import run_case
 from src.config import load_runtime_config
+
+# Load .env file before importing any modules that might need env vars
+load_dotenv()
 
 
 @hydra.main(config_path="config", config_name="config", version_base=None)

@@ -7,11 +7,16 @@ from .workflow import (
     RoundTrace,
     SignalContext,
     StepPlan,
-    WorkflowState,
 )
+from .phm_states import DAGState, DAGTracker, PHMState
+
+WorkflowState = PHMState
 
 __all__ = [
+    "DAGState",
+    "DAGTracker",
     "ExecutionGap",
+    "PHMState",
     "PlanStep",
     "ReflectionResult",
     "RoundTrace",
