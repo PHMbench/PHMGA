@@ -68,6 +68,25 @@ def build_final_report(
             "## DAG Quality",
             f"- Recommendation: {state.dag_quality_summary.get('recommendation_hint', 'n/a')}",
             f"- Quality issues: {', '.join(state.dag_quality_summary.get('issues', []))}",
+        ]
+    )
+    dataset_level = state.dag_quality_summary.get("dataset_level", {})
+    if isinstance(dataset_level, dict) and dataset_level:
+        lines.extend(
+            [
+                "",
+                "## Dataset-Level Diagnosis Evidence",
+                f"- Source: {dataset_level.get('source', 'n/a')}",
+                f"- Evidence path: {dataset_level.get('evidence_path', 'n/a')}",
+                f"- Materialization ok: {dataset_level.get('materialization_ok', 'n/a')}",
+                f"- Distinguishable: {dataset_level.get('distinguishable', 'n/a')}",
+                f"- Split window counts: {dataset_level.get('split_window_counts', {})}",
+                f"- Feature dims: {dataset_level.get('feature_dims', {})}",
+                f"- Dataset-level issues: {', '.join(dataset_level.get('issues', [])) or 'none'}",
+            ]
+        )
+    lines.extend(
+        [
             "",
             "## Analysis Workflow",
             "- Front-end main chain: signal_context -> StepPlan -> execute -> dag_quality_evaluator -> reflect",

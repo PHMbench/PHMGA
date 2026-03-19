@@ -261,6 +261,23 @@ class OfflineLLM:
             f"- Proxy probe enabled: {dag_quality_summary.get('proxy_probe_enabled', False)}",
             f"- Proxy probe macro_f1: {dag_quality_summary.get('proxy_probe_macro_f1', 'n/a')}",
         ]
+        dataset_level = dag_quality_summary.get("dataset_level", {})
+        if isinstance(dataset_level, dict) and dataset_level:
+            lines.extend(
+                [
+                    "",
+                    "## Dataset-Level Diagnosis Evidence",
+                    f"- Source: {dataset_level.get('source', 'n/a')}",
+                    f"- Evidence path: {dataset_level.get('evidence_path', 'n/a')}",
+                    f"- Materialization ok: {dataset_level.get('materialization_ok', 'n/a')}",
+                    f"- All finite: {dataset_level.get('all_finite', 'n/a')}",
+                    f"- Distinguishable: {dataset_level.get('distinguishable', 'n/a')}",
+                    f"- Split window counts: {dataset_level.get('split_window_counts', {})}",
+                    f"- Feature dims: {dataset_level.get('feature_dims', {})}",
+                    f"- Decision node count: {dataset_level.get('decision_summary', {}).get('node_count', 0)}",
+                    f"- Dataset-level issues: {', '.join(dataset_level.get('issues', [])) or 'none'}",
+                ]
+            )
         decision_outputs = path_artifacts.get("decision_side_outputs", {})
         if isinstance(decision_outputs, dict) and decision_outputs:
             lines.extend(

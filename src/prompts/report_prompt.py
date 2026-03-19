@@ -33,6 +33,7 @@ Use this section scaffold:
 # Summary
 # DAG
 # Path Artifacts
+# Dataset-Level Diagnosis Evidence
 # Diagnostics
 # Limitations
 If an artifact is missing, say it is missing. Do not infer it.

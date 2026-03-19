@@ -37,6 +37,7 @@ Review guidance:
 - Check structural integrity, operator legality, and planning progress.
 - Use current depth and minimum depth/width as soft context, not as the only decision rule.
 - Use `dag_quality_summary` to judge whether the current round is healthy enough to finish.
+- Treat `dag_quality_summary.dataset_level` as stronger evidence than representative preview-only signals when it exists.
 - If execution gaps exist, surface them explicitly in `missing_operators` or `structural_warnings`.
 - Evaluate operator diversity. A healthy PHM DAG should not collapse into repetitive aggregate-only branches.
 - Evaluate hierarchy. Prefer workflows like signal -> transform -> feature extraction, and flag obviously misplaced operators.
