@@ -21,12 +21,13 @@ REFLECT_PROMPT_INPUT_FIELDS = (
 )
 REFLECT_PROMPT_OUTPUT_FIELDS = (
     '{"decision": "finish", "reason": "...", "missing_operators": [], "shape_risks": [], "structural_warnings": []}',
-    'Note: decision must be EXACTLY one of these four strings: "finish", "need_patch", "need_replan", or "halt"',
+    'Fallback text format: `Decision: <finish|need_patch|need_replan|halt>` followed by `Reason:` and optional bullet sections',
 )
 REFLECT_PROMPT_PROHIBITIONS = (
     "patch the DAG directly",
     "replace structural review with model metrics",
-    "return plain text instead of JSON",
+    "return unconstrained prose without a clear decision and supporting fields",
+    "discuss the allowed decision values instead of choosing one",
 )
 
 REFLECT_PROMPT_TEMPLATE = """You are an experienced PHM system architect reviewing a feature engineering DAG.
@@ -37,6 +38,12 @@ Review guidance:
 - Use current depth and minimum depth/width as soft context, not as the only decision rule.
 - Use `dag_quality_summary` to judge whether the current round is healthy enough to finish.
 - If execution gaps exist, surface them explicitly in `missing_operators` or `structural_warnings`.
+- Evaluate operator diversity. A healthy PHM DAG should not collapse into repetitive aggregate-only branches.
+- Evaluate hierarchy. Prefer workflows like signal -> transform -> feature extraction, and flag obviously misplaced operators.
+- Evaluate redundancy and symmetry. Recent duplicate branches or asymmetric multi-channel handling are valid reasons for `need_patch` or `need_replan`.
+- Keep the `reason` actionable. It should help the planner decide what kind of next step is required.
+- If the DAG is legal and usable, choose `finish` instead of describing alternatives.
+- Do not discuss the allowed values. Choose one decision.
 
 Instruction: {instruction}
 Stage: {stage}
@@ -47,6 +54,28 @@ Minimum depth: {min_depth}
 Minimum width: {min_width}
 Maximum depth: {max_depth}
 Current depth: {current_depth}
+
+OUTPUT FORMAT (highest priority):
+1. Preferred output is strict JSON:
+{{"decision": "finish", "reason": "brief actionable reason", "missing_operators": [], "shape_risks": [], "structural_warnings": []}}
+2. If strict JSON is not possible, output structured text using exactly these headings:
+Decision: <finish|need_patch|need_replan|halt>
+Reason: <one actionable sentence>
+Missing Operators:
+- <operator name>
+Shape Risks:
+- <risk>
+Structural Warnings:
+- <warning>
+3. Example fallback:
+Decision: need_patch
+Reason: add a transform branch before feature aggregation
+Missing Operators:
+- stft
+Shape Risks:
+Structural Warnings:
+4. Output only JSON or the heading-based fallback. No prose before or after.
+5. Allowed decisions: finish, need_patch, need_replan, halt
 """
 
 

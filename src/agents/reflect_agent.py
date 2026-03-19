@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.configuration import Configuration
@@ -67,7 +65,7 @@ def reflect_agent(state: PHMState, llm: LLMClient | None = None) -> PHMState:
         execution_gaps=state.execution_gaps,
     )
     response = chain.invoke({"prompt": prompt})
-    result = ReflectionResult.model_validate(json.loads(response.content))
+    result = ReflectionResult.model_validate_json(response.content)
     state.reflection_results.append(result)
     state.reflection_history.append(result.reason)
     state.status = "reflected"

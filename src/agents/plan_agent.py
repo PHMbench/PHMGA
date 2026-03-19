@@ -6,7 +6,6 @@ history into an NVTA-style structured step plan.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -86,6 +85,6 @@ def plan_agent(
         operator_catalog_summary=catalog.summary(),
     )
     response = chain.invoke({"prompt": prompt})
-    state.step_plan = StepPlan.model_validate(json.loads(response.content))
+    state.step_plan = StepPlan.model_validate_json(response.content)
     state.status = "planned"
     return state

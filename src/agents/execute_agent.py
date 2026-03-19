@@ -8,6 +8,7 @@ before adding each node to the validated DAG candidate.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Dict, List
 
 import numpy as np
@@ -23,8 +24,45 @@ from src.prompts import render_param_resolution_prompt
 from src.states import ExecutionGap, PHMState
 
 
-def _node_id(step_index: int, op_name: str, parent: str) -> str:
-    return f"{op_name.lower()}_{step_index:02d}_{parent.replace(',', '__')}"
+def _parent_slug(parent: str) -> str:
+    return parent.replace(",", "__")
+
+
+def _node_index(op_name: str, parent: str, existing_node_ids: List[str]) -> int:
+    op_slug = op_name.lower()
+    parent_slug = _parent_slug(parent)
+    pattern = re.compile(rf"^{re.escape(op_slug)}_(\d+?)_{re.escape(parent_slug)}$")
+    return sum(1 for node_id in existing_node_ids if pattern.match(node_id)) + 1
+
+
+def _canonical_node_id(step_index: int, op_name: str, parent: str) -> str:
+    return _legacy_node_id(step_index, op_name, parent)
+
+
+def _legacy_node_id(step_index: int, op_name: str, parent: str) -> str:
+    return f"{op_name.lower()}_{step_index:02d}_{_parent_slug(parent)}"
+
+
+def _root_slug(parent: str) -> str:
+    roots = re.findall(r"ch\d+", parent)
+    deduped: List[str] = []
+    for root in roots:
+        if root not in deduped:
+            deduped.append(root)
+    return "__".join(deduped) if deduped else _parent_slug(parent)
+
+
+def _alias_node_ids(step_index: int, op_name: str, local_index: int, parent: str) -> List[str]:
+    op_slug = op_name.lower()
+    root_slug = _root_slug(parent)
+    aliases = {
+        _canonical_node_id(step_index, op_name, parent),
+        _legacy_node_id(step_index, op_name, parent),
+        f"{op_slug}_{local_index:02d}_{_parent_slug(parent)}",
+        f"{op_slug}_{local_index:02d}_{root_slug}",
+        f"{op_slug}_{step_index:02d}_{root_slug}",
+    }
+    return sorted(alias for alias in aliases if alias)
 
 
 def _node_kind(schema_category: str) -> str:
@@ -129,11 +167,14 @@ def execute_agent(
     tracker = DAGTracker()
     _existing_nodes(state, tracker)
     _seed_input_roots(state, protocol, tracker)
+    existing_node_ids = [node.node_id for node in tracker.export().nodes]
+    alias_to_canonical: Dict[str, str] = {node_id: node_id for node_id in existing_node_ids}
     state.execution_gaps = []
     llm_adapter = _resolve_llm(state, llm)
 
     for step_index, step in enumerate(state.step_plan.plan, start=1):
-        parent_ids = [item.strip() for item in step.parent.split(",") if item.strip()]
+        raw_parent_ids = [item.strip() for item in step.parent.split(",") if item.strip()]
+        parent_ids = [alias_to_canonical.get(parent_id, parent_id) for parent_id in raw_parent_ids]
         missing_parents = [parent_id for parent_id in parent_ids if parent_id not in state.execution_results]
         if missing_parents:
             state.execution_gaps.append(
@@ -241,7 +282,8 @@ def execute_agent(
             in_shape = list(parent_results[0].shape)
             out_shape = list(np.asarray(result).shape) or [1]
 
-        new_node_id = _node_id(step_index, step.op_name, step.parent)
+        local_index = _node_index(step.op_name, step.parent, existing_node_ids)
+        new_node_id = _canonical_node_id(step_index, step.op_name, step.parent)
         tracker.add_node(
             DagNode(
                 node_id=new_node_id,
@@ -267,6 +309,10 @@ def execute_agent(
             )
         )
         state.execution_results[new_node_id] = result
+        existing_node_ids.append(new_node_id)
+        for alias_id in _alias_node_ids(step_index, step.op_name, local_index, step.parent):
+            alias_to_canonical[alias_id] = new_node_id
+            state.execution_results.setdefault(alias_id, result)
 
     state.dag = tracker.export()
     state.status = "executed"

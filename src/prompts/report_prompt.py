@@ -28,6 +28,14 @@ REPORT_PROMPT_TEMPLATE = """You are a PHM research report engineer.
 
 {contract}
 Write a graph-dependent report using artifacts as the primary evidence source and review context as auxiliary context.
+Return markdown only. No preface. No code fences unless showing code.
+Use this section scaffold:
+# Summary
+# DAG
+# Path Artifacts
+# Diagnostics
+# Limitations
+If an artifact is missing, say it is missing. Do not infer it.
 
 Instruction: {instruction}
 Graph path: {graph_path}
