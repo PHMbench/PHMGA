@@ -13,8 +13,23 @@
 
 - pilot = `offline_stub` smoke
 - formal main = provider-backed research run，当前已冻结为 `codex_cli + gpt-5.3-codex`
+- root `config/config.yaml` 继续只是 smoke/development baseline；不要把它当成论文主实验默认
 
 前端 orchestration 已统一为 `PHMState + LangGraph StateGraph`；本 runbook 只关心正式入口 `main.py` 的实验执行，不再描述旧脚本循环。
+
+## Research Closure Milestones
+
+本 runbook 的 Stage A/B/C/D 是实验执行顺序，不是研究主线定义。  
+研究收口顺序固定为：
+
+1. `M0: Agent Core`
+   - 先证明 `plan -> execute -> dag_quality -> reflect -> finish|rollback` 能稳定导出 compileable 的 `validated DAG JSON`。
+2. `M1: Dataset-Level Evidence`
+   - 再证明同一个 DAG 在真实 `train/val/test` 上具有 split-level sampled dataset evidence。
+3. `M2: Comparison Layer`
+   - 最后才比较 path、provider candidate 与 runtime 设定。
+
+其中 canonical diagnosis backend 先固定为 `ml`；`torch` 当前继续作为比较层最小实现。
 
 ## Pilot Baseline
 
@@ -109,6 +124,7 @@ python main.py +runs=rm101_ml llm.mode=provider llm.provider=codex_cli llm.model
 
 - Formal Main 现在固定使用 Codex tuple
 - `scripts/sh/main/*.sh` 默认即可直接运行；只有做诊断时才应覆盖 provider/model
+- 当前 formal main 的主线证明面优先看 `ml`；`torch` 结果记录为 path comparison，不重新定义 PHMGA 核心
 
 正式命令模板：
 
@@ -121,6 +137,8 @@ python main.py +runs=rm101_torch runtime.output_dir=artifacts/paper/rm101_torch_
 ```
 
 ## Stage D: Method Ablations
+
+Stage D 统一视为 comparison layer；这些实验不反向定义 PHMGA 主线。
 
 ### Output Policy
 

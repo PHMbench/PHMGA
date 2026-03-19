@@ -9,6 +9,26 @@
 3. 哪些路径是真实可用，哪些仍然只是合同验证态
 4. `dag_quality_evaluator` 的质量摘要如何进入反思与报告
 
+## 主线层与比较层
+
+论文版 PHMGA 当前按三层语义组织：
+
+- `M0: Agent Core`
+  - 先证明前端 agent 可以稳定导出 compileable 的 `validated DAG JSON`。
+- `M1: Dataset-Level Evidence`
+  - 再用真实 `train/val/test` 的 split-level sampled dataset evidence 证明同一个 DAG 有最小自动诊断证据。
+- `M2: Comparison Layer`
+  - 最后才比较 `dag_only / ml / torch`、provider 和 runtime 设定。
+
+因此这三条 path 的论文角色不是并列主问题：
+
+- `dag_only`
+  - 更接近 `M0` 的结构生成证明面
+- `ml`
+  - 当前 canonical diagnosis backend，也是 `M1` 的主证据面
+- `torch`
+  - 当前保留为 `M2` 的比较层最小实现
+
 ## Graph-dependent artifacts
 
 ### `dag_only`
@@ -77,6 +97,13 @@
 
 - `reflect_agent` 做当前 round 的 finish / patch / replan 辅助判断
 - `report_agent` 写一个简短的 `DAG Quality` section
+
+当前它不再只总结 representative preview signal。最小 dataset-level evidence pass 已开始从 `train/val/test` 的 split-level sampled windows 中补充：
+
+- 当前 DAG 是否能在 split 级样本上 materialize
+- 当前 feature / multi 输出是否非空、有限、维度一致
+- 当前类间最小 centroid separation 是否明显塌缩
+- 当前 `decision` terminal side-output 是否至少能形成 split-level 摘要
 
 它不是：
 
@@ -163,7 +190,8 @@
 - 当前能够稳定产出 DAG / manifest / report
 - 当前 enriched 样例已经能同时包含 `EXPAND / TRANSFORM / AGGREGATE / MULTI_VARIABLE / DECISION`
 - 当前也会导出 `dag_quality_summary.json`
-- 但前端执行仍是 preview-level，而不是 full dataset execution
+- 当前 `dag_quality_summary.json` 已补入 split-level sampled dataset evidence，但还不是 full dataset training feedback
+- 它当前更偏 `M0` 的结构与回滚正确性证明，而不是最终自动诊断主证据面
 
 ### `ml`
 
@@ -176,6 +204,7 @@
 - 当前主要作用：
   - 验证 `DAG JSON -> feature pipeline -> dataset views -> shallow baseline -> similarity artifacts` 合同
   - 在需要时给 `dag_quality_evaluator` 提供小样本 proxy probe 的最小监督证据
+- 它在论文叙事里首先是 canonical diagnosis backend：当前主线用它来证明“自动诊断是否成立”
 - 当前 `feature_pipeline.json` 已切到：
   - `execution_nodes`
   - `output_specs`
@@ -190,6 +219,7 @@
 - 当前已提供最小 `GraphModule / module factory`，并可通过 phase 切到 learnable runtime
 - 仍不应描述成完整 research-grade PyTorch 训练系统
 - 当前 torch runtime 仍先消费 compiled execution contract，再接最小 trainable head；它不是“把 DAG 直接当 end-to-end neural architecture graph”
+- 在论文叙事里，它仍是比较层最小实现，而不是前端主线定义本身
 
 当前默认开发环境同时要求：
 
@@ -202,9 +232,20 @@
 
 | path | 当前成熟度 | 当前真实可用性 | 当前主要风险 | 推荐下一步 |
 | --- | --- | --- | --- | --- |
-| `dag_only` | `M2` | 可导出合法 DAG、manifest 和报告 | 仍是 preview execution | 稳住 multi-round prompts / tests |
-| `ml` | `M2` | dataset views + shallow baseline + similarity 已可跑 | operator 覆盖仍窄 | 先扩一批 PHM 常见算子 |
-| `torch` | `M2+` | graph-level PT execution + 最小 torch runtime 已可跑，且已提供 opt-in `GraphModule`/learnable runtime | trainer 仍最小化，planner 仍未主动使用新 runtime 能力 | 先稳住 `compiled` 基线，再系统化做 module/runtime ablation |
+| `dag_only` | `M2` | 可导出合法 DAG、manifest 和报告 | dataset-level evidence 仍是 sampled pass，不是 full execution | 继续服务 `M0`，稳住 split-level evidence + reflect/report 消费 |
+| `ml` | `M2` | dataset views + shallow baseline + similarity 已可跑 | operator 覆盖仍窄 | 继续作为 canonical diagnosis backend，先把 dataset-level 自动诊断证据闭环写稳 |
+| `torch` | `M2+` | graph-level PT execution + 最小 torch runtime 已可跑，且已提供 opt-in `GraphModule`/learnable runtime | trainer 仍最小化，仍是比较层实现 | 保持 `M2` 角色，先稳住 `compiled` 基线，再系统化做 module/runtime ablation |
+
+## 收口顺序
+
+当前正式顺序固定为：
+
+1. `M0: Agent Core`
+   - 只验证 `plan -> execute -> dag_quality -> reflect -> finish|rollback` 是否稳定、可回滚、可编译。
+2. `M1: Dataset-Level Evidence`
+   - 在不改变前端 contract 的前提下，把 split-level sampled dataset evidence 并入 `dag_quality_summary.json`，并由 reflect/report 显式消费。
+3. `M2: Comparison Layer`
+   - 再比较 `dag_only / ml / torch`、provider candidate、`output_policy`、`module_runtime` 和 `learnable_control`。
 
 ## 为什么不是直接把 DAG 当神经网络
 

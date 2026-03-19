@@ -2,12 +2,14 @@
 
 ## Table 1: Main Results
 
+主表按“自动诊断主线结果 + path comparison”组织；当前 canonical diagnosis backend 先固定为 `ml`，`torch` 作为比较层 path 记录。provider / backend 资格验证单独下沉到 Table 3，不参与主线定义。
+
 | experiment_id | dataset | path | phase | output_policy | llm_mode | accuracy | macro_f1 | note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ottawa_ml_main_v1 | Ottawa | ml | compiled | terminal_only | provider |  |  | provider-backed main (frozen default: codex_cli / gpt-5.3-codex) |
-| ottawa_torch_main_v1 | Ottawa | torch | compiled | terminal_only | provider |  |  | provider-backed main (frozen default: codex_cli / gpt-5.3-codex) |
-| rm101_ml_main_v1 | RM101 | ml | compiled | terminal_only | provider |  |  | provider-backed main (frozen default: codex_cli / gpt-5.3-codex) |
-| rm101_torch_main_v1 | RM101 | torch | compiled | terminal_only | provider |  |  | provider-backed main (frozen default: codex_cli / gpt-5.3-codex) |
+| ottawa_ml_main_v1 | Ottawa | ml | compiled | terminal_only | provider |  |  | canonical diagnosis mainline (codex_cli / gpt-5.3-codex) |
+| ottawa_torch_main_v1 | Ottawa | torch | compiled | terminal_only | provider |  |  | path comparison on the same validated DAG mainline |
+| rm101_ml_main_v1 | RM101 | ml | compiled | terminal_only | provider |  |  | canonical diagnosis mainline (codex_cli / gpt-5.3-codex) |
+| rm101_torch_main_v1 | RM101 | torch | compiled | terminal_only | provider |  |  | path comparison on the same validated DAG mainline |
 
 ## Table 2: Method Ablations
 

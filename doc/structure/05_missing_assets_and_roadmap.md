@@ -1,183 +1,136 @@
 # 05 Missing Assets And Roadmap
 
-本文件记录当前论文版主链的现状、尚缺和推荐下一步。写法按主链阶段分组，而不是按文件散列。
+本文件只记录当前论文版 PHMGA 的主线缺口与推荐顺序。  
+总原则固定为：
 
-## signal / protocol
+**先锁死 Agent Core，再补 Dataset-Level Evidence，最后做 Comparison Layer。**
+
+这意味着：
+
+- `validated DAG JSON -> compile_dag_for_path()` 继续是唯一法定接口
+- `DECISION` 继续保持 terminal side-output，不进入 `ml / torch` 训练张量主链
+- root `config/config.yaml` 继续只是 smoke/development baseline，不承担 paper mainline 语义
+- canonical diagnosis backend 当前固定为 `ml`
+- `torch`、provider candidate、runtime enhancement 继续只处在比较层
+
+## M0: Agent Core
 
 ### current_status
 
-- canonical protocol 已固定为 `train/val/test`
-- real + synthetic 两类数据入口已统一到 `src/data/protocol.py`
-- `SignalContext` 已从 representative preview signal 构建
+- `PHMState -> StateGraph(plan -> execute -> dag_quality -> reflect -> rollback|compile_ready)` 已成立
+- `plan_agent` 已输出结构化 `StepPlan`
+- `execute_agent` 已是 plan-driven materializer，并显式记录 `ExecutionGap`
+- `reflect_agent` 已输出 `finish / need_patch / need_replan / halt`
+- `validated DAG JSON` 仍是 bridge 前唯一法定接口
+- 当前 richer operator schema 已覆盖五类语义：
+  - `EXPAND`
+  - `TRANSFORM`
+  - `AGGREGATE`
+  - `MULTI_VARIABLE`
+  - `DECISION`
 
 ### missing_now
 
-- dataset-level DAG execution 仍未实现
-- preview signal 与 full split execution 的边界仍需继续强化
+- Agent core 的正式验收口径还需要持续收紧到：
+  - `plan_agent` 产出稳定 `StepPlan`
+  - `execute_agent` 不新增计划外步骤
+  - `rollback` 真正恢复 `last_stable_dag` 与 `last_stable_execution_results`
+  - `reflect_agent` 在有限轮内稳定收敛
+  - 每轮都能导出 compileable 的 `validated DAG JSON`
+- richer operator coverage 仍不足，但这里只补**阻塞 agent 主线**的高频 PHM 算子
 
 ### recommended_next
 
-- 继续保持前端只消费 `SignalContext`
-- 后续单独补 dataset-level materializer，而不是把 raw windows 直接塞进 planner
+- 把 M0 继续固定为最短因果链：
+  - `protocol + signal_context`
+  - `PHMState / StateGraph`
+  - `plan -> execute -> dag_quality -> reflect -> finish|rollback`
+  - `validated DAG JSON`
+  - `bridge`
+  - `ml` path 最小 compiled execution sanity
+- 暂停让 provider/path/runtime 复杂度干扰 M0 验收
+- 不新增第二套 workflow、bridge 或目录重构；`configuration.py` 和 `phm_outer_graph.py` 继续只作为 compat/transition layer 叙述
 
-## plan
+## M1: Dataset-Level Evidence
 
 ### current_status
 
-- `plan_agent` 已输出 `StepPlan`
-- prompt 已经读取 richer operator summary
-- 五类 operator schema 已进入 planner 可见范围
-- `graph_path` 不再作为 planner 显式输入
+- `dag_quality_summary.json` 已开始承载 split-level sampled dataset evidence
+- sampled evidence pass 已从 `train/val/test` sampled windows 中补充：
+  - DAG 是否可 materialize
+  - feature / multi 输出是否非空、有限、维度一致
+  - 最小 class separation / proxy probe evidence
+  - `decision` terminal side-output 的 split-level summary
+- `reflect_agent` 和 `report_agent` 已开始把 sampled dataset evidence 当成比 preview 更强的事实源
 
 ### missing_now
 
-- richer operator coverage 仍不足
-- OpenRouter free-model provider 仍未形成可替代 Formal Main 的稳定 tuple
-- `offline_stub` 继续只保留为 pilot / deterministic baseline
+- full dataset execution 仍未实现；当前仍是 split-level sampled evidence pass
+- reflection 对 dataset-level evidence 的利用还可以更稳定、更可解释
+- report 仍需继续增强 dataset-level diagnosis evidence richness
 
 ### recommended_next
 
-- 先把 fixed compiled/runtime graph 跑稳
-- 再稳住 Codex formal-main 路径与 OpenRouter candidate qualification 的错误处理、回归测试和文档
-- 然后再扩 operator metadata 和少量 PHM 高频算子
+- 保持 planner 只消费 `SignalContext`，不把 raw windows 直接塞进前端
+- 继续把 dataset-level 证据固定挂在：
+  - `dag_quality_summary.dataset_level`
+- 只回答最小必要问题：
+  - train / val / test 上是否可 materialize
+  - feature / multi / decision side-output 是否稳定、非空、可区分
+  - proxy probe 最小监督证据是否成立
+- 不新建第二套 workflow；dataset-level evidence 只是主线增强
 
-## execute
+## M2: Comparison Layer
 
 ### current_status
 
-- `execute_agent` 已是 plan-driven materializer
-- 已支持 richer single-input chain、`multi.concatenate`、`multi.cross_correlation`
-- `decision.threshold` 已进入 terminal side-output 半执行态
-- 参数补全顺序已固定为：
-  - `StepPlan.params`
-  - context-derived values
-  - operator defaults
-  - LLM tuning for `llm_tunable_params`
+- `dag_only / ml / torch` 三条 path 已并存
+- formal main 已冻结到 Codex canonical transport
+- OpenRouter candidate 已降到 qualification 语境
+- `GraphModule / module factory / learnable control` 已有最小实现
+- `WaveFilters / Ricker / Chirplet / Laplace / Morlet` 已进入统一 operator/runtime 路线
 
 ### missing_now
 
-- multi-parent lineage 的后端支持仍然较弱
-- richer decision family 仍未扩展，当前只有最小阈值式 terminal node
+- comparison layer 的文档和实验还需要持续防止“反向定义主线”
+- `torch` trainer 仍是最小线性头，不是 research-grade stack
+- provider candidate 仍未形成可替代 canonical mainline 的稳定 tuple
 
 ### recommended_next
 
-- 保持 `decision` 先作为 terminal side-output
-- 等 bridge 升级后再扩 richer multi-parent execution 与 richer decision family
-
-## reflect
-
-### current_status
-
-- `reflect_agent` 已输出结构化 `ReflectionResult`
-- `need_patch / need_replan / finish / halt` 语义已经进入状态机
-- `dag_quality_evaluator` 已能输出当前 round 的紧凑质量摘要
-- provider mode 下已可走 OpenRouter-backed reflector
-
-### missing_now
-
-- `dag_quality_evaluator` 仍是最小版本，还没有 richer operator-diversity 与增量收益判断
-- reflection 仍未消费 dataset-level execution 证据
-
-### recommended_next
-
-- 继续保持 `dag_quality_evaluator` 为最小合同
-- 后续再把 artifact richness 和 operator diversity 纳入 reflection 规则
-
-## bridge / path artifacts
-
-### current_status
-
-- `validated DAG JSON` 仍是唯一法定接口
-- `compiled_dag_manifest.json` 已稳定
-- `ml / torch` 路径已接入 `dataset_preparer`、`shallow_ml`、`inquirer`
-- `torch` path 已切到 graph-level operator PT execution，并使用最小 tensor runtime
-- `ml / torch` compiled plan 已切到：
-  - `execution_nodes`
-  - `output_specs`
+- comparison 层只比较：
+  - `dag_only / ml / torch`
+  - Codex canonical transport 与 OpenRouter candidate qualification
   - `output_policy`
-- `dag_quality_summary.json` 已进入正式 artifact 列表
-- `decision_side_outputs.json` 已进入正式 artifact 列表
-
-### missing_now
-
-- `decision` 目前仍没有 richer compiled side-output plan，只有最小 terminal evidence payload
-- `torch` trainer 仍是最小线性头，不是 richer trainable stack
-- `output_policy` 目前只支持：
-  - `terminal_only`
-  - `include_intermediate_features`
-- `GraphModule / module factory / learnable control` 已有最小实现，但还没有形成研究级 trainer 与 planner 默认主链
-- `WaveFilters / Ricker / Chirplet / Laplace / Morlet` 已进入统一 operator/runtime 路线，但仍缺默认 planner 采用与系统化 ablation
-
-### recommended_next
-
-- 先稳住 multi-parent compiled lineage 与 output policy contract
-- 固定阶段顺序为：
-  - `phase_1_fixed_compiled_runtime`
-  - `phase_2_provider_backed_llm`
-  - `phase_3_module_runtime`
-  - `phase_4_learnable_control`
-- 再补 richer decision-side compilation、ablation ledger 和 torch trainer
-- 后续 torch runtime 再逐步过渡到：
-  - `compiled execution plan`
-  - `GraphModule / module factory`
-  - optional gate / attention controls
-- `WaveFilters` family 已统一归入 `src/operators/transform_ops.py`
+  - `module_runtime`
+  - `learnable_control`
+- 不让 backend/provider/path 成为“PHMGA 核心是什么”的解释中心
+- `torch` 继续诚实定位为比较层最小实现
+- `WaveFilters` family 继续按统一 operator/runtime 路线推进，不新增单独 config 面
 - 未来参数策略继续统一走：
   - `OperatorSpec.param_schema`
   - `OperatorSpec.param_defaults`
   - `OperatorSpec.param_docs`
   - `OperatorSpec.llm_tunable_params`
-- 不新增单独 `wavefilters.*` config 面
 
-## report
+## 暂停优先做的方向
 
-### current_status
+在 M0 和 M1 闭合前，不继续优先做：
 
-- `report_agent` 已按 `dag_only / ml / torch` 消费 graph-dependent artifacts
-- similarity artifacts 已进入 `ml / torch` 报告证据链
-- `dag_quality_summary` 已进入报告的简短质量段落
-- `report_agent` 已统一为 `ChatPromptTemplate | llm` 风格，provider transport 仍集中在 `src/llm/client.py`
-- root 默认配置下仍保留 deterministic renderer；formal main 已冻结为 Codex-backed provider reporter
-
-### missing_now
-
-- 报告仍偏实验记录，不是论文附录级 evidence report
-- provider-backed report 的真实网络稳定性仍需继续积累 smoke 与 ledger 证据
-
-### recommended_next
-
-- 先扩 evidence richness，并继续保持 root default 的 deterministic baseline
-- formal main 继续用 Codex-backed reporter；后续重点转向 OpenRouter qualification、smoke、回归测试和 incident note，而不是再回退到“未接通 provider”
-
-## 当前正式目标
-
-以下项已从“纯缺口”转为当前正式目标：
-
-- Hydra root config + `main.py` 统一入口
-- richer operator schema metadata
-- `dataset_preparer` 进入 `src/data`
-- `inquirer / shallow_ml` 进入 `src/model`
-- multi-round `replan` 状态机
-- execute 阶段对 operator params 的 LLM tuning
-- compact `dag_quality_evaluator`
-- 五类 operator schema 的 richer metadata 与首轮 runnable subset
-- multi-parent compiled support 的正式设计边界：
-  - `plan_agent` 继续只生成方法 DAG
-  - bridge 负责 path-specific compiled output 选择
-  - `decision` 继续只做 side-output
-- 固定 graph first 的阶段顺序：
-  - 先 fixed compiled/runtime
-  - 再 provider-backed LLM
-  - 再 GraphModule / module factory
-  - 最后 gate / attention / learnable control
+- `DECISION` 主链化
+- 更重的 `torch` trainer / batch runtime / richer module stack
+- task-level backend routing
+- richer provider 竞争
+- 大批新 runtime family 默认化
+- 以“后端炫技”为导向扩 operator family
 
 ## Decision Pending
 
-只记录真正影响主链的未决项：
+只记录真正影响主线边界的未决项：
 
-- `decision` 节点何时进入正式可执行链
-- bridge 何时升级到 richer multi-parent lineage
-- provider-backed planner / reflector / reporter 何时接成默认
-- OpenRouter candidate 何时能稳定到足以替换当前 Codex formal-main tuple
-- torch runtime 何时从当前最小实现升级到更强 trainer / batch runtime / richer module stack
+- sampled dataset evidence pass 是否已经足以支撑当前论文主张
+- `decision` 节点何时从 side-output 升级为正式可执行链
+- bridge 何时升级到更强的 richer multi-parent lineage
+- OpenRouter candidate 何时能稳定到足以进入更强 comparison，而不是只做 qualification
+- `torch` runtime 何时从当前最小实现升级到更强 trainer / batch runtime / richer module stack
 - `GraphModule + learnable control` 何时进入论文主表而不是增强实验
