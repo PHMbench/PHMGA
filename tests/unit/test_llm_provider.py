@@ -46,7 +46,6 @@ def _mock_codex_exec(monkeypatch: pytest.MonkeyPatch, outputs: list[dict[str, ob
             assert any(value.startswith('plan_mode_reasoning_effort="') for value in cfg_values)
         if "-a" in cmd:
             assert cmd[cmd.index("-a") + 1] == "never"
-        assert "--ephemeral" in cmd
         assert "-m" in cmd
         assert cmd[cmd.index("-m") + 1] == expected_model
         assert "-o" in cmd

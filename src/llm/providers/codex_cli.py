@@ -74,7 +74,6 @@ class CodexCliLLM(OpenRouterLLM):
                 "-c",
                 f'plan_mode_reasoning_effort="{self.reasoning_effort}"',
                 "exec",
-                "--ephemeral",
                 "--skip-git-repo-check",
                 "--cd",
                 self.working_dir,
