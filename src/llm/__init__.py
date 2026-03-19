@@ -1,12 +1,16 @@
-"""LLM client exports for offline and provider-backed workflow modes."""
+"""Public exports for PHM LLM clients and factory helpers."""
 
-from .client import LLMClient, LLMProviderError, LLMSchemaError, OfflineLLM, OpenRouterLLM, get_llm
+from .base import LLMClient, LLMProviderError, LLMSchemaError
+from .factory import get_llm
+from .providers import CodexCliLLM, OfflineLLM, OpenAICodexLLM, OpenRouterLLM
 
 __all__ = [
+    "CodexCliLLM",
     "LLMClient",
     "LLMProviderError",
     "LLMSchemaError",
     "OfflineLLM",
+    "OpenAICodexLLM",
     "OpenRouterLLM",
     "get_llm",
 ]
