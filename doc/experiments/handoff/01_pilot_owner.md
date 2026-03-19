@@ -36,6 +36,7 @@
 - 每个输出目录都存在 `final_report.md`
 - 先写对应 `results/<experiment_id>.md`
 - 再更新 `doc/experiments/01_result_ledger.md` 中对应 row
+- `artifact_contract_pass` / `feature_separability_pass` 保持 `n/a`
 
 ## Failure Rule
 

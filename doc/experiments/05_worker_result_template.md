@@ -13,17 +13,39 @@
 
 - worker_id:
 - ticket_id:
+- run_type:
 - experiment_id:
 - command:
 - start_time:
 - end_time:
 - provider/model:
 - output_dir:
-- artifact_check:
+- artifact_contract_pass:
+- feature_separability_pass:
 - status:
-- metrics_summary:
-- failure_summary:
 - ledger_updated:
+
+## Artifact Checklist
+
+- validated_dag.json:
+- compiled_dag_manifest.json:
+- feature_pipeline.json:
+- metrics.json:
+- final_report.md:
+
+## Required Evidence
+
+### feature_list
+
+### feature_separability_summary
+
+### progress_record
+
+## Metrics Summary
+
+## Failure Summary
+
+## Notes
 ```
 
 ## Field Rules
@@ -32,25 +54,50 @@
   - 固定写 worker 名称，例如 `pilot-owner`
 - `ticket_id`
   - 固定写 handoff ticket 文件名
+- `run_type`
+  - 只能写：
+    - `pilot`
+    - `backend_comparison`
+    - `formal_main`
+    - `ablation`
 - `experiment_id`
   - 必须与 `artifacts/paper/<experiment_id>/` 一致
 - `command`
-  - 优先记录实际执行的 wrapper
-- `artifact_check`
-  - 至少写 `final_report.md: yes/no`
+  - 优先记录实际执行的 wrapper；如果使用了 env override，要原样写出
+- `provider/model`
+  - 固定写实际实验 backend tuple，而不是 worker tool
+- `artifact_contract_pass`
+  - worker 先写：
+    - `pass`
+    - `fail`
+    - `pending_harness_review`
+- `feature_separability_pass`
+  - 只对 `ml` comparison / main / ml ablation 有意义；其余可写 `n/a`
 - `status`
   - 只能写：
     - `accept`
     - `reject`
     - `needs_rerun`
-- `metrics_summary`
-  - 成功时填写核心指标；没有指标时写 `n/a`
-- `failure_summary`
-  - 失败时写核心错误摘要；成功时写 `n/a`
 - `ledger_updated`
   - 只能写：
     - `yes`
     - `no`
+
+## Evidence Rules
+
+- `Artifact Checklist`
+  - 五个硬门槛 artifact 都要逐项写存在性
+- `feature_list`
+  - 优先引用 `feature_list.json`
+  - 如果没有 runtime-native 文件，必须从 `feature_pipeline.json` 或等价 artifact 衍生并写在这里
+- `feature_separability_summary`
+  - 至少写出：
+    - feature 是否非空
+    - 是否出现全零/常数/明显塌缩
+    - 最小 separability 结论
+- `progress_record`
+  - 优先引用 `progress.json`
+  - 如果没有 runtime-native 文件，必须在这里写出阶段进展记录
 
 ## Writeback Order
 

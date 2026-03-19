@@ -24,3 +24,11 @@ coordinator 之后再根据：
 - `doc/experiments/01_result_ledger.md`
 
 做最终验收与合并。
+
+短期如果 runtime-native 证据文件还未稳定产出，worker 必须在结果文件里补齐：
+
+- `feature_list`
+- `feature_separability_summary`
+- `progress_record`
+
+这些 section 在当前实验规范里属于 provisional evidence。
