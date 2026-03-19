@@ -29,11 +29,12 @@ def test_structure_docs_exist():
         ROOT / "doc/experiments/05_worker_result_template.md",
         ROOT / "doc/experiments/06_multi_agent_merge_checklist.md",
         ROOT / "doc/experiments/handoff/01_pilot_owner.md",
-        ROOT / "doc/experiments/handoff/02_codex_main_owner_ottawa.md",
-        ROOT / "doc/experiments/handoff/03_codex_main_owner_rm101.md",
+        ROOT / "doc/experiments/handoff/02_main_owner_ottawa.md",
+        ROOT / "doc/experiments/handoff/03_main_owner_rm101.md",
         ROOT / "doc/experiments/handoff/04_ablation_owner_ml.md",
         ROOT / "doc/experiments/handoff/05_ablation_owner_torch.md",
-        ROOT / "doc/experiments/handoff/06_qualification_owner.md",
+        ROOT / "doc/experiments/handoff/06_backend_comparison_owner.md",
+        ROOT / "doc/experiments/handoff/07_harness_engineer.md",
         ROOT / "doc/experiments/handoff/results/README.md",
         ROOT / "doc/paper/00_outline.md",
         ROOT / "config/runs/rm101_ml_test.yaml",
@@ -119,8 +120,7 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "rm101_ml_test" in runbook
     assert "rm101_torch_test" in runbook
     assert "doc/experiments/01_result_ledger.md" in runbook
-    assert "provider-backed LLM" in runbook
-    assert "Provider Qualification" in runbook
+    assert "Backend Comparison On Canonical ML Mainline" in runbook
     assert "llm.mode=provider" in runbook
     assert "llm.provider=codex_cli" in runbook
     assert "gpt-5.3-codex" in runbook
@@ -131,6 +131,19 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "results/<experiment_id>.md" in runbook
     assert "Research Closure Milestones" in runbook
     assert "canonical diagnosis backend" in runbook
+    assert "Artifact Contract Gate" in runbook
+    assert "Feature Separability Gate" in runbook
+    assert "selected_global_best_backend" in runbook
+
+    ledger = (ROOT / "doc/experiments/01_result_ledger.md").read_text(encoding="utf-8")
+    assert "active_stage_b_set" in ledger
+    assert "selected_global_best_backend" in ledger
+    assert "artifact_contract_pass" in ledger
+    assert "feature_separability_pass" in ledger
+    assert "selection_eligible" in ledger
+    assert "backend comparison candidate" in ledger
+    assert "formal main using selected_global_best_backend" in ledger
+    assert "ablation on selected_global_best_backend" in ledger
 
     handoff = (ROOT / "doc/experiments/04_codex_cli_handoff.md").read_text(encoding="utf-8")
     assert "Codex CLI worker" in handoff
@@ -138,44 +151,67 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "OPENROUTER_API_KEY" in handoff
     assert "不得改 provider 默认" in handoff
     assert "01_pilot_owner.md" in handoff
-    assert "06_qualification_owner.md" in handoff
+    assert "06_backend_comparison_owner.md" in handoff
+    assert "07_harness_engineer.md" in handoff
     assert "先写 worker 结果报告" in handoff
     assert "results/<experiment_id>.md" in handoff
+    assert "worker tool = Codex CLI" in handoff
+    assert "experiment backend = active/selected backend tuple" in handoff
+    assert "harness engineer" in handoff
 
     worker_template = (ROOT / "doc/experiments/05_worker_result_template.md").read_text(encoding="utf-8")
     assert "worker_id" in worker_template
     assert "experiment_id" in worker_template
     assert "ledger_updated" in worker_template
     assert "先写 `results/<experiment_id>.md`" in worker_template
+    assert "artifact_contract_pass" in worker_template
+    assert "feature_separability_pass" in worker_template
+    assert "feature_list" in worker_template
+    assert "feature_separability_summary" in worker_template
+    assert "progress_record" in worker_template
 
     merge_doc = (ROOT / "doc/experiments/06_multi_agent_merge_checklist.md").read_text(encoding="utf-8")
     assert "accept" in merge_doc
     assert "reject" in merge_doc
     assert "needs_rerun" in merge_doc
     assert "02_main_tables.md" in merge_doc
-    assert "codex_cli / gpt-5.3-codex" in merge_doc
+    assert "selected_global_best_backend" in merge_doc
+    assert "artifact_contract_pass" in merge_doc
+    assert "feature_separability_pass" in merge_doc
+    assert "harness engineer" in merge_doc
 
     results_readme = (ROOT / "doc/experiments/handoff/results/README.md").read_text(encoding="utf-8")
     assert "results/<experiment_id>.md" in results_readme
     assert "01_result_ledger.md" in results_readme
+    assert "feature_list" in results_readme
+    assert "progress_record" in results_readme
 
-    qualification_ticket = (ROOT / "doc/experiments/handoff/06_qualification_owner.md").read_text(encoding="utf-8")
-    assert "results/ottawa_ml_openrouter_v1.md" in qualification_ticket
-    assert "01_result_ledger.md" in qualification_ticket
+    comparison_ticket = (ROOT / "doc/experiments/handoff/06_backend_comparison_owner.md").read_text(encoding="utf-8")
+    assert "results/ottawa_ml_openrouter_v1.md" in comparison_ticket
+    assert "results/ottawa_ml_codex_v1.md" in comparison_ticket
+    assert "01_result_ledger.md" in comparison_ticket
+
+    harness_ticket = (ROOT / "doc/experiments/handoff/07_harness_engineer.md").read_text(encoding="utf-8")
+    assert "artifact_contract_pass" in harness_ticket
+    assert "feature_separability_pass" in harness_ticket
+    assert "selection_eligible" in harness_ticket
 
     torch_ablation_ticket = (ROOT / "doc/experiments/handoff/05_ablation_owner_torch.md").read_text(encoding="utf-8")
     assert "results/ottawa_torch_module_runtime_v1.md" in torch_ablation_ticket
     assert "01_result_ledger.md" in torch_ablation_ticket
+    assert "selected_global_best_backend" in torch_ablation_ticket
 
     main_tables = (ROOT / "doc/experiments/02_main_tables.md").read_text(encoding="utf-8")
     assert "ottawa_ml_main_v1" in main_tables
     assert "rm101_torch_attention_v1" in main_tables
     assert "doc/experiments/01_result_ledger.md" in main_tables
-    assert "| provider |" in main_tables
+    assert "Backend Comparison And Selection" in main_tables
+    assert "Best-Backend Ablations" in main_tables
     assert "gpt-5.3-codex" in main_tables
     assert "ottawa_ml_codex_v1" in main_tables
     assert "path comparison" in main_tables
     assert "canonical diagnosis mainline" in main_tables
+    assert "selected_global_best_backend" in main_tables
 
     paper_outline = (ROOT / "doc/paper/00_outline.md").read_text(encoding="utf-8")
     assert "PHMState" in paper_outline
@@ -189,9 +225,8 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     openrouter_note = (ROOT / "doc/experiments/03_openrouter_api_analysis.md").read_text(encoding="utf-8")
     assert "text-mode" in openrouter_note
     assert "formal main" in openrouter_note
-    assert "qualification candidate" in openrouter_note
-    assert "gpt-5.3-codex" in openrouter_note
-    assert "codex_cli" in openrouter_note
+    assert "comparison candidate" in openrouter_note
+    assert "selected_global_best_backend" in openrouter_note
 
     for path in (
         ROOT / "config/runs/ottawa_ml.yaml",

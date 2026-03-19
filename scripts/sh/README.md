@@ -17,6 +17,8 @@
 - `scripts/sh/_common.sh` 是共享 helper，不是实验 wrapper。
 - Pilot wrapper 会先跑 `runtime.action=preflight`，并强制 `llm.mode=offline_stub`。
 - Main wrapper 会检查对应 pilot 的 `final_report.md`，并默认继承 Formal Main 已冻结的 Codex tuple。
+- Main wrapper 会检查对应 pilot 的 `final_report.md`，并默认继承当前 wrapper 默认 tuple：
+  - `codex_cli / gpt-5.3-codex`
 - Ablation wrapper 只封装 runbook 中已经写死的 override。
 
 ## Current Wrapper Groups
@@ -35,13 +37,13 @@
   - smoke only
   - 总是显式传入 `llm.mode=offline_stub`
 - `main/`
-  - 默认继承 preset 内冻结的 Formal Main tuple：
+  - 默认继承当前 wrapper 默认 tuple：
     - `provider=codex_cli`
     - `model=gpt-5.3-codex`
   - 可通过环境变量临时覆盖：
     - `PHMGA_LLM_PROVIDER`
     - `PHMGA_LLM_MODEL`
-  - 正式 evidence run 默认不应覆盖；只有诊断或候选对比时才覆盖
+  - 当 `doc/experiments/01_result_ledger.md` 顶部 `selected_global_best_backend` 与默认值不一致时，Formal Main / ablation worker 必须覆盖
   - 例如：
 
 ```bash
@@ -50,10 +52,10 @@
 
 - `ablation/provider/`
   - 不是“正式默认 main”
-  - 用于 provider qualification 或 frozen main backend sanity check
+  - 用于 Stage B backend comparison 的 active set
   - 当前已提供：
     - `*openrouter.sh` -> 默认 `stepfun/step-3.5-flash:free`
-    - `*codex.sh` -> 默认 `gpt-5.3-codex`，作为 Formal Main frozen tuple 的 sanity check
+    - `*codex.sh` -> 默认 `gpt-5.3-codex`，作为当前 active Codex comparison tuple
   - 这些 wrapper 会锁住 provider，仅允许通过 `PHMGA_LLM_MODEL` 覆盖模型名
 
 当前不再通过 shell wrapper 暴露 WaveFilters 实验；WaveFilters 仍以研究计划形式保留在：

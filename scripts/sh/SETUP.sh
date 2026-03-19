@@ -22,9 +22,9 @@ echo "Total shell files under scripts/sh: $total_shell_files"
 echo
 echo "Wrapper behavior summary:"
 echo "  pilot -> forces offline_stub"
-echo "  main -> defaults to frozen Formal Main tuple (codex_cli / gpt-5.3-codex)"
-echo "  method ablations -> default to the same frozen tuple"
-echo "  ablation/provider -> qualification wrappers and backend sanity checks"
+echo "  main -> defaults to current wrapper tuple (codex_cli / gpt-5.3-codex)"
+echo "  method ablations -> default to the same tuple unless selected backend requires override"
+echo "  ablation/provider -> Stage B backend comparison wrappers"
 echo
 echo "Authoritative experiment instructions remain in:"
 echo "  doc/experiments/00_manual_runbook.md"
