@@ -3,21 +3,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$SCRIPT_DIR"
-while [ "$ROOT_DIR" != "/" ] && { [ ! -f "$ROOT_DIR/main.py" ] || [ ! -f "$ROOT_DIR/README.md" ]; }; do
-  ROOT_DIR="$(cd "$ROOT_DIR/.." && pwd)"
-done
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../../_common.sh"
 
-if [ ! -f "$ROOT_DIR/main.py" ]; then
-  echo "Repository root not found."
-  exit 1
-fi
+phmga_enter_repo "$SCRIPT_DIR"
+# Provider qualification candidate wrapper.
+phmga_prepare_fixed_provider "openrouter" "stepfun/step-3.5-flash:free"
 
-cd "$ROOT_DIR"
+OUTPUT_DIR="${PHMGA_OUTPUT_DIR:-artifacts/paper/rm101_ml_openrouter_v1}"
 
-OUTPUT_DIR="artifacts/paper/rm101_ml_openrouter_v1"
-
-python main.py +runs=rm101_ml llm.mode=provider llm.provider=openrouter llm.model=stepfun/step-3.5-flash:free runtime.output_dir="$OUTPUT_DIR"
-test -f "$OUTPUT_DIR/final_report.md"
-echo "Completed: $OUTPUT_DIR"
-echo "Next: record the result in doc/experiments/01_result_ledger.md"
+echo "Running RM101 ML provider qualification candidate..."
+phmga_log_provider_choice
+python main.py +runs=rm101_ml "${PHMGA_PROVIDER_ARGS[@]}" runtime.output_dir="$OUTPUT_DIR"
+phmga_assert_file "$OUTPUT_DIR/final_report.md"
+echo "Completed provider qualification candidate: $OUTPUT_DIR"
+echo "Next: record the provider qualification result in doc/experiments/01_result_ledger.md"
