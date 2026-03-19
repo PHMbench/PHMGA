@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -135,6 +136,7 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "Feature Separability Gate" in runbook
     assert "selected_global_best_backend" in runbook
     assert "artifact_index.json" in runbook
+    assert "feature_separability_summary.example.json" in runbook
 
     ledger = (ROOT / "doc/experiments/01_result_ledger.md").read_text(encoding="utf-8")
     assert "active_stage_b_set" in ledger
@@ -182,6 +184,16 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "artifact_contract_pass" in merge_doc
     assert "feature_separability_pass" in merge_doc
     assert "harness engineer" in merge_doc
+    assert "feature_separability_summary.example.json" in merge_doc
+
+    example_summary = json.loads(
+        (ROOT / "doc/experiments/examples/feature_separability_summary.example.json").read_text(encoding="utf-8")
+    )
+    assert "top_features" in example_summary
+    assert "aggregate_scores" in example_summary
+    assert "split_stability" in example_summary
+    assert "decision" in example_summary
+    assert "reason" in example_summary
 
     results_readme = (ROOT / "doc/experiments/handoff/results/README.md").read_text(encoding="utf-8")
     assert "results/<experiment_id>.md" in results_readme

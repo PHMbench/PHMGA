@@ -145,6 +145,10 @@ Stage B 不是单纯的 backend 打分。它先验证：
 - 至少存在一份 feature-level evidence 证明特征没有全塌缩
 - 至少有最小 separability summary
 
+字段解释基线参考：
+
+- `doc/experiments/examples/feature_separability_summary.example.json`
+
 ### Comparison Commands
 
 ```bash

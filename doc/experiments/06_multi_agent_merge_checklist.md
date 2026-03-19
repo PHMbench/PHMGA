@@ -22,6 +22,10 @@ harness engineer / coordinator 只看三类输入：
 
 harness engineer 只负责 gate，不负责选 backend winner。
 
+字段解释基线固定参考：
+
+- `doc/experiments/examples/feature_separability_summary.example.json`
+
 ### Artifact Contract Gate
 
 以下文件缺任一项，则：

@@ -1,0 +1,39 @@
+{
+  "dataset": "Ottawa",
+  "graph_path": "ml",
+  "backend": {
+    "provider": "codex_cli",
+    "model": "gpt-5.3-codex"
+  },
+  "artifact_contract_pass": true,
+  "feature_count": 18,
+  "non_empty_feature_count": 18,
+  "constant_feature_count": 0,
+  "class_count": 4,
+  "top_features": [
+    {
+      "name": "agg_band_power_01[0]",
+      "source_node": "agg_band_power_01",
+      "score": 2.31
+    },
+    {
+      "name": "agg_centroid_01",
+      "source_node": "agg_centroid_01",
+      "score": 1.88
+    }
+  ],
+  "aggregate_scores": {
+    "mean_fisher_score": 0.94,
+    "median_fisher_score": 0.57,
+    "top5_mean_score": 1.72
+  },
+  "split_stability": {
+    "train_val_rank_corr": 0.81
+  },
+  "decision": "pass",
+  "reason": [
+    "feature pipeline materialized successfully",
+    "top-k features show class separation",
+    "train/val feature ranking remains directionally stable (0.810)"
+  ]
+}
