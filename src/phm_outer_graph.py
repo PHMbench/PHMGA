@@ -43,6 +43,7 @@ def _run_path(
     split_records: Optional[Dict[str, Any]],
     runtime_config: Dict[str, Any],
     catalog: OperatorCatalog,
+    dataset_name: str,
 ) -> Dict[str, Any]:
     if graph_path == "dag_only":
         payload = compiled.model_dump()
@@ -57,6 +58,9 @@ def _run_path(
             catalog,
             algorithm=str(runtime_config["model"]["ml"].get("algorithm", "logistic_regression")),
             max_iter=int(runtime_config["model"]["ml"]["max_iter"]),
+            dataset_name=dataset_name,
+            backend_provider=str(runtime_config.get("llm", {}).get("provider", "unknown")),
+            backend_model=str(runtime_config.get("llm", {}).get("model", "unknown")),
         )
     return run_torch_pipeline(
         compiled,
@@ -138,7 +142,7 @@ def build_phm_graph(protocol, catalog: OperatorCatalog, runtime_config: Dict[str
             output_policy=_resolve_output_policy(runtime_config, state.graph_path),
         )
         split_records = None if state.graph_path == "dag_only" else materialize_split_signals(protocol)
-        path_artifacts = _run_path(state.graph_path, compiled, split_records, runtime_config, catalog)
+        path_artifacts = _run_path(state.graph_path, compiled, split_records, runtime_config, catalog, protocol.dataset_name)
         decision_outputs = _decision_side_outputs(state)
         if decision_outputs:
             path_artifacts["decision_side_outputs"] = decision_outputs

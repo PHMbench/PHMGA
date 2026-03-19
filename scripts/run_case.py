@@ -23,6 +23,16 @@ from src.states import WorkflowState
 from src.utils import ensure_dir, write_json, write_text
 
 
+def _record_json_artifact(artifact_index: Dict[str, str], output_dir: Path, filename: str, payload: Any) -> None:
+    write_json(payload, output_dir / filename)
+    artifact_index[filename] = filename
+
+
+def _record_text_artifact(artifact_index: Dict[str, str], output_dir: Path, filename: str, content: str) -> None:
+    write_text(content, output_dir / filename)
+    artifact_index[filename] = filename
+
+
 def _decision_side_outputs(state: WorkflowState) -> Dict[str, Any]:
     if not state.dag:
         return {}
@@ -35,20 +45,28 @@ def _decision_side_outputs(state: WorkflowState) -> Dict[str, Any]:
     return outputs
 
 
-def _write_common_artifacts(output_dir: Path, state: WorkflowState, compiled: Any, protocol) -> None:
+def _write_common_artifacts(
+    output_dir: Path,
+    artifact_index: Dict[str, str],
+    state: WorkflowState,
+    compiled: Any,
+    protocol,
+) -> None:
     """Write artifacts that every graph path shares."""
     if hasattr(compiled, "manifest"):
         manifest_payload = compiled.manifest.model_dump()
     else:
         manifest_payload = dict(compiled)
-    write_json(state.dag.model_dump(), output_dir / "dag.json")
-    write_json(manifest_payload, output_dir / "compiled_dag_manifest.json")
-    write_text(render_mermaid_dag(state.dag), output_dir / "dag_graph.md")
-    write_json(protocol.splits.model_dump(), output_dir / "resolved_splits.json")
-    write_json(protocol.model_dump(), output_dir / "resolved_dataset_manifest.json")
+    dag_payload = state.dag.model_dump()
+    _record_json_artifact(artifact_index, output_dir, "dag.json", dag_payload)
+    _record_json_artifact(artifact_index, output_dir, "validated_dag.json", dag_payload)
+    _record_json_artifact(artifact_index, output_dir, "compiled_dag_manifest.json", manifest_payload)
+    _record_text_artifact(artifact_index, output_dir, "dag_graph.md", render_mermaid_dag(state.dag))
+    _record_json_artifact(artifact_index, output_dir, "resolved_splits.json", protocol.splits.model_dump())
+    _record_json_artifact(artifact_index, output_dir, "resolved_dataset_manifest.json", protocol.model_dump())
     decision_outputs = _decision_side_outputs(state)
     if decision_outputs:
-        write_json(decision_outputs, output_dir / "decision_side_outputs.json")
+        _record_json_artifact(artifact_index, output_dir, "decision_side_outputs.json", decision_outputs)
 
 
 def _run_frontend_loop(
@@ -97,40 +115,70 @@ def run_case(
     path_artifacts = state.path_artifacts
 
     output_root = ensure_dir(runtime_config["runtime"]["output_dir"])
-    _write_common_artifacts(output_root, state, compiled, protocol)
+    artifact_index: Dict[str, str] = {}
+    _write_common_artifacts(output_root, artifact_index, state, compiled, protocol)
 
     if state.graph_path == "dag_only":
-        write_json(path_artifacts, output_root / "dag_artifacts.json")
-        write_text(path_artifacts["method_description"], output_root / "method_description.md")
+        _record_json_artifact(artifact_index, output_root, "dag_artifacts.json", path_artifacts)
+        _record_text_artifact(artifact_index, output_root, "method_description.md", path_artifacts["method_description"])
     elif state.graph_path == "ml":
-        write_json(path_artifacts["feature_pipeline"], output_root / "feature_pipeline.json")
-        write_json(path_artifacts["metrics"], output_root / "metrics.json")
-        write_json(path_artifacts["predictions"], output_root / "predictions.json")
-        write_json(path_artifacts["importance"], output_root / "importance.json")
-        write_json(path_artifacts["similarity_artifacts"], output_root / "similarity_artifacts.json")
+        _record_json_artifact(artifact_index, output_root, "feature_pipeline.json", path_artifacts["feature_pipeline"])
+        _record_json_artifact(artifact_index, output_root, "feature_list.json", path_artifacts["feature_list"])
+        _record_json_artifact(
+            artifact_index,
+            output_root,
+            "feature_separability_summary.json",
+            path_artifacts["feature_separability_summary"],
+        )
+        _record_json_artifact(artifact_index, output_root, "metrics.json", path_artifacts["metrics"])
+        _record_json_artifact(artifact_index, output_root, "predictions.json", path_artifacts["predictions"])
+        _record_json_artifact(artifact_index, output_root, "importance.json", path_artifacts["importance"])
+        _record_json_artifact(
+            artifact_index,
+            output_root,
+            "similarity_artifacts.json",
+            path_artifacts["similarity_artifacts"],
+        )
     else:
-        write_json(path_artifacts["model_build_plan"], output_root / "model_build_plan.json")
-        write_json(path_artifacts["training_curves"], output_root / "training_curves.json")
-        write_json(path_artifacts["checkpoint"], output_root / "checkpoint.json")
-        write_json(path_artifacts["importance"], output_root / "importance.json")
-        write_json(path_artifacts["metrics"], output_root / "metrics.json")
-        write_json(path_artifacts["similarity_artifacts"], output_root / "similarity_artifacts.json")
+        _record_json_artifact(artifact_index, output_root, "model_build_plan.json", path_artifacts["model_build_plan"])
+        _record_json_artifact(artifact_index, output_root, "training_curves.json", path_artifacts["training_curves"])
+        _record_json_artifact(artifact_index, output_root, "checkpoint.json", path_artifacts["checkpoint"])
+        _record_json_artifact(artifact_index, output_root, "importance.json", path_artifacts["importance"])
+        _record_json_artifact(artifact_index, output_root, "metrics.json", path_artifacts["metrics"])
+        _record_json_artifact(
+            artifact_index,
+            output_root,
+            "similarity_artifacts.json",
+            path_artifacts["similarity_artifacts"],
+        )
         if "control_statistics" in path_artifacts:
-            write_json(path_artifacts["control_statistics"], output_root / "control_statistics.json")
+            _record_json_artifact(
+                artifact_index,
+                output_root,
+                "control_statistics.json",
+                path_artifacts["control_statistics"],
+            )
 
-    write_text(state.final_report, output_root / "final_report.md")
-    write_json(runtime_config, output_root / "resolved_config.json")
-    write_json(
+    _record_text_artifact(artifact_index, output_root, "final_report.md", state.final_report)
+    _record_json_artifact(artifact_index, output_root, "resolved_config.json", runtime_config)
+    if state.dag_quality_summary:
+        _record_json_artifact(artifact_index, output_root, "dag_quality_summary.json", state.dag_quality_summary)
+    artifact_index["workflow_state.json"] = "workflow_state.json"
+    artifact_index["artifact_index.json"] = "artifact_index.json"
+    state.artifact_index = dict(artifact_index)
+    _record_json_artifact(
+        artifact_index,
+        output_root,
+        "workflow_state.json",
         state.model_dump(
             exclude={
                 "execution_results",
                 "last_stable_execution_results",
             }
         ),
-        output_root / "workflow_state.json",
     )
-    if state.dag_quality_summary:
-        write_json(state.dag_quality_summary, output_root / "dag_quality_summary.json")
+    state.artifact_index = dict(artifact_index)
+    _record_json_artifact(artifact_index, output_root, "artifact_index.json", artifact_index)
 
     return {
         "config_name": runtime_config["runtime"]["config_name"],

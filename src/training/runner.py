@@ -9,7 +9,7 @@ path-specific runners own data/model execution details.
 from __future__ import annotations
 
 import math
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from sklearn.metrics import accuracy_score, f1_score
@@ -66,6 +66,210 @@ def _importance_from_weight_matrix(plan: ModelBuildPlan, weight_matrix: np.ndarr
     return importance
 
 
+def _feature_list(plan: FeaturePipelinePlan) -> List[Dict[str, Any]]:
+    """Flatten compiled ML outputs into a stable feature inventory."""
+
+    manifest_lookup = {node.node_id: node for node in plan.manifest.nodes}
+    features: List[Dict[str, Any]] = []
+    flat_index = 0
+    for spec in plan.output_specs:
+        width = math.prod(manifest_lookup[spec.output_node_id].shape_inference["out"])
+        for offset in range(width):
+            features.append(
+                {
+                    "index": flat_index,
+                    "name": spec.output_node_id if width == 1 else f"{spec.output_node_id}[{offset}]",
+                    "source_node": spec.output_node_id,
+                    "path": "ml",
+                }
+            )
+            flat_index += 1
+    return features
+
+
+def _non_empty_feature_count(features: np.ndarray) -> int:
+    if features.ndim != 2 or features.shape[1] == 0:
+        return 0
+    non_empty = 0
+    for column_index in range(features.shape[1]):
+        column = features[:, column_index]
+        if np.isfinite(column).any():
+            non_empty += 1
+    return non_empty
+
+
+def _constant_feature_count(features: np.ndarray) -> int:
+    if features.ndim != 2 or features.shape[1] == 0:
+        return 0
+    constant = 0
+    for column_index in range(features.shape[1]):
+        finite = features[:, column_index][np.isfinite(features[:, column_index])]
+        if finite.size <= 1 or float(np.var(finite)) <= 1e-12:
+            constant += 1
+    return constant
+
+
+def _fisher_scores(view: DatasetView) -> np.ndarray:
+    if view.X.ndim != 2 or view.X.shape[0] == 0 or view.X.shape[1] == 0:
+        return np.zeros((view.X.shape[1] if view.X.ndim == 2 else 0,), dtype=float)
+    classes = np.unique(view.y)
+    if classes.size < 2:
+        return np.zeros((view.X.shape[1],), dtype=float)
+
+    overall_mean = np.mean(view.X, axis=0)
+    between = np.zeros((view.X.shape[1],), dtype=float)
+    within = np.zeros((view.X.shape[1],), dtype=float)
+    for class_id in classes:
+        class_features = view.X[view.y == class_id]
+        if class_features.size == 0:
+            continue
+        class_mean = np.mean(class_features, axis=0)
+        between += class_features.shape[0] * np.square(class_mean - overall_mean)
+        within += np.var(class_features, axis=0)
+    scores = between / (within + 1e-12)
+    scores[~np.isfinite(scores)] = 0.0
+    return scores
+
+
+def _average_ranks(values: np.ndarray) -> np.ndarray:
+    order = np.argsort(values, kind="mergesort")
+    ranks = np.empty(values.shape[0], dtype=float)
+    sorted_values = values[order]
+    start = 0
+    while start < sorted_values.shape[0]:
+        end = start + 1
+        while end < sorted_values.shape[0] and np.isclose(sorted_values[end], sorted_values[start]):
+            end += 1
+        average_rank = 0.5 * (start + end - 1)
+        ranks[order[start:end]] = average_rank
+        start = end
+    return ranks
+
+
+def _rank_correlation(left: np.ndarray, right: np.ndarray) -> Optional[float]:
+    if left.shape != right.shape or left.ndim != 1 or left.shape[0] < 2:
+        return None
+    if not np.isfinite(left).all() or not np.isfinite(right).all():
+        return None
+    left_ranks = _average_ranks(left)
+    right_ranks = _average_ranks(right)
+    if np.allclose(left_ranks, left_ranks[0]) or np.allclose(right_ranks, right_ranks[0]):
+        return None
+    corr = np.corrcoef(left_ranks, right_ranks)[0, 1]
+    if not np.isfinite(corr):
+        return None
+    return float(corr)
+
+
+def _top_feature_entries(
+    feature_list: List[Dict[str, Any]],
+    train_scores: np.ndarray,
+    *,
+    top_k: int = 5,
+) -> List[Dict[str, Any]]:
+    if train_scores.size == 0 or not feature_list:
+        return []
+    limit = min(top_k, train_scores.shape[0], len(feature_list))
+    ranked_indices = np.argsort(train_scores)[::-1][:limit]
+    outputs: List[Dict[str, Any]] = []
+    for index in ranked_indices.tolist():
+        feature = feature_list[int(index)]
+        outputs.append(
+            {
+                "name": str(feature["name"]),
+                "source_node": str(feature["source_node"]),
+                "score": float(train_scores[int(index)]),
+            }
+        )
+    return outputs
+
+
+def _feature_separability_summary(
+    plan: FeaturePipelinePlan,
+    dataset_views: Dict[str, DatasetView],
+    *,
+    dataset_name: str | None,
+    backend_provider: str | None,
+    backend_model: str | None,
+) -> Dict[str, Any]:
+    """Summarize whether the compiled ML path produced non-collapsed, separable features."""
+
+    feature_list = _feature_list(plan)
+    train_view = dataset_views["train"]
+    val_view = dataset_views["val"]
+    feature_count = len(feature_list)
+    non_empty_feature_count = _non_empty_feature_count(train_view.X)
+    constant_feature_count = _constant_feature_count(train_view.X)
+    class_count = int(len(set(train_view.y.tolist()))) if train_view.y.size else 0
+
+    train_scores = _fisher_scores(train_view)
+    val_scores = _fisher_scores(val_view)
+    top_features = _top_feature_entries(feature_list, train_scores)
+    top5_mean_score = float(np.mean(train_scores[np.argsort(train_scores)[::-1][: min(5, train_scores.shape[0])]])) if train_scores.size else 0.0
+    rank_corr = _rank_correlation(train_scores, val_scores)
+
+    reasons: List[str] = []
+    if feature_count == 0:
+        reasons.append("feature pipeline did not expose any compiled ML outputs")
+    else:
+        reasons.append("feature pipeline materialized successfully")
+    if non_empty_feature_count <= 0:
+        reasons.append("all compiled features are empty or non-finite")
+    if constant_feature_count >= feature_count > 0:
+        reasons.append("feature matrix collapsed into constant features")
+    elif constant_feature_count > 0:
+        reasons.append(f"{constant_feature_count} feature dimensions are near-constant")
+    if top_features and top5_mean_score > 0.0:
+        reasons.append("top-k features show class separation")
+    else:
+        reasons.append("top-k features do not show positive class separation")
+    if rank_corr is None:
+        reasons.append("train/val feature ranking stability could not be established")
+    elif rank_corr < 0.0:
+        reasons.append(f"train/val feature ranking is unstable ({rank_corr:.3f})")
+    else:
+        reasons.append(f"train/val feature ranking remains directionally stable ({rank_corr:.3f})")
+
+    decision = (
+        "pass"
+        if (
+            feature_count > 0
+            and non_empty_feature_count > 0
+            and constant_feature_count < feature_count
+            and bool(top_features)
+            and top5_mean_score > 0.0
+            and rank_corr is not None
+            and rank_corr >= 0.0
+        )
+        else "fail"
+    )
+
+    return {
+        "dataset": dataset_name or "unknown",
+        "graph_path": "ml",
+        "backend": {
+            "provider": backend_provider or "unknown",
+            "model": backend_model or "unknown",
+        },
+        "artifact_contract_pass": bool(feature_count > 0 and train_view.X.ndim == 2),
+        "feature_count": feature_count,
+        "non_empty_feature_count": non_empty_feature_count,
+        "constant_feature_count": constant_feature_count,
+        "class_count": class_count,
+        "top_features": top_features,
+        "aggregate_scores": {
+            "mean_fisher_score": float(np.mean(train_scores)) if train_scores.size else 0.0,
+            "median_fisher_score": float(np.median(train_scores)) if train_scores.size else 0.0,
+            "top5_mean_score": top5_mean_score,
+        },
+        "split_stability": {
+            "train_val_rank_corr": rank_corr,
+        },
+        "decision": decision,
+        "reason": reasons,
+    }
+
+
 def run_ml_pipeline(
     plan: FeaturePipelinePlan,
     split_records: Dict[str, List[SignalRecord]],
@@ -73,6 +277,9 @@ def run_ml_pipeline(
     *,
     algorithm: str = "logistic_regression",
     max_iter: int = 200,
+    dataset_name: str | None = None,
+    backend_provider: str | None = None,
+    backend_model: str | None = None,
 ) -> Dict[str, object]:
     """Run the lightweight ML baseline on bridge-generated feature matrices."""
     dataset_views = build_dataset_views(plan, split_records, catalog, backend="np")
@@ -83,8 +290,18 @@ def run_ml_pipeline(
         random_state=0,
     )
     importance = _importance_by_output_node(plan, baseline["importance_by_index"])
+    feature_list = _feature_list(plan)
+    separability_summary = _feature_separability_summary(
+        plan,
+        dataset_views,
+        dataset_name=dataset_name,
+        backend_provider=backend_provider,
+        backend_model=backend_model,
+    )
     return {
         "feature_pipeline": plan.model_dump(),
+        "feature_list": feature_list,
+        "feature_separability_summary": separability_summary,
         "algorithm": baseline["algorithm"],
         "metrics": baseline["metrics"],
         "predictions": baseline["predictions"],
