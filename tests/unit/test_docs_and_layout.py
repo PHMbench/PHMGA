@@ -25,6 +25,16 @@ def test_structure_docs_exist():
         ROOT / "doc/experiments/00_manual_runbook.md",
         ROOT / "doc/experiments/01_result_ledger.md",
         ROOT / "doc/experiments/02_main_tables.md",
+        ROOT / "doc/experiments/04_codex_cli_handoff.md",
+        ROOT / "doc/experiments/05_worker_result_template.md",
+        ROOT / "doc/experiments/06_multi_agent_merge_checklist.md",
+        ROOT / "doc/experiments/handoff/01_pilot_owner.md",
+        ROOT / "doc/experiments/handoff/02_codex_main_owner_ottawa.md",
+        ROOT / "doc/experiments/handoff/03_codex_main_owner_rm101.md",
+        ROOT / "doc/experiments/handoff/04_ablation_owner_ml.md",
+        ROOT / "doc/experiments/handoff/05_ablation_owner_torch.md",
+        ROOT / "doc/experiments/handoff/06_qualification_owner.md",
+        ROOT / "doc/experiments/handoff/results/README.md",
         ROOT / "doc/paper/00_outline.md",
         ROOT / "config/runs/rm101_ml_test.yaml",
         ROOT / "config/runs/rm101_torch_test.yaml",
@@ -53,6 +63,8 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "不是外部 `conda` 环境" in readme
     assert "mode=provider" in readme
     assert "formal main presets" in readme
+    assert "codex_cli" in readme
+    assert "gpt-5.3-codex" in readme
     assert "offline_stub" in readme
     assert "--dataset" not in readme
 
@@ -80,6 +92,7 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     roadmap = (ROOT / "doc/structure/05_missing_assets_and_roadmap.md").read_text(encoding="utf-8")
     assert "WaveFilters" in roadmap
     assert "GraphModule" in roadmap
+    assert "Codex" in roadmap
 
     ablation_master = (ROOT / "doc/ablation/00_master_plan.md").read_text(encoding="utf-8")
     assert "compiled" in ablation_master
@@ -93,13 +106,57 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "rm101_torch_test" in runbook
     assert "doc/experiments/01_result_ledger.md" in runbook
     assert "provider-backed LLM" in runbook
+    assert "Provider Qualification" in runbook
     assert "llm.mode=provider" in runbook
+    assert "llm.provider=codex_cli" in runbook
+    assert "gpt-5.3-codex" in runbook
+    assert "04_codex_cli_handoff.md" in runbook
+    assert "05_worker_result_template.md" in runbook
+    assert "06_multi_agent_merge_checklist.md" in runbook
+    assert "results/<experiment_id>.md" in runbook
+
+    handoff = (ROOT / "doc/experiments/04_codex_cli_handoff.md").read_text(encoding="utf-8")
+    assert "Codex CLI worker" in handoff
+    assert "codex login" in handoff
+    assert "OPENROUTER_API_KEY" in handoff
+    assert "不得改 provider 默认" in handoff
+    assert "01_pilot_owner.md" in handoff
+    assert "06_qualification_owner.md" in handoff
+    assert "先写 worker 结果报告" in handoff
+    assert "results/<experiment_id>.md" in handoff
+
+    worker_template = (ROOT / "doc/experiments/05_worker_result_template.md").read_text(encoding="utf-8")
+    assert "worker_id" in worker_template
+    assert "experiment_id" in worker_template
+    assert "ledger_updated" in worker_template
+    assert "先写 `results/<experiment_id>.md`" in worker_template
+
+    merge_doc = (ROOT / "doc/experiments/06_multi_agent_merge_checklist.md").read_text(encoding="utf-8")
+    assert "accept" in merge_doc
+    assert "reject" in merge_doc
+    assert "needs_rerun" in merge_doc
+    assert "02_main_tables.md" in merge_doc
+    assert "codex_cli / gpt-5.3-codex" in merge_doc
+
+    results_readme = (ROOT / "doc/experiments/handoff/results/README.md").read_text(encoding="utf-8")
+    assert "results/<experiment_id>.md" in results_readme
+    assert "01_result_ledger.md" in results_readme
+
+    qualification_ticket = (ROOT / "doc/experiments/handoff/06_qualification_owner.md").read_text(encoding="utf-8")
+    assert "results/ottawa_ml_openrouter_v1.md" in qualification_ticket
+    assert "01_result_ledger.md" in qualification_ticket
+
+    torch_ablation_ticket = (ROOT / "doc/experiments/handoff/05_ablation_owner_torch.md").read_text(encoding="utf-8")
+    assert "results/ottawa_torch_module_runtime_v1.md" in torch_ablation_ticket
+    assert "01_result_ledger.md" in torch_ablation_ticket
 
     main_tables = (ROOT / "doc/experiments/02_main_tables.md").read_text(encoding="utf-8")
     assert "ottawa_ml_main_v1" in main_tables
     assert "rm101_torch_attention_v1" in main_tables
     assert "doc/experiments/01_result_ledger.md" in main_tables
     assert "| provider |" in main_tables
+    assert "gpt-5.3-codex" in main_tables
+    assert "ottawa_ml_codex_v1" in main_tables
 
     paper_outline = (ROOT / "doc/paper/00_outline.md").read_text(encoding="utf-8")
     assert "PHMState" in paper_outline
@@ -113,6 +170,19 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     openrouter_note = (ROOT / "doc/experiments/03_openrouter_api_analysis.md").read_text(encoding="utf-8")
     assert "text-mode" in openrouter_note
     assert "formal main" in openrouter_note
+    assert "qualification candidate" in openrouter_note
+    assert "gpt-5.3-codex" in openrouter_note
+    assert "codex_cli" in openrouter_note
+
+    for path in (
+        ROOT / "config/runs/ottawa_ml.yaml",
+        ROOT / "config/runs/ottawa_torch.yaml",
+        ROOT / "config/runs/rm101_ml.yaml",
+        ROOT / "config/runs/rm101_torch.yaml",
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert "provider: codex_cli" in text
+        assert "gpt-5.3-codex" in text
 
     operator_review = (ROOT / "doc/structure/debug/operator_system_review.md").read_text(encoding="utf-8")
     assert "Accurate Findings" in operator_review
