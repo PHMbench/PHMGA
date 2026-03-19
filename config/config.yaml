@@ -1,4 +1,6 @@
 defaults:
+  # Root default stays a smoke/development baseline.
+  # Paper mainline is frozen by config/runs/*.yaml, not by this file.
   - data: rm101_synth
   - experiment: dag_only
   - model: default
@@ -11,6 +13,8 @@ project:
   version: journal_thesis_rebuild
 
 llm:
+  # Root baseline keeps the canonical provider tuple visible for inheritance,
+  # but mode stays offline_stub so this file does not define paper mainline behavior.
   provider: codex_cli
   mode: offline_stub
   model: gpt-5.3-codex
