@@ -4,10 +4,10 @@
 
 | experiment_id | dataset | path | phase | output_policy | llm_mode | accuracy | macro_f1 | note |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| ottawa_ml_main_v1 | Ottawa | ml | compiled | terminal_only | provider |  |  | provider-backed main |
-| ottawa_torch_main_v1 | Ottawa | torch | compiled | terminal_only | provider |  |  | provider-backed main |
-| rm101_ml_main_v1 | RM101 | ml | compiled | terminal_only | provider |  |  | provider-backed main |
-| rm101_torch_main_v1 | RM101 | torch | compiled | terminal_only | provider |  |  | provider-backed main |
+| ottawa_ml_main_v1 | Ottawa | ml | compiled | terminal_only | provider |  |  | provider-backed main (frozen default: codex_cli / gpt-5.3-codex) |
+| ottawa_torch_main_v1 | Ottawa | torch | compiled | terminal_only | provider |  |  | provider-backed main (frozen default: codex_cli / gpt-5.3-codex) |
+| rm101_ml_main_v1 | RM101 | ml | compiled | terminal_only | provider |  |  | provider-backed main (frozen default: codex_cli / gpt-5.3-codex) |
+| rm101_torch_main_v1 | RM101 | torch | compiled | terminal_only | provider |  |  | provider-backed main (frozen default: codex_cli / gpt-5.3-codex) |
 
 ## Table 2: Method Ablations
 
@@ -22,12 +22,14 @@
 | ottawa_torch_attention_v1 | Ottawa | torch | control | attention |  |  |  |
 | rm101_torch_attention_v1 | RM101 | torch | control | attention |  |  |  |
 
-## Table 3: Framework Ablations
+## Table 3: Provider Qualification And Backend Sanity
 
 | experiment_id | dataset | path | ablation_axis | setting | accuracy | macro_f1 | note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| ottawa_ml_openrouter_v1 | Ottawa | ml | llm_mode | provider=openrouter |  |  |  |
-| rm101_ml_openrouter_v1 | RM101 | ml | llm_mode | provider=openrouter |  |  |  |
+| ottawa_ml_openrouter_v1 | Ottawa | ml | provider_candidate | openrouter / stepfun/step-3.5-flash:free |  |  | candidate only; not formal main default |
+| ottawa_ml_codex_v1 | Ottawa | ml | backend_sanity | codex_cli / gpt-5.3-codex |  |  | sanity check for frozen formal-main tuple |
+| rm101_ml_openrouter_v1 | RM101 | ml | provider_candidate | openrouter / stepfun/step-3.5-flash:free |  |  | candidate only; not formal main default |
+| rm101_ml_codex_v1 | RM101 | ml | backend_sanity | codex_cli / gpt-5.3-codex |  |  | sanity check for frozen formal-main tuple |
 
 ## Source of Truth
 

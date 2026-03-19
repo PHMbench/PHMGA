@@ -32,13 +32,13 @@
 ### missing_now
 
 - richer operator coverage 仍不足
-- formal main 已经默认走 provider-backed planner / reflector / reporter
+- OpenRouter free-model provider 仍未形成可替代 Formal Main 的稳定 tuple
 - `offline_stub` 继续只保留为 pilot / deterministic baseline
 
 ### recommended_next
 
 - 先把 fixed compiled/runtime graph 跑稳
-- 再稳住 provider-backed LLM 的错误处理、回归测试和文档
+- 再稳住 Codex formal-main 路径与 OpenRouter candidate qualification 的错误处理、回归测试和文档
 - 然后再扩 operator metadata 和少量 PHM 高频算子
 
 ## execute
@@ -137,7 +137,7 @@
 - similarity artifacts 已进入 `ml / torch` 报告证据链
 - `dag_quality_summary` 已进入报告的简短质量段落
 - `report_agent` 已统一为 `ChatPromptTemplate | llm` 风格，provider transport 仍集中在 `src/llm/client.py`
-- root 默认配置下仍保留 deterministic renderer；formal main presets 已显式切到 provider-backed reporter
+- root 默认配置下仍保留 deterministic renderer；formal main 已冻结为 Codex-backed provider reporter
 
 ### missing_now
 
@@ -147,7 +147,7 @@
 ### recommended_next
 
 - 先扩 evidence richness，并继续保持 root default 的 deterministic baseline
-- formal main 继续用 provider-backed reporter；后续重点转向 smoke、回归测试和 incident note，而不是再回退到“未接通 provider”
+- formal main 继续用 Codex-backed reporter；后续重点转向 OpenRouter qualification、smoke、回归测试和 incident note，而不是再回退到“未接通 provider”
 
 ## 当前正式目标
 
@@ -178,5 +178,6 @@
 - `decision` 节点何时进入正式可执行链
 - bridge 何时升级到 richer multi-parent lineage
 - provider-backed planner / reflector / reporter 何时接成默认
+- OpenRouter candidate 何时能稳定到足以替换当前 Codex formal-main tuple
 - torch runtime 何时从当前最小实现升级到更强 trainer / batch runtime / richer module stack
 - `GraphModule + learnable control` 何时进入论文主表而不是增强实验

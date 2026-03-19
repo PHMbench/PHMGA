@@ -290,8 +290,9 @@
 
 ```yaml
 llm:
-  provider: openrouter
+  provider: codex_cli
   mode: offline_stub | provider
+  model: gpt-5.3-codex
 
 model:
   torch:
@@ -333,7 +334,7 @@ model:
 还要明确一条优先级规则：
 
 - GraphModule、gate、attention 都建立在 fixed compiled/runtime correctness 已稳定的前提上
-- OpenRouter provider path 已可选启用，但优先级仍低于 fixed graph correctness
+- Codex CLI-backed provider path 已冻结为 Formal Main；OpenRouter provider path 则保留为 qualification candidate
 - 当前 `offline_stub` 必须继续保留，作为 deterministic baseline 和测试基线
 
 ## 报告合同

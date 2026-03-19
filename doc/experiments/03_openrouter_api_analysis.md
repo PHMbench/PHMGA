@@ -55,19 +55,21 @@ The provider client now does three things:
 This means the current contract is:
 
 - provider remains `openrouter`
-- formal main model remains `stepfun/step-3.5-flash:free`
+- `stepfun/step-3.5-flash:free` remains a provider qualification candidate
 - structured agent calls no longer hard depend on JSON mode
+- current formal-main default remains `codex_cli + gpt-5.3-codex`
 
 ## Current Limitation
 
 What is still missing is not the parser fix, but real-network confirmation under
-formal main conditions. Local tests cover the text-mode parsing path, but one
-provider-backed formal main run still needs to be recorded in the experiment
-ledger as end-to-end evidence.
+provider qualification conditions. Local tests cover the text-mode parsing
+path, but one provider-backed qualification run still needs to be recorded in
+the experiment ledger as end-to-end evidence before this tuple can enter the
+formal-main default pool.
 
 ## Conclusion
 
 - Do not switch provider.
-- Do not switch away from `stepfun/step-3.5-flash:free` just to hide the bug.
 - Treat this model as a text-mode structured provider on OpenRouter.
-- Judge success by whether formal main runs complete, not by whether JSON mode is used.
+- Do not freeze this model into formal main until qualification passes.
+- Judge success by whether qualification and later formal-main runs complete, not by whether JSON mode is used.
