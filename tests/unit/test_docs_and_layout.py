@@ -134,6 +134,7 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "Artifact Contract Gate" in runbook
     assert "Feature Separability Gate" in runbook
     assert "selected_global_best_backend" in runbook
+    assert "artifact_index.json" in runbook
 
     ledger = (ROOT / "doc/experiments/01_result_ledger.md").read_text(encoding="utf-8")
     assert "active_stage_b_set" in ledger
@@ -141,6 +142,7 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "artifact_contract_pass" in ledger
     assert "feature_separability_pass" in ledger
     assert "selection_eligible" in ledger
+    assert "selection_basis" in ledger
     assert "backend comparison candidate" in ledger
     assert "formal main using selected_global_best_backend" in ledger
     assert "ablation on selected_global_best_backend" in ledger
@@ -169,6 +171,7 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "feature_list" in worker_template
     assert "feature_separability_summary" in worker_template
     assert "progress_record" in worker_template
+    assert "artifact_index.json" in worker_template
 
     merge_doc = (ROOT / "doc/experiments/06_multi_agent_merge_checklist.md").read_text(encoding="utf-8")
     assert "accept" in merge_doc
@@ -185,6 +188,7 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "01_result_ledger.md" in results_readme
     assert "feature_list" in results_readme
     assert "progress_record" in results_readme
+    assert "runtime-native artifact" in results_readme
 
     comparison_ticket = (ROOT / "doc/experiments/handoff/06_backend_comparison_owner.md").read_text(encoding="utf-8")
     assert "results/ottawa_ml_openrouter_v1.md" in comparison_ticket
@@ -195,6 +199,7 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "artifact_contract_pass" in harness_ticket
     assert "feature_separability_pass" in harness_ticket
     assert "selection_eligible" in harness_ticket
+    assert "artifact_index.json" in harness_ticket
 
     torch_ablation_ticket = (ROOT / "doc/experiments/handoff/05_ablation_owner_torch.md").read_text(encoding="utf-8")
     assert "results/ottawa_torch_module_runtime_v1.md" in torch_ablation_ticket

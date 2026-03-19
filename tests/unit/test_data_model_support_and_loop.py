@@ -10,6 +10,7 @@ from src.llm.client import OfflineLLM
 from src.model import build_similarity_artifacts, run_shallow_ml_baseline
 from src.operators import get_operator_catalog
 from src.states import StepPlan, WorkflowState
+from src.training import run_ml_pipeline
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -62,6 +63,31 @@ def test_dataset_preparer_and_model_side_support_modules_work_together():
     assert similarity["split_sizes"]["train"] > 0
     assert "class_centroid_similarity" in similarity
     assert protocol.dataset_name == "RM101_SYNTH"
+
+
+def test_run_ml_pipeline_emits_runtime_evidence_artifacts():
+    protocol, catalog, compiled, split_records = _ml_state_and_artifacts()
+    artifacts = run_ml_pipeline(
+        compiled,
+        split_records,
+        catalog,
+        dataset_name=protocol.dataset_name,
+        backend_provider="offline_stub",
+        backend_model="offline_stub",
+    )
+
+    feature_list = artifacts["feature_list"]
+    summary = artifacts["feature_separability_summary"]
+
+    assert feature_list
+    assert {"name", "source_node", "path"} <= set(feature_list[0])
+    assert feature_list[0]["path"] == "ml"
+    assert summary["dataset"] == protocol.dataset_name
+    assert summary["graph_path"] == "ml"
+    assert {"provider", "model"} <= set(summary["backend"])
+    assert "top_features" in summary
+    assert "aggregate_scores" in summary
+    assert "split_stability" in summary
 
 
 def test_frontend_loop_rolls_back_on_need_replan():

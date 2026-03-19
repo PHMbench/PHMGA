@@ -58,9 +58,11 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
         payload = json.loads(proc.stdout)
         assert payload["graph_path"] == graph_path
         assert (output_dir / "dag.json").exists()
+        assert (output_dir / "validated_dag.json").exists()
         assert (output_dir / "compiled_dag_manifest.json").exists()
         assert (output_dir / "resolved_splits.json").exists()
         assert (output_dir / "resolved_dataset_manifest.json").exists()
+        assert (output_dir / "artifact_index.json").exists()
         assert (output_dir / "workflow_state.json").exists()
         assert (output_dir / "dag_quality_summary.json").exists()
         assert (output_dir / "decision_side_outputs.json").exists()
@@ -68,6 +70,14 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
         assert (output_dir / expected_file).exists()
         if graph_path in {"ml", "torch"}:
             assert (output_dir / "similarity_artifacts.json").exists()
+        if graph_path == "ml":
+            assert (output_dir / "feature_list.json").exists()
+            assert (output_dir / "feature_separability_summary.json").exists()
+            summary = json.loads((output_dir / "feature_separability_summary.json").read_text(encoding="utf-8"))
+            assert summary["graph_path"] == "ml"
+            assert "top_features" in summary
+            assert "aggregate_scores" in summary
+            assert "split_stability" in summary
 
 
 @pytest.mark.skipif(
@@ -110,6 +120,8 @@ def test_real_configs_preflight_and_dag_only(tmp_path: Path):
         assert payload["graph_path"] == "dag_only"
         assert payload["source_mode"] == "real"
         assert (output_dir / "dag_artifacts.json").exists()
+        assert (output_dir / "validated_dag.json").exists()
+        assert (output_dir / "artifact_index.json").exists()
         assert (output_dir / "decision_side_outputs.json").exists()
         assert (output_dir / "resolved_splits.json").exists()
         assert (output_dir / "resolved_dataset_manifest.json").exists()
@@ -165,9 +177,11 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
 
     common_files = [
         "dag.json",
+        "validated_dag.json",
         "compiled_dag_manifest.json",
         "resolved_splits.json",
         "resolved_dataset_manifest.json",
+        "artifact_index.json",
         "workflow_state.json",
         "dag_quality_summary.json",
         "decision_side_outputs.json",
@@ -177,12 +191,25 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
         assert (output_dir / filename).exists()
 
     if graph_path == "ml":
-        for filename in ("metrics.json", "predictions.json", "importance.json", "similarity_artifacts.json"):
+        for filename in (
+            "feature_list.json",
+            "feature_separability_summary.json",
+            "metrics.json",
+            "predictions.json",
+            "importance.json",
+            "similarity_artifacts.json",
+        ):
             assert (output_dir / filename).exists()
         feature_pipeline = json.loads((output_dir / "feature_pipeline.json").read_text(encoding="utf-8"))
         assert "execution_nodes" in feature_pipeline
         assert "output_specs" in feature_pipeline
         assert feature_pipeline["output_policy"] == "terminal_only"
+        separability_summary = json.loads((output_dir / "feature_separability_summary.json").read_text(encoding="utf-8"))
+        assert separability_summary["dataset"] == "RM_017_Ottawa19"
+        assert separability_summary["graph_path"] == "ml"
+        assert "top_features" in separability_summary
+        assert "aggregate_scores" in separability_summary
+        assert "split_stability" in separability_summary
     else:
         for filename in ("training_curves.json", "checkpoint.json", "metrics.json", "importance.json", "similarity_artifacts.json"):
             assert (output_dir / filename).exists()
@@ -253,9 +280,11 @@ def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_p
 
     common_files = [
         "dag.json",
+        "validated_dag.json",
         "compiled_dag_manifest.json",
         "resolved_splits.json",
         "resolved_dataset_manifest.json",
+        "artifact_index.json",
         "workflow_state.json",
         "dag_quality_summary.json",
         "decision_side_outputs.json",
@@ -265,12 +294,25 @@ def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_p
         assert (output_dir / filename).exists()
 
     if graph_path == "ml":
-        for filename in ("metrics.json", "predictions.json", "importance.json", "similarity_artifacts.json"):
+        for filename in (
+            "feature_list.json",
+            "feature_separability_summary.json",
+            "metrics.json",
+            "predictions.json",
+            "importance.json",
+            "similarity_artifacts.json",
+        ):
             assert (output_dir / filename).exists()
         feature_pipeline = json.loads((output_dir / "feature_pipeline.json").read_text(encoding="utf-8"))
         assert "execution_nodes" in feature_pipeline
         assert "output_specs" in feature_pipeline
         assert feature_pipeline["output_policy"] == "terminal_only"
+        separability_summary = json.loads((output_dir / "feature_separability_summary.json").read_text(encoding="utf-8"))
+        assert separability_summary["dataset"] == "RM_101_THU_GEARBOX"
+        assert separability_summary["graph_path"] == "ml"
+        assert "top_features" in separability_summary
+        assert "aggregate_scores" in separability_summary
+        assert "split_stability" in separability_summary
     else:
         for filename in ("training_curves.json", "checkpoint.json", "metrics.json", "importance.json", "similarity_artifacts.json"):
             assert (output_dir / filename).exists()

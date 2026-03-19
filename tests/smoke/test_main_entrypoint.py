@@ -37,5 +37,7 @@ def test_main_entrypoint_supports_preflight_and_run_case(tmp_path: Path):
     )
     payload = json.loads(run_case.stdout)
     assert payload["graph_path"] == "dag_only"
+    assert (output_dir / "validated_dag.json").exists()
     assert (output_dir / "compiled_dag_manifest.json").exists()
+    assert (output_dir / "artifact_index.json").exists()
     assert (output_dir / "final_report.md").exists()
