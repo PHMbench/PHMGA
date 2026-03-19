@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 from typing import Any, Dict, Union
@@ -22,6 +23,21 @@ def run_preflight(config_input: Union[str, Path, Dict[str, Any]]) -> dict:
     runtime_config = load_runtime_config(config_input)
     protocol = build_protocol_from_config(runtime_config)
     catalog = get_operator_catalog()
+    llm_cfg = dict(runtime_config.get("llm", {}))
+    provider = str(llm_cfg.get("provider", "codex_cli"))
+    mode = str(llm_cfg.get("mode", "offline_stub"))
+    llm_transport = {
+        "provider": provider,
+        "mode": mode,
+        "binary_found": True,
+    }
+    if mode == "provider" and provider == "codex_cli":
+        llm_transport = {
+            "provider": provider,
+            "mode": mode,
+            "binary_found": bool(shutil.which("codex")),
+            "binary_name": "codex",
+        }
     return {
         "status": "ok",
         "config_name": runtime_config["runtime"]["config_name"],
@@ -37,6 +53,7 @@ def run_preflight(config_input: Union[str, Path, Dict[str, Any]]) -> dict:
         "window": protocol.window.model_dump(),
         "selected_channels": protocol.selected_channels,
         "operators": [spec.op_uid for spec in catalog.specs()],
+        "llm_transport": llm_transport,
     }
 
 

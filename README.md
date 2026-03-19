@@ -12,7 +12,7 @@ PHMGA 是一个面向论文复现与方法验证的工业时间序列研究仓�
 - 后端：`model + training + evaluation` 输出 graph-dependent artifacts 和最终报告。
 - `dag_quality_evaluator` 位于 `execute` 和 `reflect` 之间，只负责生成当前 round 的紧凑质量摘要。
 - 当前前端 runtime 已切到 LangGraph；`rollback` 是显式节点，不再是脚本内隐式分支。
-- 根默认配置下，`report_agent` 仍可走 deterministic / rule-based renderer，经由 `OfflineLLM.render_report()` 输出 markdown；formal main presets 则已显式切到 provider-backed run。
+- 根默认配置下，`report_agent` 仍可走 deterministic / rule-based renderer，经由 `OfflineLLM.render_report()` 输出 markdown；formal main 已冻结到 Codex-backed provider run。
 - `inquirer_agent` 已恢复为 downstream evidence agent 入口，但它不参与 DAG 生成决策，只消费 path artifacts 补充 similarity / evidence chain。
 
 ## 当前算子系统
@@ -105,8 +105,8 @@ PHMGA 是一个面向论文复现与方法验证的工业时间序列研究仓�
   - 选择 `preflight` 或 `run_case`。
 - `llm`
   - `config/config.yaml` 默认仍是 `offline_stub`，用于无外部依赖的最小闭环。
-  - 基座模型 id 已预置为 `stepfun/step-3.5-flash:free`；只有 `mode=provider` 时才会真正调用。
-  - formal main presets (`config/runs/{ottawa,rm101}_{ml,torch}.yaml`) 已显式切到 `mode=provider` + `provider=openrouter` + `model=stepfun/step-3.5-flash:free`。
+  - provider 默认 tuple 已切到 `codex_cli + gpt-5.3-codex`；只有 `mode=provider` 时才会真正调用。
+  - formal main presets (`config/runs/{ottawa,rm101}_{ml,torch}.yaml`) 已重新冻结为 `mode=provider` + `provider=codex_cli` + `model=gpt-5.3-codex`。
   - `offline_stub` 仍保留为 pilot / deterministic baseline。
 - `evaluation.dag_quality`
   - DAG 质量摘要的开关，以及小样本 proxy probe 的控制项。
@@ -181,7 +181,7 @@ flowchart TD
 
 其中：
 
-- OpenRouter provider path 已接通，formal main presets 已默认切到 provider-backed run
+- OpenRouter provider path 已接通，但 `stepfun/step-3.5-flash:free` 当前只保留为 qualification candidate，而不是 formal main 默认
 - `offline_stub` 仍要保留为 pilot / deterministic baseline
 - 当前默认基线仍是 `phase=compiled`
 - `module_runtime / learnable_control` 作为 opt-in 增强层，不改变当前 bridge compiled contract
