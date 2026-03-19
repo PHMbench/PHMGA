@@ -6,6 +6,7 @@ from src.agents import execute_agent, plan_agent, reflect_agent, report_agent
 from src.bridge import compile_dag_for_path
 from src.config import load_runtime_config
 from src.data import build_protocol_from_config
+from src.evaluation import build_dag_quality_summary
 from src.llm import get_llm
 from src.operators import get_operator_catalog
 from src.states import WorkflowState
@@ -27,6 +28,7 @@ def _reflected_state(config_name: str) -> tuple[WorkflowState, object, object]:
     )
     state = plan_agent(state, protocol, llm, catalog)
     state = execute_agent(state, protocol, catalog, llm)
+    state.dag_quality_summary = build_dag_quality_summary(state, protocol, config, catalog).model_dump()
     state = reflect_agent(state, llm)
     return state, protocol, llm
 
@@ -48,6 +50,7 @@ def test_report_agent_writes_dag_only_sections():
     )
     assert "## DAG Evidence" in report
     assert "## DAG Quality" in report
+    assert "## Dataset-Level Diagnosis Evidence" in report
     assert "## Decision Side Outputs" in report
     assert "Reflection decision" in report
 
@@ -72,6 +75,7 @@ def test_report_agent_writes_ml_and_torch_sections():
     )
     assert "## ML Evidence" in ml_report
     assert "## DAG Quality" in ml_report
+    assert "## Dataset-Level Diagnosis Evidence" in ml_report
 
     torch_state, torch_protocol, llm = _reflected_state("config/runs/rm101_synth_torch.yaml")
     torch_manifest = compile_dag_for_path(torch_state.dag, "torch").manifest
@@ -88,3 +92,4 @@ def test_report_agent_writes_ml_and_torch_sections():
     )
     assert "## Torch Evidence" in torch_report
     assert "## DAG Quality" in torch_report
+    assert "## Dataset-Level Diagnosis Evidence" in torch_report

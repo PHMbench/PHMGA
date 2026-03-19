@@ -5,6 +5,7 @@ from pathlib import Path
 from src.agents import execute_agent, plan_agent, reflect_agent
 from src.config import load_runtime_config
 from src.data import build_protocol_from_config
+from src.evaluation import build_dag_quality_summary
 from src.llm import get_llm
 from src.operators import get_operator_catalog
 from src.states import ExecutionGap, WorkflowState
@@ -26,6 +27,7 @@ def _executed_state(config_name: str) -> tuple[WorkflowState, object]:
     )
     state = plan_agent(state, protocol, llm, catalog)
     state = execute_agent(state, protocol, catalog, llm)
+    state.dag_quality_summary = build_dag_quality_summary(state, protocol, config, catalog).model_dump()
     return state, llm
 
 
@@ -74,6 +76,19 @@ def test_reflect_agent_consumes_dag_quality_summary_for_patch_decision():
         "zero_variance_ratio": 0.0,
         "proxy_probe_enabled": False,
         "proxy_probe_macro_f1": None,
+        "dataset_level": {
+            "enabled": True,
+            "source": "split_subset_execution",
+            "evidence_path": "ml",
+            "materialization_ok": True,
+            "all_finite": True,
+            "distinguishable": True,
+            "split_window_counts": {"train": 8, "val": 8, "test": 8},
+            "feature_dims": {"train": 4, "val": 4, "test": 4},
+            "decision_summary": {"node_count": 1},
+            "issues": ["Proxy evidence is still weak."],
+            "critical_failure": False,
+        },
         "issues": ["Proxy evidence is still weak."],
         "recommendation_hint": "patch_candidate",
     }

@@ -41,6 +41,11 @@ def test_dag_quality_summary_builds_without_proxy_probe():
     assert 0.0 <= summary.zero_variance_ratio <= 1.0
     assert summary.proxy_probe_enabled is False
     assert summary.proxy_probe_macro_f1 is None
+    assert summary.dataset_level["enabled"] is True
+    assert summary.dataset_level["source"] == "split_subset_execution"
+    assert "train" in summary.dataset_level["split_window_counts"]
+    assert "materialization_ok" in summary.dataset_level
+    assert "decision_summary" in summary.dataset_level
 
 
 def test_dag_quality_summary_can_run_proxy_probe_when_enabled():
@@ -51,6 +56,8 @@ def test_dag_quality_summary_can_run_proxy_probe_when_enabled():
     assert summary.proxy_probe_enabled is True
     assert summary.proxy_probe_macro_f1 is not None
     assert 0.0 <= summary.proxy_probe_macro_f1 <= 1.0
+    assert summary.dataset_level["proxy_probe_enabled"] is True
+    assert summary.dataset_level["proxy_probe_macro_f1"] is not None
     assert summary.recommendation_hint in {
         "finish_candidate",
         "patch_candidate",

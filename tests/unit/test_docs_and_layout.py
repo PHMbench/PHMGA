@@ -66,6 +66,12 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "codex_cli" in readme
     assert "gpt-5.3-codex" in readme
     assert "offline_stub" in readme
+    assert "smoke/development baseline" in readme
+    assert "split-level sampled dataset evidence" in readme
+    assert "M0: Agent Core" in readme
+    assert "M1: Dataset-Level Evidence" in readme
+    assert "M2: Comparison Layer" in readme
+    assert "canonical diagnosis backend" in readme
     assert "--dataset" not in readme
 
     data_readme = (ROOT / "data/README.md").read_text(encoding="utf-8")
@@ -88,11 +94,19 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "不是外部 `conda` 环境" in training_eval
     assert "provider mode" in training_eval or "provider-backed" in training_eval
     assert "channel_self_attention" in training_eval
+    assert "split-level sampled dataset evidence" in training_eval
+    assert "比较层" in training_eval
+    assert "M0: Agent Core" in training_eval
+    assert "canonical diagnosis backend" in training_eval
 
     roadmap = (ROOT / "doc/structure/05_missing_assets_and_roadmap.md").read_text(encoding="utf-8")
     assert "WaveFilters" in roadmap
     assert "GraphModule" in roadmap
     assert "Codex" in roadmap
+    assert "split-level sampled evidence pass" in roadmap
+    assert "M0: Agent Core" in roadmap
+    assert "M1: Dataset-Level Evidence" in roadmap
+    assert "M2: Comparison Layer" in roadmap
 
     ablation_master = (ROOT / "doc/ablation/00_master_plan.md").read_text(encoding="utf-8")
     assert "compiled" in ablation_master
@@ -110,10 +124,13 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "llm.mode=provider" in runbook
     assert "llm.provider=codex_cli" in runbook
     assert "gpt-5.3-codex" in runbook
+    assert "smoke/development baseline" in runbook
     assert "04_codex_cli_handoff.md" in runbook
     assert "05_worker_result_template.md" in runbook
     assert "06_multi_agent_merge_checklist.md" in runbook
     assert "results/<experiment_id>.md" in runbook
+    assert "Research Closure Milestones" in runbook
+    assert "canonical diagnosis backend" in runbook
 
     handoff = (ROOT / "doc/experiments/04_codex_cli_handoff.md").read_text(encoding="utf-8")
     assert "Codex CLI worker" in handoff
@@ -157,6 +174,8 @@ def test_ai_guides_reference_readme_and_drop_legacy_paths():
     assert "| provider |" in main_tables
     assert "gpt-5.3-codex" in main_tables
     assert "ottawa_ml_codex_v1" in main_tables
+    assert "path comparison" in main_tables
+    assert "canonical diagnosis mainline" in main_tables
 
     paper_outline = (ROOT / "doc/paper/00_outline.md").read_text(encoding="utf-8")
     assert "PHMState" in paper_outline
