@@ -30,6 +30,9 @@
 - validated_dag.json:
 - compiled_dag_manifest.json:
 - feature_pipeline.json:
+- feature_list.json:
+- feature_separability_summary.json:
+- artifact_index.json:
 - metrics.json:
 - final_report.md:
 
@@ -86,15 +89,11 @@
 ## Evidence Rules
 
 - `Artifact Checklist`
-  - 五个硬门槛 artifact 都要逐项写存在性
+  - 所有硬门槛 artifact 都要逐项写存在性
 - `feature_list`
-  - 优先引用 `feature_list.json`
-  - 如果没有 runtime-native 文件，必须从 `feature_pipeline.json` 或等价 artifact 衍生并写在这里
+  - 直接引用 `feature_list.json`
 - `feature_separability_summary`
-  - 至少写出：
-    - feature 是否非空
-    - 是否出现全零/常数/明显塌缩
-    - 最小 separability 结论
+  - 直接引用 `feature_separability_summary.json`
 - `progress_record`
   - 优先引用 `progress.json`
   - 如果没有 runtime-native 文件，必须在这里写出阶段进展记录

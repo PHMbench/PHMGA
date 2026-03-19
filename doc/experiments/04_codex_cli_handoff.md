@@ -109,6 +109,7 @@ worker 必须先写 worker 结果报告，再更新 ledger。
   - `artifact_contract_pass`
   - `feature_separability_pass`
   - `selection_eligible`
+  - 重点检查 `validated_dag.json`、`feature_list.json`、`feature_separability_summary.json`、`artifact_index.json`
 - coordinator 最后才允许更新：
   - `selected_global_best_backend`
   - `doc/experiments/02_main_tables.md`

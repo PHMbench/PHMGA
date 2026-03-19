@@ -59,7 +59,9 @@ selected_global_best_backend:
   provider: pending
   model: pending
   snapshot: null
+  status: pending
   selected_from_stage_b: false
+  selection_basis: mean macro_f1 over Ottawa + RM101 canonical ml mainline
 ```
 
 Stage B 只有在以下条件同时满足时，row 才能记为 `selection_eligible=yes`：

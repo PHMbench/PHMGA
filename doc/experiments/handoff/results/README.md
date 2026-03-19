@@ -25,10 +25,8 @@ coordinator 之后再根据：
 
 做最终验收与合并。
 
-短期如果 runtime-native 证据文件还未稳定产出，worker 必须在结果文件里补齐：
+当前结果文件至少还要补齐：
 
-- `feature_list`
-- `feature_separability_summary`
 - `progress_record`
 
-这些 section 在当前实验规范里属于 provisional evidence。
+`feature_list` 与 `feature_separability_summary` 现在默认应直接引用 runtime-native artifact；只有 `progress_record` 继续属于 provisional evidence。

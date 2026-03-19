@@ -34,24 +34,21 @@ harness engineer 只负责 gate，不负责选 backend winner。
 - `validated_dag.json`
 - `compiled_dag_manifest.json`
 - `feature_pipeline.json`
+- `feature_list.json`
+- `feature_separability_summary.json`
+- `artifact_index.json`
 - `metrics.json`
 - `final_report.md`
 
 ### Required Evidence Gate
 
-以下三类证据至少要以 runtime-native artifact 或 worker report section 之一存在：
-
-- `feature_list`
-- `feature_separability_summary`
-- `progress_record`
+`progress_record` 允许继续以 worker report section 的形式提供 provisional evidence。
 
 规则写死：
 
 - 缺 `progress_record`
   - 最多记 `needs_rerun`
   - 不得进入主表
-- 缺 `feature_list` 或 `feature_separability_summary`
-  - Stage B row 不得参与 backend selection
 
 ### Feature Separability Gate
 

@@ -30,6 +30,11 @@
   - `artifact_contract_pass`
   - `feature_separability_pass`
   - `selection_eligible`
+- 复核时必须检查 runtime-native artifacts：
+  - `validated_dag.json`
+  - `feature_list.json`
+  - `feature_separability_summary.json`
+  - `artifact_index.json`
 - 只有在 merge checklist 条件满足时，才允许把 row 标为 `selection_eligible=yes`
 
 ## Failure Rule

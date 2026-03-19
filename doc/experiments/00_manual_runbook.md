@@ -131,6 +131,9 @@ Stage B 不是单纯的 backend 打分。它先验证：
 - `validated_dag.json`
 - `compiled_dag_manifest.json`
 - `feature_pipeline.json`
+- `feature_list.json`
+- `feature_separability_summary.json`
+- `artifact_index.json`
 - `metrics.json`
 - `final_report.md`
 
@@ -250,22 +253,18 @@ python main.py +runs=rm101_torch llm.mode=provider llm.provider=<selected_provid
 - `validated_dag.json`
 - `compiled_dag_manifest.json`
 - `feature_pipeline.json`
+- `feature_list.json`
+- `feature_separability_summary.json`
+- `artifact_index.json`
 - `metrics.json`
 - `final_report.md`
 
 #### required evidence
 
-- `feature_list.json`
-- `feature_separability_summary.json`
 - `progress record`
 
 短期过渡规则：
 
-- 如果 runtime-native `feature_list.json` / `feature_separability_summary.json` / `progress.json` 尚未稳定产出，则 worker 必须在 `results/<experiment_id>.md` 中补齐三个等价 section：
-  - `feature_list`
-  - `feature_separability_summary`
-  - `progress_record`
-- coordinator 允许把这种 worker-report 证据视为本轮有效的 provisional evidence
+- `progress_record` 仍允许由 `results/<experiment_id>.md` 提供 provisional evidence
 - 但只要缺任一硬门槛 artifact，就不得 `accept`
 - 若缺 `progress record`，最多记 `needs_rerun`，不得进入主表
-- 若缺 `feature_list` 或 `feature_separability_summary`，Stage B row 不得参与 backend selection
