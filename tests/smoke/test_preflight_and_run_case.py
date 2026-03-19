@@ -73,11 +73,17 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
         if graph_path == "ml":
             assert (output_dir / "feature_list.json").exists()
             assert (output_dir / "feature_separability_summary.json").exists()
+            assert (output_dir / "dataset_level_runtime_trace.json").exists()
             summary = json.loads((output_dir / "feature_separability_summary.json").read_text(encoding="utf-8"))
             assert summary["graph_path"] == "ml"
             assert "top_features" in summary
             assert "aggregate_scores" in summary
             assert "split_stability" in summary
+            runtime_trace = json.loads((output_dir / "dataset_level_runtime_trace.json").read_text(encoding="utf-8"))
+            assert runtime_trace["graph_path"] == "ml"
+            assert "splits" in runtime_trace
+            artifact_index = json.loads((output_dir / "artifact_index.json").read_text(encoding="utf-8"))
+            assert "dataset_level_runtime_trace.json" in artifact_index
 
 
 @pytest.mark.skipif(
@@ -194,6 +200,7 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
         for filename in (
             "feature_list.json",
             "feature_separability_summary.json",
+            "dataset_level_runtime_trace.json",
             "metrics.json",
             "predictions.json",
             "importance.json",
@@ -210,6 +217,9 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
         assert "top_features" in separability_summary
         assert "aggregate_scores" in separability_summary
         assert "split_stability" in separability_summary
+        runtime_trace = json.loads((output_dir / "dataset_level_runtime_trace.json").read_text(encoding="utf-8"))
+        assert runtime_trace["graph_path"] == "ml"
+        assert runtime_trace["splits"]
     else:
         for filename in ("training_curves.json", "checkpoint.json", "metrics.json", "importance.json", "similarity_artifacts.json"):
             assert (output_dir / filename).exists()
@@ -297,6 +307,7 @@ def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_p
         for filename in (
             "feature_list.json",
             "feature_separability_summary.json",
+            "dataset_level_runtime_trace.json",
             "metrics.json",
             "predictions.json",
             "importance.json",
@@ -313,6 +324,9 @@ def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_p
         assert "top_features" in separability_summary
         assert "aggregate_scores" in separability_summary
         assert "split_stability" in separability_summary
+        runtime_trace = json.loads((output_dir / "dataset_level_runtime_trace.json").read_text(encoding="utf-8"))
+        assert runtime_trace["graph_path"] == "ml"
+        assert runtime_trace["splits"]
     else:
         for filename in ("training_curves.json", "checkpoint.json", "metrics.json", "importance.json", "similarity_artifacts.json"):
             assert (output_dir / filename).exists()

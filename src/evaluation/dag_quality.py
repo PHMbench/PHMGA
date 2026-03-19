@@ -8,6 +8,7 @@ DAG should finish, patch, or replan.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any, Dict, List, Literal, Optional
 
 import numpy as np
@@ -15,12 +16,23 @@ from pydantic import BaseModel, Field
 
 from src.bridge import compile_dag_for_path
 from src.data import DatasetProtocol, build_dataset_views, materialize_proxy_split_signals
+from src.data.dataset_preparer import DatasetExecutionOptions, DatasetView
 from src.model import run_shallow_ml_baseline
 from src.operators import OperatorCatalog
 from src.states import WorkflowState
 
 
 RecommendationHint = Literal["finish_candidate", "patch_candidate", "replan_candidate", "halt_candidate"]
+
+
+@dataclass
+class DatasetEvidenceArtifacts:
+    """Internal bundle used to avoid rematerializing dataset evidence views."""
+
+    evidence_summary: Dict[str, Any]
+    compiled_evidence_plan: Any | None
+    dataset_views: Optional[Dict[str, DatasetView]]
+    runtime_trace: Optional[Dict[str, Any]]
 
 
 class DagQualitySummary(BaseModel):
@@ -172,6 +184,41 @@ def _centroid_min_distance(dataset_views: Dict[str, Any]) -> tuple[Optional[floa
     return min_distance, issues
 
 
+def _runtime_trace_summary(runtime_trace: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    if not runtime_trace:
+        return {
+            "enabled": False,
+            "split_count": 0,
+            "node_count": 0,
+            "approximated_node_count": 0,
+            "total_elapsed_ms": 0.0,
+            "slowest_node": None,
+        }
+    node_count = 0
+    approximated_node_count = 0
+    slowest_node: Optional[Dict[str, Any]] = None
+    for split_payload in runtime_trace.get("splits", []):
+        for node_entry in split_payload.get("nodes", []):
+            node_count += 1
+            if bool(node_entry.get("approximation", {}).get("enabled", False)):
+                approximated_node_count += 1
+            if slowest_node is None or float(node_entry.get("elapsed_ms", 0.0)) > float(slowest_node.get("elapsed_ms", 0.0)):
+                slowest_node = {
+                    "split": split_payload.get("split"),
+                    "node_id": node_entry.get("node_id"),
+                    "op_uid": node_entry.get("op_uid"),
+                    "elapsed_ms": float(node_entry.get("elapsed_ms", 0.0)),
+                }
+    return {
+        "enabled": True,
+        "split_count": len(runtime_trace.get("splits", [])),
+        "node_count": node_count,
+        "approximated_node_count": approximated_node_count,
+        "total_elapsed_ms": float(runtime_trace.get("total_elapsed_ms", 0.0)),
+        "slowest_node": slowest_node,
+    }
+
+
 def _execute_validated_dag_np(
     state: WorkflowState,
     window: np.ndarray,
@@ -270,7 +317,7 @@ def _dataset_level_evidence(
     protocol: DatasetProtocol,
     runtime_config: Dict[str, Any],
     catalog: OperatorCatalog,
-) -> Dict[str, Any]:
+) -> DatasetEvidenceArtifacts:
     subset_size = int(runtime_config.get("evaluation", {}).get("dag_quality", {}).get("proxy_subset_per_split", 8))
     split_records = materialize_proxy_split_signals(protocol, subset_size)
     evidence_path = _resolve_dataset_evidence_path(state.graph_path)
@@ -290,26 +337,61 @@ def _dataset_level_evidence(
         "issues": [],
         "critical_failure": False,
     }
+    runtime_trace: Optional[Dict[str, Any]] = None
 
     if not state.dag or not any(node.kind in {"feature", "multi"} for node in state.dag.nodes):
         evidence["issues"].append("Dataset-level evidence skipped because the DAG does not yet expose feature or multi outputs.")
         evidence["decision_summary"], decision_issues = _decision_summary(state, split_records, catalog)
         evidence["issues"].extend(decision_issues)
-        return evidence
+        evidence["runtime_trace_summary"] = _runtime_trace_summary(runtime_trace)
+        return DatasetEvidenceArtifacts(
+            evidence_summary=evidence,
+            compiled_evidence_plan=None,
+            dataset_views=None,
+            runtime_trace=runtime_trace,
+        )
 
+    compiled = None
+    dataset_views: Optional[Dict[str, DatasetView]] = None
     try:
         compiled = compile_dag_for_path(
             state.dag,
             evidence_path,
             output_policy=_resolve_dataset_evidence_output_policy(runtime_config, evidence_path),
         )
-        dataset_views = build_dataset_views(compiled, split_records, catalog, backend="np")
+        runtime_trace = {}
+        execution_options = DatasetExecutionOptions(
+            mode="dataset_evidence",
+            enable_runtime_trace=True,
+            dataset_name=protocol.dataset_name,
+            graph_path=state.graph_path,
+            evidence_path=evidence_path,
+            sample_budget=subset_size,
+            cross_correlation_large_input_threshold=2048,
+            cross_correlation_max_lag=256,
+        )
+        dataset_views = build_dataset_views(
+            compiled,
+            split_records,
+            catalog,
+            backend="np",
+            execution_options=execution_options,
+            runtime_trace=runtime_trace,
+        )
     except Exception as exc:
         evidence["critical_failure"] = True
         evidence["issues"].append(f"Dataset-level materialization failed for path '{evidence_path}': {exc}")
         evidence["decision_summary"], decision_issues = _decision_summary(state, split_records, catalog)
         evidence["issues"].extend(decision_issues)
-        return evidence
+        evidence["runtime_trace_summary"] = _runtime_trace_summary(runtime_trace)
+        if runtime_trace:
+            evidence["runtime_trace_artifact"] = runtime_trace
+        return DatasetEvidenceArtifacts(
+            evidence_summary=evidence,
+            compiled_evidence_plan=compiled,
+            dataset_views=dataset_views,
+            runtime_trace=runtime_trace,
+        )
 
     nonempty_splits: Dict[str, bool] = {}
     feature_dims: Dict[str, int] = {}
@@ -341,7 +423,15 @@ def _dataset_level_evidence(
     evidence["decision_summary"], decision_issues = _decision_summary(state, split_records, catalog)
     evidence["issues"].extend(decision_issues)
     evidence["materialization_ok"] = bool(all(nonempty_splits.values()) and all_finite and nonzero_dims)
-    return evidence
+    evidence["runtime_trace_summary"] = _runtime_trace_summary(runtime_trace)
+    if runtime_trace:
+        evidence["runtime_trace_artifact"] = runtime_trace
+    return DatasetEvidenceArtifacts(
+        evidence_summary=evidence,
+        compiled_evidence_plan=compiled,
+        dataset_views=dataset_views,
+        runtime_trace=runtime_trace,
+    )
 
 
 def build_dag_quality_summary(
@@ -375,22 +465,18 @@ def build_dag_quality_summary(
             f"Current depth {current_depth} is outside the target range defined by min_depth={min_depth} and max_depth={max_depth}."
         )
 
-    dataset_level = _dataset_level_evidence(state, protocol, runtime_config, catalog)
+    dataset_evidence = _dataset_level_evidence(state, protocol, runtime_config, catalog)
+    dataset_level = dataset_evidence.evidence_summary
     issues.extend(list(dataset_level.get("issues", [])))
 
     proxy_probe_enabled = _resolve_proxy_probe_enabled(protocol, runtime_config)
     proxy_probe_macro_f1: Optional[float] = None
-    if proxy_probe_enabled and not dataset_level.get("critical_failure", False):
-        evidence_path = str(dataset_level.get("evidence_path", _resolve_dataset_evidence_path(state.graph_path)))
-        compiled = compile_dag_for_path(
-            state.dag,
-            evidence_path,
-            output_policy=_resolve_dataset_evidence_output_policy(runtime_config, evidence_path),
-        )
-        subset_size = int(runtime_config.get("evaluation", {}).get("dag_quality", {}).get("proxy_subset_per_split", 8))
-        split_records = materialize_proxy_split_signals(protocol, subset_size)
-        dataset_views = build_dataset_views(compiled, split_records, catalog, backend="np")
-        proxy_probe_macro_f1, probe_issues = _proxy_probe_score_from_dataset_views(dataset_views)
+    if (
+        proxy_probe_enabled
+        and not dataset_level.get("critical_failure", False)
+        and dataset_evidence.dataset_views is not None
+    ):
+        proxy_probe_macro_f1, probe_issues = _proxy_probe_score_from_dataset_views(dataset_evidence.dataset_views)
         issues.extend(probe_issues)
         if proxy_probe_macro_f1 is not None and proxy_probe_macro_f1 < 0.55:
             issues.append(f"Proxy probe macro_f1 is weak ({proxy_probe_macro_f1:.3f}).")

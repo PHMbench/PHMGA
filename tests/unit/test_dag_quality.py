@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import src.evaluation.dag_quality as dag_quality_module
 from src.agents import execute_agent, plan_agent
 from src.config import load_runtime_config
 from src.data import build_protocol_from_config
@@ -58,9 +59,28 @@ def test_dag_quality_summary_can_run_proxy_probe_when_enabled():
     assert 0.0 <= summary.proxy_probe_macro_f1 <= 1.0
     assert summary.dataset_level["proxy_probe_enabled"] is True
     assert summary.dataset_level["proxy_probe_macro_f1"] is not None
+    assert summary.dataset_level["runtime_trace_summary"]["enabled"] is True
     assert summary.recommendation_hint in {
         "finish_candidate",
         "patch_candidate",
         "replan_candidate",
         "halt_candidate",
     }
+
+
+def test_dag_quality_summary_materializes_dataset_views_only_once_when_proxy_probe_enabled(monkeypatch):
+    state, protocol, catalog, config = _executed_state("config/runs/rm101_synth_ml.yaml")
+    config["evaluation"]["dag_quality"]["use_proxy_probe"] = True
+    original_build_dataset_views = dag_quality_module.build_dataset_views
+    calls = {"count": 0}
+
+    def wrapped_build_dataset_views(*args, **kwargs):
+        calls["count"] += 1
+        return original_build_dataset_views(*args, **kwargs)
+
+    monkeypatch.setattr(dag_quality_module, "build_dataset_views", wrapped_build_dataset_views)
+
+    summary = dag_quality_module.build_dag_quality_summary(state, protocol, config, catalog)
+
+    assert calls["count"] == 1
+    assert summary.dataset_level["runtime_trace_summary"]["node_count"] > 0

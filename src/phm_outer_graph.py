@@ -100,7 +100,13 @@ def build_phm_graph(protocol, catalog: OperatorCatalog, runtime_config: Dict[str
 
     def dag_quality_node(state: PHMState) -> Dict[str, Any]:
         if bool(runtime_config.get("evaluation", {}).get("dag_quality", {}).get("enabled", True)):
-            state.dag_quality_summary = build_dag_quality_summary(state, protocol, runtime_config, catalog).model_dump()
+            summary = build_dag_quality_summary(state, protocol, runtime_config, catalog)
+            runtime_trace_artifact = summary.dataset_level.pop("runtime_trace_artifact", None)
+            if runtime_trace_artifact is None:
+                state.data_context.pop("_dataset_level_runtime_trace", None)
+            else:
+                state.data_context["_dataset_level_runtime_trace"] = runtime_trace_artifact
+            state.dag_quality_summary = summary.model_dump()
         else:
             state.dag_quality_summary = {}
         state.status = "dag_quality_evaluated"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from copy import deepcopy
 import json
 from pathlib import Path
 import sys
@@ -67,6 +68,15 @@ def _write_common_artifacts(
     decision_outputs = _decision_side_outputs(state)
     if decision_outputs:
         _record_json_artifact(artifact_index, output_dir, "decision_side_outputs.json", decision_outputs)
+    for trace_name in (
+        "planner_transport_trace.json",
+        "planner_normalization_trace.json",
+        "planner_raw_response.txt",
+        "planner_repair_response.txt",
+    ):
+        trace_path = output_dir / trace_name
+        if trace_path.exists():
+            artifact_index[trace_name] = trace_name
 
 
 def _run_frontend_loop(
@@ -161,8 +171,18 @@ def run_case(
 
     _record_text_artifact(artifact_index, output_root, "final_report.md", state.final_report)
     _record_json_artifact(artifact_index, output_root, "resolved_config.json", runtime_config)
+    runtime_trace_payload = state.data_context.pop("_dataset_level_runtime_trace", None)
     if state.dag_quality_summary:
-        _record_json_artifact(artifact_index, output_root, "dag_quality_summary.json", state.dag_quality_summary)
+        dag_quality_payload = deepcopy(state.dag_quality_summary)
+        _record_json_artifact(artifact_index, output_root, "dag_quality_summary.json", dag_quality_payload)
+        state.dag_quality_summary = dag_quality_payload
+    if runtime_trace_payload is not None:
+        _record_json_artifact(
+            artifact_index,
+            output_root,
+            "dataset_level_runtime_trace.json",
+            runtime_trace_payload,
+        )
     artifact_index["workflow_state.json"] = "workflow_state.json"
     artifact_index["artifact_index.json"] = "artifact_index.json"
     state.artifact_index = dict(artifact_index)
