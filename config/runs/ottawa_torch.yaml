@@ -6,5 +6,5 @@ defaults:
 
 llm:
   mode: provider
-  provider: openrouter
-  model: stepfun/step-3.5-flash:free
+  provider: codex_cli
+  model: gpt-5.3-codex

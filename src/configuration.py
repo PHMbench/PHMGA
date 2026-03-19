@@ -9,15 +9,66 @@ from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel, Field
 
 
+def _default_api_key_env(provider: str) -> str:
+    normalized = provider.strip().lower()
+    if normalized == "openai":
+        return "OPENAI_API_KEY"
+    if normalized == "codex_cli":
+        return ""
+    return "OPENROUTER_API_KEY"
+
+
+def _default_base_url(provider: str) -> str:
+    normalized = provider.strip().lower()
+    if normalized == "openai":
+        return "https://api.openai.com/v1"
+    if normalized == "codex_cli":
+        return ""
+    return "https://openrouter.ai/api/v1"
+
+
+def _default_model(provider: str) -> str:
+    normalized = provider.strip().lower()
+    if normalized in {"openai", "codex_cli"}:
+        return "gpt-5.3-codex"
+    return "stepfun/step-3.5-flash:free"
+
+
+def _normalize_provider_defaults(provider: str, *, model: Any, api_key_env: Any, base_url: Any) -> Dict[str, str]:
+    normalized_provider = provider.strip().lower()
+    default_model = _default_model(normalized_provider)
+    default_api_key_env = _default_api_key_env(normalized_provider)
+    default_base_url = _default_base_url(normalized_provider)
+    legacy_provider = "openrouter" if normalized_provider in {"openai", "codex_cli"} else "openai"
+    legacy_model = _default_model(legacy_provider)
+    legacy_api_key_env = _default_api_key_env(legacy_provider)
+    legacy_base_url = _default_base_url(legacy_provider)
+
+    chosen_model = str(model or default_model)
+    chosen_api_key_env = str(api_key_env or default_api_key_env)
+    chosen_base_url = str(base_url or default_base_url)
+    if chosen_model == legacy_model:
+        chosen_model = default_model
+    if chosen_api_key_env == legacy_api_key_env:
+        chosen_api_key_env = default_api_key_env
+    if chosen_base_url == legacy_base_url:
+        chosen_base_url = default_base_url
+    return {
+        "model": chosen_model,
+        "api_key_env": chosen_api_key_env,
+        "base_url": chosen_base_url,
+    }
+
+
 class Configuration(BaseModel):
     """Minimal frontend configuration exposed to LangChain/LangGraph agents."""
 
-    provider: str = Field(default="openrouter")
+    provider: str = Field(default="codex_cli")
     mode: str = Field(default="offline_stub")
-    model: str = Field(default="stepfun/step-3.5-flash:free")
-    api_key_env: str = Field(default="OPENROUTER_API_KEY")
-    base_url: str = Field(default="https://openrouter.ai/api/v1")
-    timeout_sec: float = Field(default=30.0)
+    model: str = Field(default="gpt-5.3-codex")
+    api_key_env: str = Field(default="")
+    base_url: str = Field(default="")
+    timeout_sec: float = Field(default=300.0)
     temperature: float = Field(default=0.0)
     max_tokens_structured: int = Field(default=800)
     max_tokens_report: int = Field(default=2000)
@@ -33,19 +84,35 @@ class Configuration(BaseModel):
             for name in cls.model_fields.keys()
         }
         values = {key: value for key, value in raw_values.items() if value is not None}
+        provider = str(values.get("provider", "codex_cli"))
+        values.update(
+            _normalize_provider_defaults(
+                provider,
+                model=values.get("model"),
+                api_key_env=values.get("api_key_env"),
+                base_url=values.get("base_url"),
+            )
+        )
         return cls(**values)
 
     @classmethod
     def from_runtime_config(cls, runtime_config: Dict[str, Any]) -> "Configuration":
         llm_cfg = dict(runtime_config.get("llm", {}))
         runtime = dict(runtime_config.get("runtime", {}))
+        provider = str(llm_cfg.get("provider", "codex_cli"))
+        provider_defaults = _normalize_provider_defaults(
+            provider,
+            model=llm_cfg.get("model"),
+            api_key_env=llm_cfg.get("api_key_env"),
+            base_url=llm_cfg.get("base_url"),
+        )
         return cls(
-            provider=str(llm_cfg.get("provider", "openrouter")),
+            provider=provider,
             mode=str(llm_cfg.get("mode", "offline_stub")),
-            model=str(llm_cfg.get("model", "stepfun/step-3.5-flash:free")),
-            api_key_env=str(llm_cfg.get("api_key_env", "OPENROUTER_API_KEY")),
-            base_url=str(llm_cfg.get("base_url", "https://openrouter.ai/api/v1")),
-            timeout_sec=float(llm_cfg.get("timeout_sec", 30.0)),
+            model=provider_defaults["model"],
+            api_key_env=provider_defaults["api_key_env"],
+            base_url=provider_defaults["base_url"],
+            timeout_sec=float(llm_cfg.get("timeout_sec", 300.0)),
             temperature=float(llm_cfg.get("temperature", 0.0)),
             max_tokens_structured=int(llm_cfg.get("max_tokens_structured", 800)),
             max_tokens_report=int(llm_cfg.get("max_tokens_report", 2000)),
