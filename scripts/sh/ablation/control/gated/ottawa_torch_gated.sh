@@ -3,21 +3,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$SCRIPT_DIR"
-while [ "$ROOT_DIR" != "/" ] && { [ ! -f "$ROOT_DIR/main.py" ] || [ ! -f "$ROOT_DIR/README.md" ]; }; do
-  ROOT_DIR="$(cd "$ROOT_DIR/.." && pwd)"
-done
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../../../_common.sh"
 
-if [ ! -f "$ROOT_DIR/main.py" ]; then
-  echo "Repository root not found."
-  exit 1
-fi
+phmga_enter_repo "$SCRIPT_DIR"
+phmga_prepare_optional_provider "codex_cli" "gpt-5.3-codex"
 
-cd "$ROOT_DIR"
+OUTPUT_DIR="${PHMGA_OUTPUT_DIR:-artifacts/paper/ottawa_torch_gated_v1}"
 
-OUTPUT_DIR="artifacts/paper/ottawa_torch_gated_v1"
-
-python main.py +runs=ottawa_torch model.torch.phase=learnable_control model.torch.control.default_mode=gated runtime.output_dir="$OUTPUT_DIR"
-test -f "$OUTPUT_DIR/final_report.md"
+phmga_log_provider_choice
+python main.py +runs=ottawa_torch "${PHMGA_PROVIDER_ARGS[@]}" model.torch.phase=learnable_control model.torch.control.default_mode=gated runtime.output_dir="$OUTPUT_DIR"
+phmga_assert_file "$OUTPUT_DIR/final_report.md"
 echo "Completed: $OUTPUT_DIR"
 echo "Next: record the result in doc/experiments/01_result_ledger.md"

@@ -3,24 +3,18 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$SCRIPT_DIR"
-while [ "$ROOT_DIR" != "/" ] && { [ ! -f "$ROOT_DIR/main.py" ] || [ ! -f "$ROOT_DIR/README.md" ]; }; do
-  ROOT_DIR="$(cd "$ROOT_DIR/.." && pwd)"
-done
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/../_common.sh"
 
-if [ ! -f "$ROOT_DIR/main.py" ]; then
-  echo "Repository root not found."
-  exit 1
-fi
+phmga_enter_repo "$SCRIPT_DIR"
 
-cd "$ROOT_DIR"
-
-OUTPUT_DIR="artifacts/paper/rm101_ml_pilot_v1"
+OUTPUT_DIR="${PHMGA_OUTPUT_DIR:-artifacts/paper/rm101_ml_pilot_v1}"
 
 echo "Running RM101 ML pilot wrapper..."
-python main.py runtime.action=preflight +runs=rm101_ml_test
-python main.py +runs=rm101_ml_test runtime.output_dir="$OUTPUT_DIR"
+echo "Pilot uses offline_stub by design."
+python main.py runtime.action=preflight +runs=rm101_ml_test llm.mode=offline_stub
+python main.py +runs=rm101_ml_test llm.mode=offline_stub runtime.output_dir="$OUTPUT_DIR"
 
-test -f "$OUTPUT_DIR/final_report.md"
+phmga_assert_file "$OUTPUT_DIR/final_report.md"
 echo "Completed: $OUTPUT_DIR"
 echo "Next: record the result in doc/experiments/01_result_ledger.md"
