@@ -4,7 +4,7 @@
 **Provider**: `openrouter`
 **Model**: `stepfun/step-3.5-flash:free`
 
-## Status: Fixed In Client, Still Requires Real-Run Validation
+## Status: Fixed In Client, Still Requires Backend-Comparison Validation
 
 The original failure was not a provider outage. The issue was that PHMGA treated
 `stepfun/step-3.5-flash:free` as a JSON-mode structured model, while real
@@ -55,21 +55,21 @@ The provider client now does three things:
 This means the current contract is:
 
 - provider remains `openrouter`
-- `stepfun/step-3.5-flash:free` remains a provider qualification candidate
+- `stepfun/step-3.5-flash:free` is the current active OpenRouter backend comparison candidate
 - structured agent calls no longer hard depend on JSON mode
-- current formal-main default remains `codex_cli + gpt-5.3-codex`
+- it is not the formal main default
+- it only becomes eligible for `selected_global_best_backend` if it passes Stage B artifact and feature separability gates on both datasets
 
 ## Current Limitation
 
 What is still missing is not the parser fix, but real-network confirmation under
-provider qualification conditions. Local tests cover the text-mode parsing
-path, but one provider-backed qualification run still needs to be recorded in
-the experiment ledger as end-to-end evidence before this tuple can enter the
-formal-main default pool.
+backend-comparison conditions. Local tests cover the text-mode parsing path,
+but the tuple still needs Stage B end-to-end evidence before it can compete for
+global backend selection.
 
 ## Conclusion
 
 - Do not switch provider.
 - Treat this model as a text-mode structured provider on OpenRouter.
-- Do not freeze this model into formal main until qualification passes.
-- Judge success by whether qualification and later formal-main runs complete, not by whether JSON mode is used.
+- Do not freeze this model into formal main unless it wins Stage B backend comparison.
+- Judge success by whether the full PHMGA chain works, artifacts are complete, and feature separability evidence passes, not by whether JSON mode is used.
