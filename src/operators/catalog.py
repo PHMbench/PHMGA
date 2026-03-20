@@ -68,6 +68,18 @@ def _build_plan_name_aliases() -> Dict[str, str]:
     }
 
 
+SUPERVISOR_PROVING_PLAN_NAMES: Tuple[str, ...] = (
+    "fft",
+    "hilbert_envelope",
+    "mean",
+    "std",
+    "rms",
+    "kurtosis",
+    "crest_factor",
+    "spectral_centroid",
+)
+
+
 @dataclass
 class OperatorCatalog:
     """Lookup table that exposes the sanctioned operator subset."""
@@ -133,6 +145,23 @@ class OperatorCatalog:
 
         return self.build_summary_rows()
 
+    def filtered_for_plan_names(self, plan_names: List[str] | Tuple[str, ...]) -> "OperatorCatalog":
+        """Return a smaller catalog keyed by an explicit planner-visible subset."""
+
+        allowed_uids = {self.resolve_plan_name(plan_name) for plan_name in plan_names}
+        operators = {
+            op_uid: operator for op_uid, operator in self.operators.items() if op_uid in allowed_uids
+        }
+        plan_name_aliases = {
+            plan_name: op_uid
+            for plan_name, op_uid in self.plan_name_aliases.items()
+            if plan_name in set(plan_names) and op_uid in allowed_uids
+        }
+        return OperatorCatalog(
+            operators=operators,
+            plan_name_aliases=plan_name_aliases,
+        )
+
 
 def get_operator_catalog() -> OperatorCatalog:
     """Build the closed-world operator catalog used by scripts and tests."""
@@ -144,10 +173,29 @@ def get_operator_catalog() -> OperatorCatalog:
     )
 
 
+def get_supervisor_proving_catalog() -> OperatorCatalog:
+    """Return the strict deterministic proving subset."""
+
+    catalog = get_operator_catalog()
+    proving_catalog = catalog.filtered_for_plan_names(SUPERVISOR_PROVING_PLAN_NAMES)
+    for plan_name in SUPERVISOR_PROVING_PLAN_NAMES:
+        operator = proving_catalog.get_by_plan_name(plan_name)
+        if operator.spec.llm_tunable_params:
+            raise ValueError(
+                f"Supervisor proving subset must not expose LLM-tunable params, got {plan_name}: "
+                f"{operator.spec.llm_tunable_params}"
+            )
+        if operator.spec.schema_category in {"MULTI_VARIABLE", "DECISION"}:
+            raise ValueError(f"Supervisor proving subset may not include {operator.spec.schema_category}: {plan_name}")
+    return proving_catalog
+
+
 __all__ = [
     "OperatorCatalog",
+    "SUPERVISOR_PROVING_PLAN_NAMES",
     "_build_operator_groups",
     "_build_operator_index",
     "_build_plan_name_aliases",
     "get_operator_catalog",
+    "get_supervisor_proving_catalog",
 ]

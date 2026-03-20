@@ -139,6 +139,10 @@ def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LLMClient:
     return get_llm_client(Configuration.from_runtime_config(state.runtime_config).to_runtime_dict())
 
 
+def _workflow_mode(state: PHMState) -> str:
+    return str(state.runtime_config.get("runtime", {}).get("workflow_mode", "rich"))
+
+
 def _execute_single(op, parent_result: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
     return np.asarray(op.forward_np(parent_result, **params), dtype=float)
 
@@ -170,7 +174,8 @@ def execute_agent(
     existing_node_ids = [node.node_id for node in tracker.export().nodes]
     alias_to_canonical: Dict[str, str] = {node_id: node_id for node_id in existing_node_ids}
     state.execution_gaps = []
-    llm_client = _resolve_llm(state, llm)
+    llm_client: LLMClient | None = None
+    workflow_mode = _workflow_mode(state)
 
     for step_index, step in enumerate(state.step_plan.plan, start=1):
         raw_parent_ids = [item.strip() for item in step.parent.split(",") if item.strip()]
@@ -245,9 +250,25 @@ def execute_agent(
             unresolved_tunable = [
                 param_name for param_name in missing_params if param_name in operator.spec.llm_tunable_params
             ]
+            if workflow_mode == "supervisor_proving":
+                if operator.spec.schema_category in {"MULTI_VARIABLE", "DECISION"}:
+                    raise ValueError(
+                        f"Supervisor proving does not allow schema_category={operator.spec.schema_category} "
+                        f"for op '{step.op_name}'."
+                    )
+                if operator.spec.llm_tunable_params:
+                    raise ValueError(
+                        f"Supervisor proving does not allow LLM-tunable params for op '{step.op_name}'."
+                    )
+                if unresolved_tunable:
+                    raise ValueError(
+                        f"Supervisor proving requires fully local param resolution for op '{step.op_name}'."
+                    )
             if not unresolved_tunable:
                 params = locally_resolved
             else:
+                if llm_client is None:
+                    llm_client = _resolve_llm(state, llm)
                 prompt = render_param_resolution_prompt(
                     op_name=step.op_name,
                     requested_params=unresolved_tunable,

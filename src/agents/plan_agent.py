@@ -15,7 +15,7 @@ from src.data import DatasetProtocol, materialize_preview_signal
 from src.llm import LLMClient
 from src.model import LangChainLLMAdapter, get_llm
 from src.operators import OperatorCatalog
-from src.prompts import render_plan_prompt
+from src.prompts import render_plan_prompt, render_supervisor_proving_plan_prompt
 from src.states import PHMState, SignalContext, StepPlan
 
 
@@ -61,6 +61,10 @@ def _planner_trace_context(state: PHMState) -> dict[str, Any]:
     }
 
 
+def _workflow_mode(state: PHMState) -> str:
+    return str(state.runtime_config.get("runtime", {}).get("workflow_mode", "rich"))
+
+
 def plan_agent(
     state: PHMState,
     protocol: DatasetProtocol,
@@ -75,16 +79,20 @@ def plan_agent(
     current_depth = _dag_depth(state)
     min_depth = int(state.data_context.get("min_depth", 2))
     min_width = int(state.data_context.get("min_width", 1))
-    prompt = render_plan_prompt(
-        instruction=state.user_instruction,
-        signal_context=state.signal_context.model_dump(),
-        dag_json=state.dag.model_dump() if state.dag else None,
-        tools=catalog.summary(),
-        reflection=state.reflection_history,
-        current_depth=current_depth,
-        min_depth=min_depth,
-        min_width=min_width,
-    )
+    prompt_args = {
+        "instruction": state.user_instruction,
+        "signal_context": state.signal_context.model_dump(),
+        "dag_json": state.dag.model_dump() if state.dag else None,
+        "tools": catalog.summary(),
+        "reflection": state.reflection_history,
+        "current_depth": current_depth,
+        "min_depth": min_depth,
+        "min_width": min_width,
+    }
+    if _workflow_mode(state) == "supervisor_proving":
+        prompt = render_supervisor_proving_plan_prompt(**prompt_args)
+    else:
+        prompt = render_plan_prompt(**prompt_args)
     llm_adapter = _resolve_llm(state, llm)
     chain = ChatPromptTemplate.from_template("{prompt}") | llm_adapter.bind_task(
         "plan",

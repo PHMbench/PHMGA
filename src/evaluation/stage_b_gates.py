@@ -13,6 +13,7 @@ REQUIRED_STAGE_B_ARTIFACTS = (
     "feature_pipeline.json",
     "feature_list.json",
     "feature_separability_summary.json",
+    "artifact_index.json",
     "metrics.json",
     "final_report.md",
 )

@@ -10,8 +10,8 @@ from langgraph.graph import END, START, StateGraph
 from src.agents import execute_agent, inquirer_agent, plan_agent, reflect_agent, report_agent
 from src.bridge import CompiledDagManifest, DagArtifacts, FeaturePipelinePlan, ModelBuildPlan, compile_dag_for_path
 from src.data import materialize_split_signals
-from src.evaluation import build_dag_quality_summary
-from src.operators import OperatorCatalog
+from src.evaluation import build_dag_quality_summary, build_final_report
+from src.operators import OperatorCatalog, get_supervisor_proving_catalog
 from src.states import PHMState, RoundTrace
 from src.training import run_ml_pipeline, run_torch_pipeline
 from src.utils import hash_payload
@@ -227,6 +227,69 @@ def build_phm_graph(protocol, catalog: OperatorCatalog, runtime_config: Dict[str
     return builder.compile()
 
 
+def _validate_supervisor_proving_state(state: PHMState) -> None:
+    if state.execution_gaps:
+        gap_messages = "; ".join(gap.message for gap in state.execution_gaps)
+        raise RuntimeError(f"Supervisor proving execution gaps detected: {gap_messages}")
+    if state.dag is None or not state.dag.nodes:
+        raise RuntimeError("Supervisor proving did not materialize a validated DAG.")
+    if not any(node.operator_category == "AGGREGATE" for node in state.dag.nodes):
+        raise RuntimeError("Supervisor proving DAG must contain at least one AGGREGATE feature node.")
+
+
+def build_supervisor_proving_graph(
+    protocol,
+    catalog: OperatorCatalog,
+    runtime_config: Dict[str, Any],
+    llm_override=None,
+):
+    proving_catalog = get_supervisor_proving_catalog()
+    builder = StateGraph(PHMState)
+
+    def plan_node(state: PHMState) -> Dict[str, Any]:
+        state.iteration_index += 1
+        state.current_round_input_hash = _dag_hash(state)
+        state.current_round_previous_node_ids = [node.node_id for node in state.dag.nodes] if state.dag else []
+        state = plan_agent(state, protocol, llm_override, proving_catalog)
+        return state.model_dump()
+
+    def execute_node(state: PHMState) -> Dict[str, Any]:
+        state = execute_agent(state, protocol, proving_catalog, llm_override)
+        _validate_supervisor_proving_state(state)
+        return state.model_dump()
+
+    def compile_node(state: PHMState) -> Dict[str, Any]:
+        compiled = compile_dag_for_path(
+            state.dag,
+            state.graph_path,
+            output_policy=_resolve_output_policy(runtime_config, state.graph_path),
+        )
+        split_records = materialize_split_signals(protocol)
+        state.compiled_bundle = compiled
+        state.compiled_manifest = compiled.manifest.model_dump()
+        state.path_artifacts = _run_path(state.graph_path, compiled, split_records, runtime_config, catalog, protocol.dataset_name)
+        state.status = "compiled"
+        return state.model_dump()
+
+    def verify_node(state: PHMState) -> Dict[str, Any]:
+        manifest = CompiledDagManifest.model_validate(state.compiled_manifest)
+        state.final_report = build_final_report(state, protocol, manifest, state.path_artifacts)
+        state.status = "verified"
+        return state.model_dump()
+
+    builder.add_node("plan", plan_node)
+    builder.add_node("execute", execute_node)
+    builder.add_node("compile", compile_node)
+    builder.add_node("verify", verify_node)
+
+    builder.add_edge(START, "plan")
+    builder.add_edge("plan", "execute")
+    builder.add_edge("execute", "compile")
+    builder.add_edge("compile", "verify")
+    builder.add_edge("verify", END)
+    return builder.compile()
+
+
 def run_phm_graph(
     state: PHMState,
     protocol,
@@ -235,4 +298,15 @@ def run_phm_graph(
     llm_override=None,
 ) -> PHMState:
     graph = build_phm_graph(protocol, catalog, runtime_config, llm_override)
+    return PHMState.model_validate(graph.invoke(state))
+
+
+def run_supervisor_proving_graph(
+    state: PHMState,
+    protocol,
+    catalog: OperatorCatalog,
+    runtime_config: Dict[str, Any],
+    llm_override=None,
+) -> PHMState:
+    graph = build_supervisor_proving_graph(protocol, catalog, runtime_config, llm_override)
     return PHMState.model_validate(graph.invoke(state))

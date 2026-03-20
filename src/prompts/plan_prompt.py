@@ -68,6 +68,41 @@ No prose before or after. No DSL. No markdown fence.
 """
 
 
+SUPERVISOR_PROVING_PLAN_PROMPT_TEMPLATE = """You are building the smallest compileable PHM diagnosis DAG that can prove the end-to-end workflow works.
+
+{contract}
+Supervisor proving rules:
+1. Use only the operators present in `tools`.
+2. Keep the DAG small and deterministic. Prefer one transform branch followed by one or more aggregate feature nodes.
+3. Do not use cross-channel, multi-parent, or decision logic.
+4. Do not depend on any operator that would require extra parameter search.
+5. Prefer direct single-input chains such as raw signal -> fft/hilbert_envelope -> aggregate features.
+6. Stop once the plan is sufficient to produce at least one aggregate feature node.
+
+Rules:
+- Each plan item must contain `parent`, `op_name`, and `params`.
+- `params` must be a JSON object, not a string.
+- Output strict JSON only.
+- Keep the number of plan steps small.
+- Do not explain the plan.
+- Do not emit prose, markdown, or DSL.
+
+Instruction: {instruction}
+Signal context: {signal_context}
+Current DAG: {dag_json}
+Allowed proving tools: {tools}
+Reflection: {reflection}
+Current depth: {current_depth}
+Minimum depth: {min_depth}
+Minimum width: {min_width}
+
+OUTPUT FORMAT (highest priority):
+Return strict JSON only:
+{{"plan": [{{"parent": "ch1", "op_name": "fft", "params": {{}}}}, {{"parent": "fft_01_ch1", "op_name": "rms", "params": {{}}}}]}}
+No prose before or after. No markdown fence.
+"""
+
+
 def _planner_tool_view(tools: Iterable[Dict[str, Any]]) -> list[Dict[str, Any]]:
     compact: list[Dict[str, Any]] = []
     for tool in tools:
@@ -104,6 +139,39 @@ def render_plan_prompt(
         prohibitions=PLAN_PROMPT_PROHIBITIONS,
     )
     return PLAN_PROMPT_TEMPLATE.format(
+        contract=contract,
+        instruction=instruction,
+        signal_context=json.dumps(signal_context, ensure_ascii=False),
+        dag_json=json.dumps(dag_json or {}, ensure_ascii=False),
+        tools=json.dumps(_planner_tool_view(tools), ensure_ascii=False),
+        reflection=json.dumps(list(reflection), ensure_ascii=False),
+        current_depth=current_depth,
+        min_depth=min_depth,
+        min_width=min_width,
+    )
+
+
+def render_supervisor_proving_plan_prompt(
+    *,
+    instruction: str,
+    signal_context: Dict[str, Any],
+    dag_json: Optional[Dict[str, Any]],
+    tools: Iterable[Dict[str, Any]],
+    reflection: Iterable[str],
+    current_depth: int,
+    min_depth: int,
+    min_width: int,
+) -> str:
+    """Render the stricter prompt used by the lightweight proving lane."""
+
+    contract = render_contract_header(
+        role="Planner",
+        goal="Produce the next structured DAG execution plan.",
+        input_fields=PLAN_PROMPT_INPUT_FIELDS,
+        output_fields=PLAN_PROMPT_OUTPUT_FIELDS,
+        prohibitions=PLAN_PROMPT_PROHIBITIONS,
+    )
+    return SUPERVISOR_PROVING_PLAN_PROMPT_TEMPLATE.format(
         contract=contract,
         instruction=instruction,
         signal_context=json.dumps(signal_context, ensure_ascii=False),
