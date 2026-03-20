@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from typing import Any, Dict
 
@@ -22,11 +23,28 @@ def run_preflight(runtime_config: Dict[str, Any]) -> Dict[str, Any]:
         "binary_found": True,
     }
     if mode == "provider" and provider == "codex_cli":
+        binary_path = shutil.which("codex")
+        if not binary_path:
+            raise RuntimeError("Codex CLI preflight failed: required `codex` binary was not found on PATH.")
         llm_transport = {
             "provider": provider,
             "mode": mode,
-            "binary_found": bool(shutil.which("codex")),
+            "binary_found": True,
             "binary_name": "codex",
+            "binary_path": binary_path,
+        }
+    elif mode == "provider" and provider == "openrouter":
+        api_key_env = str(llm_cfg.get("api_key_env") or "OPENROUTER_API_KEY")
+        credential_found = bool(os.getenv(api_key_env, "").strip())
+        if not credential_found:
+            raise RuntimeError(
+                f"OpenRouter preflight failed: expected non-empty credential in env var {api_key_env}."
+            )
+        llm_transport = {
+            "provider": provider,
+            "mode": mode,
+            "credential_found": credential_found,
+            "api_key_env": api_key_env,
         }
     return {
         "status": "ok",

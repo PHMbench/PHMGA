@@ -53,6 +53,7 @@ KNOWN_ARTIFACTS = [
     "planner_normalization_trace.json",
     "planner_raw_response.txt",
     "planner_repair_response.txt",
+    "step_plan.json",
     "final_report.md",
 ]
 

@@ -8,10 +8,10 @@ from typing import Any, Dict
 
 from src.bridge import DagArtifacts, FeaturePipelinePlan, ModelBuildPlan
 from src.data import build_protocol_from_config
-from src.evaluation import render_mermaid_dag
+from src.evaluation import evaluate_artifact_contract, render_mermaid_dag
 from src.llm import get_llm
 from src.operators import get_operator_catalog
-from src.phm_outer_graph import run_phm_graph
+from src.phm_outer_graph import run_phm_graph, run_supervisor_proving_graph
 from src.states import WorkflowState
 from src.utils import ensure_dir, write_json, write_text
 
@@ -24,6 +24,10 @@ def _record_json_artifact(artifact_index: Dict[str, str], output_dir: Path, file
 def _record_text_artifact(artifact_index: Dict[str, str], output_dir: Path, filename: str, content: str) -> None:
     write_text(content, output_dir / filename)
     artifact_index[filename] = filename
+
+
+def _workflow_mode(runtime_config: Dict[str, Any]) -> str:
+    return str(runtime_config.get("runtime", {}).get("workflow_mode", "rich"))
 
 
 def _decision_side_outputs(state: WorkflowState) -> Dict[str, Any]:
@@ -61,6 +65,8 @@ def _write_common_artifacts(
         "resolved_dataset_manifest.json",
         protocol.model_dump(exclude={"splits"}),
     )
+    if state.step_plan is not None and _workflow_mode(state.runtime_config) == "supervisor_proving":
+        _record_json_artifact(artifact_index, output_dir, "step_plan.json", state.step_plan.model_dump())
     decision_outputs = _decision_side_outputs(state)
     if decision_outputs:
         _record_json_artifact(artifact_index, output_dir, "decision_side_outputs.json", decision_outputs)
@@ -83,7 +89,8 @@ def _run_frontend_loop(
     runtime_config: Dict[str, Any],
 ) -> WorkflowState:
     """Compatibility wrapper over the LangGraph frontend runtime."""
-
+    if _workflow_mode(runtime_config) == "supervisor_proving":
+        return run_supervisor_proving_graph(state, protocol, catalog, runtime_config, llm_override=llm)
     return run_phm_graph(state, protocol, catalog, runtime_config, llm_override=llm)
 
 
@@ -108,7 +115,7 @@ def run_case(
             "min_depth": 2,
             "min_width": 1,
             "max_depth": 8,
-            "stage": "RUN_CASE",
+            "stage": "SUPERVISOR_PROVING" if _workflow_mode(runtime_config) == "supervisor_proving" else "RUN_CASE",
         },
     )
     state = _run_frontend_loop(state, protocol, llm, catalog, runtime_config)
@@ -195,6 +202,25 @@ def run_case(
     )
     state.artifact_index = dict(artifact_index)
     _record_json_artifact(artifact_index, output_root, "artifact_index.json", artifact_index)
+
+    if _workflow_mode(runtime_config) == "supervisor_proving" and not evaluate_artifact_contract(output_root):
+        missing = [
+            artifact_name
+            for artifact_name in (
+                "validated_dag.json",
+                "compiled_dag_manifest.json",
+                "feature_pipeline.json",
+                "feature_list.json",
+                "feature_separability_summary.json",
+                "artifact_index.json",
+                "metrics.json",
+                "final_report.md",
+            )
+            if not (output_root / artifact_name).exists()
+        ]
+        raise RuntimeError(
+            "Supervisor proving artifact contract failed after write: " + ", ".join(missing)
+        )
 
     return {
         "config_name": runtime_config["runtime"]["config_name"],
