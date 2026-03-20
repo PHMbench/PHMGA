@@ -8,7 +8,7 @@
 
 - `problem/protocol` 已落到 `config/` + `src/data/`
 - `workflow/dag/operators/bridge` 已落到 `src/states`、`src/agents`、`src/dag`、`src/operators`、`src/bridge`
-- `training/evaluation/report` 已落到 `src/training`、`src/evaluation` 与 `scripts/run_case.py`
+- `training/evaluation/report` 已落到 `src/training`、`src/evaluation` 与由 `main.py` 调用的 `scripts/run_case.py`
 - 当前文档是解释现代码骨架的权威说明，不是等待未来实现的占位页
 
 三条 graph 路径：

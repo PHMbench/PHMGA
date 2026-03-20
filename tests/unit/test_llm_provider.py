@@ -10,6 +10,7 @@ import pytest
 from src.agents import execute_agent, plan_agent, reflect_agent, report_agent
 from src.bridge import compile_dag_for_path
 from src.config import load_runtime_config
+from src.configuration import Configuration
 from src.data import build_protocol_from_config
 from src.llm import CodexCliLLM, LLMProviderError, LLMSchemaError, OfflineLLM, OpenAICodexLLM, OpenRouterLLM, get_llm
 from src.operators import get_operator_catalog
@@ -82,6 +83,26 @@ def test_get_llm_dispatches_offline_codex_cli_openai_and_openrouter_providers():
     config["llm"]["model"] = "openai/gpt-4.1-mini"
     llm = get_llm(config)
     assert isinstance(llm, OpenRouterLLM)
+
+
+def test_stage_b_active_model_defaults_drive_openrouter_model_selection():
+    runtime_config = {
+        "llm": {
+            "provider": "openrouter",
+            "mode": "provider",
+            "model": "",
+            "stage_b": {
+                "codex_active_model": "gpt-5.3-codex",
+                "openrouter_active_model": "z-ai/glm-4.5-air:free",
+            },
+        },
+        "runtime": {"provider_retry_once": True},
+    }
+    cfg = Configuration.from_runtime_config(runtime_config)
+    llm = get_llm(runtime_config)
+    assert cfg.model == "z-ai/glm-4.5-air:free"
+    assert isinstance(llm, OpenRouterLLM)
+    assert llm.model == "z-ai/glm-4.5-air:free"
 
 
 def test_llm_public_imports_match_client_shim_exports():
@@ -157,11 +178,10 @@ def test_openrouter_stepfun_text_mode_planner_uses_reasoning(monkeypatch: pytest
 
 def test_openrouter_stepfun_text_mode_planner_accepts_dsl(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    seen_prompts: list[str] = []
 
-    def handler(request: httpx.Request) -> httpx.Response:
-        payload = json.loads(request.content.decode("utf-8"))
-        assert "response_format" not in payload
-        return httpx.Response(
+    responses = [
+        httpx.Response(
             200,
             json={
                 "choices": [
@@ -172,7 +192,26 @@ def test_openrouter_stepfun_text_mode_planner_accepts_dsl(monkeypatch: pytest.Mo
                     }
                 ]
             },
-        )
+        ),
+        httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": '- parent=ch1 op=normalize params={"eps": 1e-6}\n- parent=ch2 op=normalize params={"eps": 1e-6}',
+                        }
+                    }
+                ]
+            },
+        ),
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        seen_prompts.append(payload["messages"][0]["content"])
+        assert "response_format" not in payload
+        return responses.pop(0)
 
     llm = OpenRouterLLM(model="stepfun/step-3.5-flash:free", http_client=_mock_client(handler))
     plan = llm.generate_step_plan(
@@ -185,6 +224,147 @@ def test_openrouter_stepfun_text_mode_planner_accepts_dsl(monkeypatch: pytest.Mo
     )
     assert [step.parent for step in plan.plan] == ["ch1", "ch2"]
     assert all(step.op_name == "normalize" for step in plan.plan)
+    assert len(seen_prompts) == 2
+    assert "Normalize the following planner response" in seen_prompts[1]
+
+
+def test_openrouter_stepfun_dsl_requires_repair_lane(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "response_format" not in payload
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": '- parent=ch1 op=normalize params={"eps": 1e-6}',
+                        }
+                    }
+                ]
+            },
+        )
+
+    llm = OpenRouterLLM(model="stepfun/step-3.5-flash:free", http_client=_mock_client(handler), retry_once=False)
+    with pytest.raises(LLMSchemaError):
+        llm.generate_step_plan(
+            prompt="planner prompt",
+            instruction="plan",
+            signal_context=_signal_context(),
+            dag_json=None,
+            reflection=[],
+            operator_catalog_summary=[],
+        )
+
+
+def test_openrouter_stepfun_planner_accepts_text_first_blocks_and_writes_trace(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    seen_prompts: list[str] = []
+
+    responses = [
+        httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                "Step 1:\n"
+                                "Parent: ch1\n"
+                                "Operator: normalize\n"
+                                "Params: {\"eps\": 1e-6}\n\n"
+                                "Step 2:\n"
+                                "Parent: ch2\n"
+                                "Operator: normalize\n"
+                                "Params: {}\n"
+                            )
+                        }
+                    }
+                ]
+            },
+        ),
+        httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": (
+                                "Step 1:\n"
+                                "Parent: ch1\n"
+                                "Operator: normalize\n"
+                                "Params: {\"eps\": 1e-6}\n\n"
+                                "Step 2:\n"
+                                "Parent: ch2\n"
+                                "Operator: normalize\n"
+                                "Params: {}\n"
+                            )
+                        }
+                    }
+                ]
+            },
+        ),
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        seen_prompts.append(payload["messages"][0]["content"])
+        assert "response_format" not in payload
+        return responses.pop(0)
+
+    llm = OpenRouterLLM(model="stepfun/step-3.5-flash:free", http_client=_mock_client(handler))
+    plan = llm.generate_step_plan(
+        prompt="planner prompt",
+        instruction="plan",
+        signal_context=_signal_context(),
+        dag_json=None,
+        reflection=[],
+        operator_catalog_summary=[],
+        trace_context={"output_dir": str(tmp_path), "graph_path": "ml"},
+    )
+    assert [step.parent for step in plan.plan] == ["ch1", "ch2"]
+    assert all(step.op_name == "normalize" for step in plan.plan)
+    assert (tmp_path / "planner_raw_response.txt").exists()
+    normalization_trace = json.loads((tmp_path / "planner_normalization_trace.json").read_text(encoding="utf-8"))
+    assert normalization_trace["events"][-1]["status"] == "normalized"
+    assert len(seen_prompts) == 2
+    assert "Normalize the following planner response" in seen_prompts[1]
+
+
+def test_openrouter_glm_active_candidate_returns_json(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "response_format" not in payload
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps({"plan": [{"parent": "ch1", "op_name": "normalize", "params": {}}]}),
+                        }
+                    }
+                ]
+            },
+        )
+
+    llm = OpenRouterLLM(model="z-ai/glm-4.5-air:free", http_client=_mock_client(handler))
+    plan = llm.generate_step_plan(
+        prompt="planner prompt",
+        instruction="plan",
+        signal_context=_signal_context(),
+        dag_json=None,
+        reflection=[],
+        operator_catalog_summary=[],
+    )
+    assert isinstance(plan, StepPlan)
+    assert plan.plan[0].op_name == "normalize"
 
 
 def test_openrouter_param_resolution_accepts_only_requested_tunable_keys(monkeypatch: pytest.MonkeyPatch):
@@ -490,6 +670,26 @@ def test_openrouter_provider_raises_on_http_error(monkeypatch: pytest.MonkeyPatc
         )
 
 
+def test_openrouter_provider_writes_transport_trace_on_http_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    llm = OpenRouterLLM(http_client=_mock_client(lambda request: httpx.Response(429, json={"error": "rate limited"})))
+    with pytest.raises(LLMProviderError):
+        llm.generate_step_plan(
+            prompt="planner prompt",
+            instruction="plan",
+            signal_context=_signal_context(),
+            dag_json=None,
+            reflection=[],
+            operator_catalog_summary=[],
+            trace_context={"output_dir": str(tmp_path), "graph_path": "ml"},
+        )
+    transport_trace = json.loads((tmp_path / "planner_transport_trace.json").read_text(encoding="utf-8"))
+    assert transport_trace["events"][-1]["stage"] == "planner_full"
+    assert transport_trace["events"][-1]["status"] == "transport_error"
+
+
 def test_openrouter_provider_retries_once_on_429(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     call_count = 0
@@ -582,7 +782,7 @@ def test_openai_codex_planner_and_reflector_use_strict_json_mode(monkeypatch: py
     assert seen_response_formats == [{"type": "json_object"}, {"type": "json_object"}]
 
 
-def test_codex_cli_planner_and_reflector_use_output_schema(monkeypatch: pytest.MonkeyPatch):
+def test_codex_cli_planner_uses_strict_json_and_reflector_uses_output_schema(monkeypatch: pytest.MonkeyPatch):
     planner_schema_seen = False
     reflector_schema_seen = False
 
@@ -590,14 +790,19 @@ def test_codex_cli_planner_and_reflector_use_output_schema(monkeypatch: pytest.M
 
     def fake_run(cmd, input=None, text=None, capture_output=None, timeout=None, cwd=None):  # type: ignore[override]
         output_path = Path(cmd[cmd.index("-o") + 1])
-        schema_path = Path(cmd[cmd.index("--output-schema") + 1])
-        schema_payload = json.loads(schema_path.read_text(encoding="utf-8"))
         nonlocal planner_schema_seen, reflector_schema_seen
-        if "plan" in schema_payload.get("properties", {}):
+        if "--output-schema" not in cmd:
             planner_schema_seen = True
-            output_path.write_text(json.dumps({"plan": [{"parent": "ch1", "op_name": "normalize", "params_json": "{\"eps\": 1e-6}"}]}), encoding="utf-8")
+            assert "Return only the final structured answer that matches the provided schema." in input
+            output_path.write_text(
+                json.dumps({"plan": [{"parent": "ch1", "op_name": "normalize", "params": {"eps": 1e-6}}]}),
+                encoding="utf-8",
+            )
         else:
             reflector_schema_seen = True
+            schema_path = Path(cmd[cmd.index("--output-schema") + 1])
+            schema_payload = json.loads(schema_path.read_text(encoding="utf-8"))
+            assert "decision" in schema_payload["properties"]
             output_path.write_text(json.dumps({"decision": "finish", "reason": "ok", "missing_operators": [], "shape_risks": [], "structural_warnings": []}), encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
@@ -610,7 +815,7 @@ def test_codex_cli_planner_and_reflector_use_output_schema(monkeypatch: pytest.M
         signal_context=_signal_context(),
         dag_json=None,
         reflection=[],
-        operator_catalog_summary=[],
+        operator_catalog_summary=[{"param_schema": {"eps": "float"}}],
     )
     result = llm.reflect_workflow(
         prompt="reflect prompt",
@@ -629,6 +834,54 @@ def test_codex_cli_planner_and_reflector_use_output_schema(monkeypatch: pytest.M
     assert result.decision == "finish"
     assert planner_schema_seen
     assert reflector_schema_seen
+
+
+def test_codex_cli_ml_planner_trace_runs_smoke_and_records_transport(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    _mock_codex_exec(
+        monkeypatch,
+        outputs=[
+            {"output": json.dumps({"ok": "yes"})},
+            {"output": json.dumps({"plan": [{"parent": "ch1", "op_name": "normalize", "params": {"eps": 1e-6}}]})},
+        ],
+    )
+    llm = CodexCliLLM()
+    plan = llm.generate_step_plan(
+        prompt="planner prompt",
+        instruction="plan",
+        signal_context=_signal_context(),
+        dag_json=None,
+        reflection=[],
+        operator_catalog_summary=[{"param_schema": {"eps": "float"}}],
+        trace_context={"output_dir": str(tmp_path), "graph_path": "ml"},
+    )
+    assert plan.plan[0].op_name == "normalize"
+    transport_trace = json.loads((tmp_path / "planner_transport_trace.json").read_text(encoding="utf-8"))
+    stages = [event["stage"] for event in transport_trace["events"]]
+    assert stages == ["planner_smoke", "planner_full"]
+    normalization_trace = json.loads((tmp_path / "planner_normalization_trace.json").read_text(encoding="utf-8"))
+    assert normalization_trace["events"][-1]["parsed_step_count"] == 1
+    assert (tmp_path / "planner_raw_response.txt").exists()
+
+
+def test_parse_plan_text_payload_requires_repair_lane_for_dsl():
+    from src.llm.structured import _parse_plan_text_payload
+
+    dsl = '- parent=ch1 op=normalize params={"eps": 1e-6}'
+    with pytest.raises(LLMSchemaError):
+        _parse_plan_text_payload(
+            dsl,
+            model="z-ai/glm-4.5-air:free",
+            provider="openrouter",
+            allow_text_fallback=False,
+        )
+
+    payload = _parse_plan_text_payload(
+        dsl,
+        model="z-ai/glm-4.5-air:free",
+        provider="openrouter",
+        allow_text_fallback=True,
+    )
+    assert payload == {"plan": [{"parent": "ch1", "op_name": "normalize", "params": {"eps": 1e-6}}]}
 
 
 def test_codex_cli_param_resolution_uses_structured_schema(monkeypatch: pytest.MonkeyPatch):
@@ -668,6 +921,29 @@ def test_codex_cli_provider_raises_on_subprocess_failure(monkeypatch: pytest.Mon
         )
 
 
+def test_codex_cli_planner_smoke_timeout_records_transport_trace(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setattr("src.llm.client.shutil.which", lambda _: "/usr/bin/codex")
+
+    def fake_run(cmd, input=None, text=None, capture_output=None, timeout=None, cwd=None):  # type: ignore[override]
+        raise subprocess.TimeoutExpired(cmd, timeout=timeout, output="", stderr="")
+
+    monkeypatch.setattr("src.llm.client.subprocess.run", fake_run)
+    llm = CodexCliLLM()
+    with pytest.raises(LLMProviderError):
+        llm.generate_step_plan(
+            prompt="planner prompt",
+            instruction="plan",
+            signal_context=_signal_context(),
+            dag_json=None,
+            reflection=[],
+            operator_catalog_summary=[],
+            trace_context={"output_dir": str(tmp_path), "graph_path": "ml"},
+        )
+    transport_trace = json.loads((tmp_path / "planner_transport_trace.json").read_text(encoding="utf-8"))
+    assert transport_trace["events"][-1]["stage"] == "planner_smoke"
+    assert transport_trace["events"][-1]["status"] == "timeout"
+
+
 class PromptCaptureLLM(OfflineLLM):
     def __init__(self) -> None:
         super().__init__()
@@ -703,6 +979,9 @@ def test_agents_pass_rendered_prompts_to_llm():
     )
 
     state = plan_agent(state, protocol, llm, catalog)
+    state.step_plan = StepPlan.model_validate(
+        {"plan": [{"parent": "ch1", "op_name": "wavelet_laplace", "params": {}}]}
+    )
     state = execute_agent(state, protocol, catalog, llm)
     state = reflect_agent(state, llm)
     compiled = compile_dag_for_path(state.dag, "dag_only")
@@ -719,12 +998,12 @@ def test_agents_pass_rendered_prompts_to_llm():
     )
 
     assert "Role: Planner" in llm.prompts["plan"]
-    assert "Role: Parameter Resolver" in llm.prompts["param"]
+    assert "param" not in llm.prompts
     assert "Role: Reflector" in llm.prompts["reflect"]
     assert "Role: Reporter" in llm.prompts["report"]
 
 
-def test_stepfun_provider_can_run_four_agents_end_to_end(monkeypatch: pytest.MonkeyPatch):
+def test_glm_provider_can_run_four_agents_end_to_end(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     config = load_runtime_config(ROOT / "config/runs/rm101_synth_dag.yaml")
     protocol = build_protocol_from_config(config)
@@ -743,7 +1022,14 @@ def test_stepfun_provider_can_run_four_agents_end_to_end(monkeypatch: pytest.Mon
                 "choices": [
                     {
                         "message": {
-                            "content": '- parent=ch1 op=normalize params={"eps": 1e-6}\n- parent=ch2 op=normalize params={"eps": 1e-6}'
+                            "content": json.dumps(
+                                {
+                                    "plan": [
+                                        {"parent": "ch1", "op_name": "normalize", "params": {"eps": 1e-6}},
+                                        {"parent": "ch2", "op_name": "normalize", "params": {"eps": 1e-6}},
+                                    ]
+                                }
+                            )
                         }
                     }
                 ]
@@ -776,7 +1062,7 @@ def test_stepfun_provider_can_run_four_agents_end_to_end(monkeypatch: pytest.Mon
     def handler(request: httpx.Request) -> httpx.Response:
         return responses.pop(0)
 
-    llm = OpenRouterLLM(model="stepfun/step-3.5-flash:free", http_client=_mock_client(handler))
+    llm = OpenRouterLLM(model="z-ai/glm-4.5-air:free", http_client=_mock_client(handler))
     state = plan_agent(state, protocol, llm, catalog)
     state = execute_agent(state, protocol, catalog, llm)
     state = reflect_agent(state, llm)

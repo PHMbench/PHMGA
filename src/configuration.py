@@ -31,7 +31,19 @@ def _default_model(provider: str) -> str:
     normalized = provider.strip().lower()
     if normalized in {"openai", "codex_cli"}:
         return "gpt-5.3-codex"
-    return "stepfun/step-3.5-flash:free"
+    return "z-ai/glm-4.5-air:free"
+
+
+def _stage_b_active_model(llm_cfg: Dict[str, Any], provider: str) -> str:
+    stage_b_cfg = llm_cfg.get("stage_b", {})
+    if not isinstance(stage_b_cfg, dict):
+        return ""
+    normalized = provider.strip().lower()
+    if normalized == "codex_cli":
+        return str(stage_b_cfg.get("codex_active_model") or "")
+    if normalized == "openrouter":
+        return str(stage_b_cfg.get("openrouter_active_model") or "")
+    return ""
 
 
 def _normalize_provider_defaults(provider: str, *, model: Any, api_key_env: Any, base_url: Any) -> Dict[str, str]:
@@ -100,9 +112,10 @@ class Configuration(BaseModel):
         llm_cfg = dict(runtime_config.get("llm", {}))
         runtime = dict(runtime_config.get("runtime", {}))
         provider = str(llm_cfg.get("provider", "codex_cli"))
+        stage_b_active_model = _stage_b_active_model(llm_cfg, provider)
         provider_defaults = _normalize_provider_defaults(
             provider,
-            model=llm_cfg.get("model"),
+            model=llm_cfg.get("model") or stage_b_active_model,
             api_key_env=llm_cfg.get("api_key_env"),
             base_url=llm_cfg.get("base_url"),
         )

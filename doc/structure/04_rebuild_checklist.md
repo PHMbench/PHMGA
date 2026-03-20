@@ -22,7 +22,7 @@ PHMGA/
 - `states/prompts/agents`: 只负责 DAG 生成前端。
 - `data/dag/operators`: 只负责协议、结构表示和算子语义。
 - `bridge/model/training/evaluation`: 只负责后端编译、训练、评估、报告。
-- `scripts`: 保留 `preflight` 和 `run_case` 作为兼容入口与底层实现；正式入口在根目录 `main.py`。
+- `scripts`: 保留 `preflight` 和 `run_case` 作为由 `main.py` 调用的执行层库模块；正式入口只在根目录 `main.py`。
 
 ## 固定重建顺序
 

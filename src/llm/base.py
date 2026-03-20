@@ -25,6 +25,7 @@ class LLMClient(Protocol):
         dag_json: Optional[Dict[str, Any]],
         reflection: Iterable[str],
         operator_catalog_summary: Iterable[Dict[str, Any]],
+        trace_context: Optional[Dict[str, Any]] = None,
     ) -> StepPlan:
         ...
 

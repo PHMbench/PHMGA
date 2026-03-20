@@ -1,1 +1,2 @@
 graph_path: dag_only
+user_instruction: "Generate a paper-ready PHM workflow from canonical metadata."

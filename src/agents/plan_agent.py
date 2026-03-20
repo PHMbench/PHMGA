@@ -51,6 +51,16 @@ def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LangChainLLMAdapter:
     return get_llm(Configuration.from_runtime_config(state.runtime_config))
 
 
+def _planner_trace_context(state: PHMState) -> dict[str, Any]:
+    runtime_cfg = dict(state.runtime_config.get("runtime", {}))
+    return {
+        "output_dir": runtime_cfg.get("output_dir", ""),
+        "config_name": runtime_cfg.get("config_name", ""),
+        "dataset_name": state.dataset_name,
+        "graph_path": state.graph_path,
+    }
+
+
 def plan_agent(
     state: PHMState,
     protocol: DatasetProtocol,
@@ -83,6 +93,7 @@ def plan_agent(
         dag_json=state.dag.model_dump() if state.dag else None,
         reflection=state.reflection_history,
         operator_catalog_summary=catalog.summary(),
+        trace_context=_planner_trace_context(state),
     )
     response = chain.invoke({"prompt": prompt})
     state.step_plan = StepPlan.model_validate_json(response.content)

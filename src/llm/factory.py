@@ -6,7 +6,6 @@ from typing import Any, Dict
 
 from .base import LLMClient
 from .providers import CodexCliLLM, OfflineLLM, OpenAICodexLLM, OpenRouterLLM
-from .structured import _structured_provider_kind
 
 
 def _default_api_key_env(provider: str) -> str:
@@ -31,7 +30,19 @@ def _default_model(provider: str) -> str:
     normalized = provider.strip().lower()
     if normalized in {"openai", "codex_cli"}:
         return "gpt-5.3-codex"
-    return "stepfun/step-3.5-flash:free"
+    return "z-ai/glm-4.5-air:free"
+
+
+def _stage_b_active_model(llm_cfg: Dict[str, Any], provider: str) -> str:
+    stage_b_cfg = llm_cfg.get("stage_b", {})
+    if not isinstance(stage_b_cfg, dict):
+        return ""
+    normalized = provider.strip().lower()
+    if normalized == "codex_cli":
+        return str(stage_b_cfg.get("codex_active_model") or "")
+    if normalized == "openrouter":
+        return str(stage_b_cfg.get("openrouter_active_model") or "")
+    return ""
 
 
 def get_llm(config: Dict[str, Any]) -> LLMClient:
@@ -43,6 +54,7 @@ def get_llm(config: Dict[str, Any]) -> LLMClient:
     default_api_key_env = _default_api_key_env(provider)
     default_base_url = _default_base_url(provider)
     default_model = _default_model(provider)
+    stage_b_active_model = _stage_b_active_model(llm_cfg, provider)
     legacy_provider = "openrouter" if provider in {"openai", "codex_cli"} else "openai"
     legacy_api_key_env = _default_api_key_env(legacy_provider)
     legacy_base_url = _default_base_url(legacy_provider)
@@ -50,12 +62,12 @@ def get_llm(config: Dict[str, Any]) -> LLMClient:
 
     configured_api_key_env = str(llm_cfg.get("api_key_env") or default_api_key_env)
     configured_base_url = str(llm_cfg.get("base_url") or default_base_url)
-    configured_model = str(llm_cfg.get("model") or default_model)
+    configured_model = str(llm_cfg.get("model") or stage_b_active_model or default_model)
     if configured_api_key_env == legacy_api_key_env:
         configured_api_key_env = default_api_key_env
     if configured_base_url == legacy_base_url:
         configured_base_url = default_base_url
-    if configured_model == legacy_model:
+    if configured_model == legacy_model and not llm_cfg.get("model") and not stage_b_active_model:
         configured_model = default_model
 
     if mode == "offline_stub":
@@ -109,11 +121,9 @@ def get_llm(config: Dict[str, Any]) -> LLMClient:
             retry_once=bool(config.get("runtime", {}).get("provider_retry_once", True)),
             http_referer=str(llm_cfg.get("http_referer", "")).strip() or None,
             app_title=str(llm_cfg.get("app_title", "")).strip() or None,
+            planner_smoke_timeout_sec=float(llm_cfg.get("planner_smoke_timeout_sec", 15.0)),
         )
-    raise ValueError(
-        f"Unsupported llm configuration: provider={provider}, mode={mode}, "
-        f"structured_kind={_structured_provider_kind(provider, configured_model)}"
-    )
+    raise ValueError(f"Unsupported llm configuration: provider={provider}, mode={mode}, model={configured_model}")
 
 
 __all__ = ["get_llm"]

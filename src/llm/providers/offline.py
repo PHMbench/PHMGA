@@ -33,8 +33,9 @@ class OfflineLLM:
         dag_json: Optional[Dict[str, Any]],
         reflection: Iterable[str],
         operator_catalog_summary: Iterable[Dict[str, Any]],
+        trace_context: Optional[Dict[str, Any]] = None,
     ) -> StepPlan:
-        del prompt, instruction, reflection
+        del prompt, instruction, reflection, trace_context
         steps: list[dict[str, Any]] = []
         if not dag_json or not dag_json.get("nodes"):
             roots = signal_context.root_node_ids

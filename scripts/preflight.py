@@ -1,26 +1,16 @@
-"""Preflight checks for config, protocol, operators, and graph paths."""
+"""Library preflight checks invoked by the root Hydra entrypoint."""
 
 from __future__ import annotations
 
-import argparse
-import json
 import shutil
-import sys
-from pathlib import Path
-from typing import Any, Dict, Union
+from typing import Any, Dict
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from src.config import load_runtime_config
 from src.data import build_protocol_from_config
 from src.operators import get_operator_catalog
 
 
-def run_preflight(config_input: Union[str, Path, Dict[str, Any]]) -> dict:
+def run_preflight(runtime_config: Dict[str, Any]) -> Dict[str, Any]:
     """Validate one resolved config against the shared runtime contract."""
-    runtime_config = load_runtime_config(config_input)
     protocol = build_protocol_from_config(runtime_config)
     catalog = get_operator_catalog()
     llm_cfg = dict(runtime_config.get("llm", {}))
@@ -55,15 +45,3 @@ def run_preflight(config_input: Union[str, Path, Dict[str, Any]]) -> dict:
         "operators": [spec.op_uid for spec in catalog.specs()],
         "llm_transport": llm_transport,
     }
-
-
-def main() -> None:
-    """CLI entrypoint for repository preflight checks."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    args = parser.parse_args()
-    print(json.dumps(run_preflight(args.config), ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()

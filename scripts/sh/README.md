@@ -7,19 +7,17 @@
 - [doc/experiments/00_manual_runbook.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/00_manual_runbook.md)
 - [doc/experiments/01_result_ledger.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/01_result_ledger.md)
 - [doc/experiments/02_main_tables.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/02_main_tables.md)
-- [doc/experiments/04_codex_cli_handoff.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/04_codex_cli_handoff.md)
+- [doc/experiments/04_execution_protocol.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/04_execution_protocol.md)
 - [doc/experiments/05_worker_result_template.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/05_worker_result_template.md)
-- [doc/experiments/06_multi_agent_merge_checklist.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/06_multi_agent_merge_checklist.md)
 
 ## Role
 
 - 这些脚本只是 `python main.py +runs=...` 的薄包装。
 - `scripts/sh/_common.sh` 是共享 helper，不是实验 wrapper。
 - Pilot wrapper 会先跑 `runtime.action=preflight`，并强制 `llm.mode=offline_stub`。
-- Main wrapper 会检查对应 pilot 的 `final_report.md`，并默认继承 Formal Main 已冻结的 Codex tuple。
-- Main wrapper 会检查对应 pilot 的 `final_report.md`，并默认继承当前 wrapper 默认 tuple：
-  - `codex_cli / gpt-5.3-codex`
+- Main wrapper 会检查对应 pilot 的 `final_report.md`。
 - Ablation wrapper 只封装 runbook 中已经写死的 override。
+- wrapper 自身不是 backend / stage 语义的权威来源；正式实验含义以 `doc/experiments/*` 和 `config/runs/*.yaml` 为准。
 
 ## Current Wrapper Groups
 
@@ -37,13 +35,7 @@
   - smoke only
   - 总是显式传入 `llm.mode=offline_stub`
 - `main/`
-  - 默认继承当前 wrapper 默认 tuple：
-    - `provider=codex_cli`
-    - `model=gpt-5.3-codex`
-  - 可通过环境变量临时覆盖：
-    - `PHMGA_LLM_PROVIDER`
-    - `PHMGA_LLM_MODEL`
-  - 当 `doc/experiments/01_result_ledger.md` 顶部 `selected_global_best_backend` 与默认值不一致时，Formal Main / ablation worker 必须覆盖
+  - 只提供 Formal Main 常用命令别名
   - 例如：
 
 ```bash
@@ -53,10 +45,9 @@
 - `ablation/provider/`
   - 不是“正式默认 main”
   - 用于 Stage B backend comparison 的 active set
-  - 当前已提供：
-    - `*openrouter.sh` -> 默认 `stepfun/step-3.5-flash:free`
-    - `*codex.sh` -> 默认 `gpt-5.3-codex`，作为当前 active Codex comparison tuple
-  - 这些 wrapper 会锁住 provider，仅允许通过 `PHMGA_LLM_MODEL` 覆盖模型名
+  - 当前已提供 Codex / OpenRouter comparison wrappers
+  - 历史 `StepFun` comparison row 继续保留在 ledger 中，但不再是当前 wrapper 默认 tuple
+  - 这些 wrapper 只是对 runbook 当前 comparison 命令的便利封装
 
 当前不再通过 shell wrapper 暴露 WaveFilters 实验；WaveFilters 仍以研究计划形式保留在：
 
@@ -86,7 +77,6 @@
 
 如果这些 wrapper 交给其他 Codex CLI worker 执行，必须同时遵守：
 
-- `doc/experiments/04_codex_cli_handoff.md`
+- `doc/experiments/04_execution_protocol.md`
 - `doc/experiments/05_worker_result_template.md`
-- `doc/experiments/06_multi_agent_merge_checklist.md`
 - `doc/experiments/handoff/*.md`

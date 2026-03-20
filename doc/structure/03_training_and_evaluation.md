@@ -35,7 +35,7 @@
 
 当前输出：
 
-- `dag.json`
+- `validated_dag.json`
 - `compiled_dag_manifest.json`
 - `dag_graph.md`
 - `dag_artifacts.json`
@@ -43,6 +43,7 @@
 - `method_description.md`
 - `resolved_splits.json`
 - `resolved_dataset_manifest.json`
+- `artifact_index.json`
 - `workflow_state.json`
 - `dag_quality_summary.json`
 - `final_report.md`
@@ -51,7 +52,7 @@
 
 当前输出：
 
-- `dag.json`
+- `validated_dag.json`
 - `compiled_dag_manifest.json`
 - `feature_pipeline.json`
 - `decision_side_outputs.json`
@@ -61,6 +62,7 @@
 - `similarity_artifacts.json`
 - `resolved_splits.json`
 - `resolved_dataset_manifest.json`
+- `artifact_index.json`
 - `workflow_state.json`
 - `dag_quality_summary.json`
 - `final_report.md`
@@ -69,7 +71,7 @@
 
 当前输出：
 
-- `dag.json`
+- `validated_dag.json`
 - `compiled_dag_manifest.json`
 - `model_build_plan.json`
 - `decision_side_outputs.json`
@@ -77,13 +79,19 @@
 - `checkpoint.json`
 - `importance.json`
 - `metrics.json`
-- `predictions.json`
 - `similarity_artifacts.json`
 - `resolved_splits.json`
 - `resolved_dataset_manifest.json`
+- `artifact_index.json`
 - `workflow_state.json`
 - `dag_quality_summary.json`
 - `final_report.md`
+
+说明：
+
+- `resolved_dataset_manifest.json` 不再展开 `splits`
+- `resolved_splits.json` 是唯一 split membership artifact
+- `workflow_state.json` 只保存状态快照与 `artifact_index_path`
 
 ## `dag_quality_evaluator` 的位置
 

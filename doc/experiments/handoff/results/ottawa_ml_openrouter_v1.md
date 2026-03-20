@@ -51,6 +51,8 @@ Unavailable. The run failed in planning.
 
 `stepfun/step-3.5-flash:free` did not produce a planner response that could be normalized into `StepPlan` on Ottawa, even after the existing repair pass.
 
+This row is preserved as a historical comparison failure and is no longer part of the current active Stage B set.
+
 ## Notes
 
 This is a direct Stage B rejection signal for the active OpenRouter tuple on Ottawa.

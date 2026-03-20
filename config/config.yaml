@@ -1,8 +1,8 @@
 defaults:
   # Root default stays a smoke/development baseline.
   # Paper mainline is frozen by config/runs/*.yaml, not by this file.
-  - data: rm101_synth
-  - experiment: dag_only
+  - optional data: null
+  - optional experiment: null
   - model: default
   - override hydra/job_logging: disabled
   - override hydra/hydra_logging: disabled
@@ -13,8 +13,8 @@ project:
   version: journal_thesis_rebuild
 
 llm:
-  # Root baseline keeps the canonical provider tuple visible for inheritance,
-  # but mode stays offline_stub so this file does not define paper mainline behavior.
+  # Root baseline only carries transport/runtime defaults.
+  # Formal paper runs must freeze provider/model via config/runs/*.yaml.
   provider: codex_cli
   mode: offline_stub
   model: gpt-5.3-codex
@@ -26,12 +26,6 @@ llm:
   max_tokens_report: 2000
   http_referer: null
   app_title: PHMGA
-
-artifacts:
-  keep:
-    - dag_json
-    - compiled_manifest
-    - final_report
 
 model:
   ml:

@@ -16,9 +16,9 @@
 ## Expected Experiment IDs
 
 - `ottawa_ml_codex_v1`
-- `ottawa_ml_openrouter_v1`
+- `ottawa_ml_openrouter_glm_v1`
 - `rm101_ml_codex_v1`
-- `rm101_ml_openrouter_v1`
+- `rm101_ml_openrouter_glm_v1`
 
 ## Worker ID
 
@@ -27,9 +27,9 @@
 ## Result Files
 
 - `doc/experiments/handoff/results/ottawa_ml_codex_v1.md`
-- `doc/experiments/handoff/results/ottawa_ml_openrouter_v1.md`
+- `doc/experiments/handoff/results/ottawa_ml_openrouter_glm_v1.md`
 - `doc/experiments/handoff/results/rm101_ml_codex_v1.md`
-- `doc/experiments/handoff/results/rm101_ml_openrouter_v1.md`
+- `doc/experiments/handoff/results/rm101_ml_openrouter_glm_v1.md`
 
 ## Preconditions
 
@@ -37,6 +37,7 @@
 - `OPENROUTER_API_KEY` 已设置
 - 对应 dataset 的 pilot 已完成并记账
 - 当前 active Stage B set 以 `doc/experiments/01_result_ledger.md` 顶部 YAML block 为准
+- 旧 `*_openrouter_v1` StepFun row 只保留为历史失败记录，不是本轮执行目标
 
 ## Success Criteria
 

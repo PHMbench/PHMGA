@@ -16,13 +16,26 @@ from ..base import LLMProviderError, LLMSchemaError
 from ..structured import (
     _deterministic_param_resolution,
     _extract_message_text,
+    _json_text_preview,
     _local_param_resolution,
     _parse_json_object,
     _parse_plan_text_payload,
     _parse_reflection_text_payload,
     _repair_prompt,
-    _structured_mode_for_model,
 )
+from ..tracing import append_planner_trace_event, write_planner_text_artifact
+
+
+def _provider_structured_mode_for_model(model: str) -> Literal["json_mode", "text_mode"]:
+    normalized = model.strip().lower()
+    text_mode_models = {
+        "stepfun/step-3.5-flash:free",
+        "stepfun/step-3.5-flash",
+        "z-ai/glm-4.5-air:free",
+    }
+    if any(normalized == item or normalized.startswith(item.split(":")[0]) for item in text_mode_models):
+        return "text_mode"
+    return "json_mode"
 
 
 @dataclass
@@ -42,6 +55,50 @@ class OpenRouterLLM:
     http_referer: Optional[str] = None
     app_title: Optional[str] = "PHMGA"
     http_client: Optional[httpx.Client] = field(default=None, repr=False)
+
+    def _record_planner_normalization_event(
+        self,
+        trace_context: Optional[Dict[str, Any]],
+        *,
+        attempt: str,
+        status: str,
+        raw_response_file: Optional[str] = None,
+        parsed_step_count: Optional[int] = None,
+        message: Optional[str] = None,
+    ) -> None:
+        append_planner_trace_event(
+            trace_context,
+            filename="planner_normalization_trace.json",
+            provider=self.provider,
+            model=self.model,
+            event={
+                "attempt": attempt,
+                "status": status,
+                "raw_response_file": raw_response_file,
+                "parsed_step_count": parsed_step_count,
+                "message": message,
+            },
+        )
+
+    def _record_planner_transport_event(
+        self,
+        trace_context: Optional[Dict[str, Any]],
+        *,
+        stage: str,
+        status: str,
+        message: str,
+    ) -> None:
+        append_planner_trace_event(
+            trace_context,
+            filename="planner_transport_trace.json",
+            provider=self.provider,
+            model=self.model,
+            event={
+                "stage": stage,
+                "status": status,
+                "message": message,
+            },
+        )
 
     def _api_key(self) -> str:
         api_key = os.getenv(self.api_key_env, "").strip()
@@ -69,7 +126,7 @@ class OpenRouterLLM:
         return self.http_client
 
     def _request_text(self, *, prompt: str, max_tokens: int, expect_json: bool) -> str:
-        structured_mode = _structured_mode_for_model(self.model)
+        structured_mode = _provider_structured_mode_for_model(self.model)
         body: Dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
@@ -119,7 +176,7 @@ class OpenRouterLLM:
         return _extract_message_text(payload)
 
     def _request_json_object(self, *, prompt: str, max_tokens: int) -> Dict[str, Any]:
-        structured_mode = _structured_mode_for_model(self.model)
+        structured_mode = _provider_structured_mode_for_model(self.model)
         effective_prompt = prompt
         if structured_mode == "text_mode":
             effective_prompt = (
@@ -145,26 +202,101 @@ class OpenRouterLLM:
         dag_json: Optional[Dict[str, Any]],
         reflection: Iterable[str],
         operator_catalog_summary: Iterable[Dict[str, Any]],
+        trace_context: Optional[Dict[str, Any]] = None,
     ) -> StepPlan:
         del instruction, signal_context, dag_json, reflection, operator_catalog_summary
-        text = self._request_text(prompt=prompt, max_tokens=self.max_tokens_structured, expect_json=True)
+        if str((trace_context or {}).get("graph_path", "")).strip().lower() != "ml":
+            trace_context = None
         try:
-            payload = _parse_plan_text_payload(text, model=self.model, provider=self.provider)
+            text = self._request_text(prompt=prompt, max_tokens=self.max_tokens_structured, expect_json=True)
+        except LLMProviderError as exc:
+            self._record_planner_transport_event(
+                trace_context,
+                stage="planner_full",
+                status="transport_error",
+                message=str(exc),
+            )
+            raise
+        normalized_from_attempt = "initial"
+        raw_response_file = write_planner_text_artifact(
+            trace_context,
+            filename="planner_raw_response.txt",
+            content=text,
+        )
+        try:
+            payload = _parse_plan_text_payload(
+                text,
+                model=self.model,
+                provider=self.provider,
+                allow_text_fallback=False,
+            )
         except LLMSchemaError as first_error:
+            self._record_planner_normalization_event(
+                trace_context,
+                attempt="initial",
+                status="schema_error",
+                raw_response_file=raw_response_file,
+                message=str(first_error),
+            )
             if not self.retry_once:
                 raise
-            repair_text = self._request_text(
-                prompt=_repair_prompt(task="plan", original_prompt=prompt, raw_response=text),
-                max_tokens=self.max_tokens_structured,
-                expect_json=True,
+            try:
+                repair_text = self._request_text(
+                    prompt=_repair_prompt(task="plan", original_prompt=prompt, raw_response=text),
+                    max_tokens=self.max_tokens_structured,
+                    expect_json=True,
+                )
+            except LLMProviderError as exc:
+                self._record_planner_transport_event(
+                    trace_context,
+                    stage="planner_repair",
+                    status="transport_error",
+                    message=str(exc),
+                )
+                raise
+            repair_response_file = write_planner_text_artifact(
+                trace_context,
+                filename="planner_repair_response.txt",
+                content=repair_text,
             )
             try:
-                payload = _parse_plan_text_payload(repair_text, model=self.model, provider=self.provider)
+                payload = _parse_plan_text_payload(
+                    repair_text,
+                    model=self.model,
+                    provider=self.provider,
+                    allow_text_fallback=True,
+                )
+                normalized_from_attempt = "repair"
+                raw_response_file = repair_response_file
+                text = repair_text
             except LLMSchemaError as second_error:
+                self._record_planner_normalization_event(
+                    trace_context,
+                    attempt="repair",
+                    status="schema_error",
+                    raw_response_file=repair_response_file,
+                    message=f"{first_error} | repair_attempt_failed={second_error}",
+                )
                 raise LLMSchemaError(f"{first_error} | repair_attempt_failed={second_error}") from second_error
+        self._record_planner_normalization_event(
+            trace_context,
+            attempt=normalized_from_attempt,
+            status="normalized",
+            raw_response_file=raw_response_file,
+            parsed_step_count=len(payload.get("plan", [])),
+            message=f"text_preview={_json_text_preview(text)!r}",
+        )
         try:
             return StepPlan.model_validate(payload)
         except Exception as exc:
+            self._record_planner_normalization_event(
+                trace_context,
+                attempt="validated",
+                status="validation_error",
+                raw_response_file=raw_response_file,
+                parsed_step_count=len(payload.get("plan", [])),
+                message=str(exc),
+            )
             raise LLMSchemaError(f"Planner response failed StepPlan validation: {exc}") from exc
 
     def resolve_missing_params(

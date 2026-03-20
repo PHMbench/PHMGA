@@ -1,10 +1,10 @@
-# OpenRouter StepFun Incident Note
+# OpenRouter Candidate Note
 
 **Date**: 2026-03-18
 **Provider**: `openrouter`
-**Model**: `stepfun/step-3.5-flash:free`
+**Current Active Model**: `z-ai/glm-4.5-air:free`
 
-## Status: Fixed In Client, Still Requires Backend-Comparison Validation
+## Status: StepFun Historical Failure Preserved, GLM Is Current Active Candidate
 
 The original failure was not a provider outage. The issue was that PHMGA treated
 `stepfun/step-3.5-flash:free` as a JSON-mode structured model, while real
@@ -55,21 +55,22 @@ The provider client now does three things:
 This means the current contract is:
 
 - provider remains `openrouter`
-- `stepfun/step-3.5-flash:free` is the current active OpenRouter backend comparison candidate
+- `z-ai/glm-4.5-air:free` is the current active OpenRouter backend comparison candidate
+- `stepfun/step-3.5-flash:free` remains a historical comparison failure and registry candidate
 - structured agent calls no longer hard depend on JSON mode
 - it is not the formal main default
-- it only becomes eligible for `selected_global_best_backend` if it passes Stage B artifact and feature separability gates on both datasets
+- an OpenRouter tuple only becomes eligible for `selected_global_best_backend` if it passes Stage B artifact and feature separability gates on both datasets
 
 ## Current Limitation
 
-What is still missing is not the parser fix, but real-network confirmation under
-backend-comparison conditions. Local tests cover the text-mode parsing path,
-but the tuple still needs Stage B end-to-end evidence before it can compete for
-global backend selection.
+What is still missing is Stage B end-to-end evidence for the current active GLM tuple.
+The StepFun parser path remains valuable as a historical incident record, but it is
+not part of the current selection round.
 
 ## Conclusion
 
-- Do not switch provider.
-- Treat this model as a text-mode structured provider on OpenRouter.
-- Do not freeze this model into formal main unless it wins Stage B backend comparison.
+- Do not switch provider family to chase the incident.
+- Keep StepFun as a historical comparison failure and registry candidate.
+- Treat `z-ai/glm-4.5-air:free` as the current active OpenRouter comparison candidate.
+- Do not freeze any OpenRouter tuple into formal main unless it wins Stage B backend comparison.
 - Judge success by whether the full PHMGA chain works, artifacts are complete, and feature separability evidence passes, not by whether JSON mode is used.

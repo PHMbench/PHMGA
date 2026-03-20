@@ -19,6 +19,6 @@
 
 ## 当前实现事实
 
-- 正式人类入口是根目录 `main.py`；`scripts/preflight.py` 和 `scripts/run_case.py` 只作为兼容入口保留。
+- 正式人类入口是根目录 `main.py`；`scripts/preflight.py` 和 `scripts/run_case.py` 只作为由 `main.py` 调用的库模块保留。
 - `config/data/rm101.yaml` 对应 `RM_101_THU_GEARBOX`，`config/data/ottawa.yaml` 对应 `RM_017_Ottawa19`。
 - `torch` path 当前是最小 trainable surrogate，不是完整 PyTorch 训练框架。

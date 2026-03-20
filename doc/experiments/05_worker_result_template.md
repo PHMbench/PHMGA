@@ -1,6 +1,6 @@
 # Worker Result Template
 
-每个 Codex CLI worker 在完成一次实验后，必须先填写一份结果报告，再更新 `doc/experiments/01_result_ledger.md`。
+每个 Codex CLI worker 在完成一次实验后，先写结果报告，再更新 `doc/experiments/01_result_ledger.md`。制度说明见 `doc/experiments/04_execution_protocol.md`，本文件只保留模板和字段规则。
 
 结果报告文件固定放在：
 
@@ -95,12 +95,4 @@
 - `feature_separability_summary`
   - 直接引用 `feature_separability_summary.json`
 - `progress_record`
-  - 优先引用 `progress.json`
   - 如果没有 runtime-native 文件，必须在这里写出阶段进展记录
-
-## Writeback Order
-
-1. 先写 `results/<experiment_id>.md`
-2. 再写 `doc/experiments/01_result_ledger.md`
-
-不要反过来执行。worker 报告是低冲突原始证据，ledger 是正式汇总源。

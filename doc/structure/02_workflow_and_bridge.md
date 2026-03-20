@@ -264,6 +264,11 @@ class RoundTrace:
 - `last_stable_execution_results`
 - `dag_quality_summary`
 
+运行时 artifact 约束：
+
+- 完整 artifact 索引只写入 `artifact_index.json`
+- `workflow_state.json` 只保存状态快照与 `artifact_index_path`
+
 ## 四个主路径 agent 的正式输入输出
 
 ### `plan_agent`
@@ -316,7 +321,7 @@ class RoundTrace:
    - `StepPlan.params`
    - state / signal-context derived values
    - operator schema defaults
-   - LLM 对 `llm_tunable_params` 做补全或优化
+   - 仅当仍有缺失的 `llm_tunable_params` 时，LLM 才做补全或优化
 5. 无法执行时必须写 `ExecutionGap`
 
 当前额外边界：

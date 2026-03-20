@@ -19,14 +19,14 @@ PLAN_PROMPT_INPUT_FIELDS = (
     "min_width",
 )
 PLAN_PROMPT_OUTPUT_FIELDS = (
-    'Fallback text format: `- parent=<node_id_or_csv> op=<operator_name> params=<json_object>`',
     '{"plan": [{"parent": "...", "op_name": "...", "params": {...}}]}',
 )
 PLAN_PROMPT_PROHIBITIONS = (
     "invent operators that are not present in tools",
     "modify model or training parameters",
-    "emit unconstrained prose that cannot be normalized into a step plan",
-    "describe the output format instead of producing the plan itself",
+    "emit any DSL or free-form text instead of strict JSON",
+    "emit unconstrained prose that cannot be parsed as StepPlan JSON",
+    "describe the output format instead of producing the JSON itself",
 )
 
 PLAN_PROMPT_TEMPLATE = """You are a world-class AI strategist specializing in signal processing for Prognostics and Health Management (PHM).
@@ -40,12 +40,14 @@ Strategic guidance:
 5. If the task mentions rotating machinery, bearings, gears, transients, or modulation, consider `hilbert_envelope`, `stft`, `patch`, and cross-channel analysis when available.
 6. Use any existing node as a parent when that grows the DAG logically.
 7. Respect signal shapes and rank behavior. Do not apply aggregate statistics to nodes that are already reduced features.
-8. Use `schema_category`, `rank_class`, `input_spec`, `output_spec`, `description`, and `planning_notes` to choose legal next steps.
+8. Use `schema_category`, `rank_class`, `description`, and `planning_notes` to choose legal next steps.
 
 Rules:
 - Each plan item must contain `parent`, `op_name`, and `params`.
+- `params` must be a JSON object, not a string.
 - The plan must remain executable by the operator catalog.
 - Use operator `schema_category`, `description`, and `planning_notes` to choose PHM-relevant expansions.
+- Output strict JSON only.
 - Do not explain the plan.
 - Do not say “here is the plan”.
 - Do not describe the JSON.
@@ -60,13 +62,25 @@ Minimum depth: {min_depth}
 Minimum width: {min_width}
 
 OUTPUT FORMAT (highest priority):
-1. Preferred output is strict JSON:
+Return strict JSON only:
 {{"plan": [{{"parent": "ch1", "op_name": "normalize", "params": {{"eps": 1e-6}}}}]}}
-2. If strict JSON is not possible, output DSL lines only:
-- parent=ch1 op=normalize params={{"eps": 1e-6}}
-- parent=normalize_01_ch1,normalize_01_ch2 op=cross_correlation params={{}}
-3. Output only JSON or DSL lines. No prose before or after.
+No prose before or after. No DSL. No markdown fence.
 """
+
+
+def _planner_tool_view(tools: Iterable[Dict[str, Any]]) -> list[Dict[str, Any]]:
+    compact: list[Dict[str, Any]] = []
+    for tool in tools:
+        compact.append(
+            {
+                "op_name": tool.get("op_name"),
+                "schema_category": tool.get("schema_category"),
+                "rank_class": tool.get("rank_class"),
+                "description": str(tool.get("description", "")).strip(),
+                "planning_notes": str(tool.get("planning_notes", "")).strip(),
+            }
+        )
+    return compact
 
 
 def render_plan_prompt(
@@ -94,7 +108,7 @@ def render_plan_prompt(
         instruction=instruction,
         signal_context=json.dumps(signal_context, ensure_ascii=False),
         dag_json=json.dumps(dag_json or {}, ensure_ascii=False),
-        tools=json.dumps(list(tools), ensure_ascii=False),
+        tools=json.dumps(_planner_tool_view(tools), ensure_ascii=False),
         reflection=json.dumps(list(reflection), ensure_ascii=False),
         current_depth=current_depth,
         min_depth=min_depth,

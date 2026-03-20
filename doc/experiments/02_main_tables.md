@@ -35,9 +35,9 @@ Table 3 只记录 Stage B 的 active comparison set。
 | experiment_id | dataset | path | ablation_axis | setting | accuracy | macro_f1 | note |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | ottawa_ml_codex_v1 | Ottawa | ml | backend_comparison | codex_cli / gpt-5.3-codex |  |  | current active codex comparison tuple |
-| ottawa_ml_openrouter_v1 | Ottawa | ml | backend_comparison | openrouter / stepfun/step-3.5-flash:free |  |  | current active OpenRouter comparison tuple |
+| ottawa_ml_openrouter_glm_v1 | Ottawa | ml | backend_comparison | openrouter / z-ai/glm-4.5-air:free |  |  | current active OpenRouter comparison tuple |
 | rm101_ml_codex_v1 | RM101 | ml | backend_comparison | codex_cli / gpt-5.3-codex |  |  | current active codex comparison tuple |
-| rm101_ml_openrouter_v1 | RM101 | ml | backend_comparison | openrouter / stepfun/step-3.5-flash:free |  |  | current active OpenRouter comparison tuple |
+| rm101_ml_openrouter_glm_v1 | RM101 | ml | backend_comparison | openrouter / z-ai/glm-4.5-air:free |  |  | current active OpenRouter comparison tuple |
 
 ### Selection Rule
 

@@ -88,6 +88,14 @@ def to_runtime_dict(
 
     data_cfg = dict(merged.get("data", {}))
     experiment_cfg = dict(merged.get("experiment", {}))
+    if "dataset_name" not in data_cfg:
+        raise ValueError(
+            "Runtime config must select a dataset via +runs=<preset>, data=<group>, or a config path under config/data or config/runs."
+        )
+    if "graph_path" not in experiment_cfg:
+        raise ValueError(
+            "Runtime config must select an experiment path via +runs=<preset>, experiment=<group>, or a config path under config/experiment or config/runs."
+        )
     runtime["dataset_key"] = str(data_cfg.get("key", _slugify(str(data_cfg.get("dataset_name", "")))))
     runtime["dataset_name"] = data_cfg["dataset_name"]
     runtime["graph_path"] = experiment_cfg["graph_path"]

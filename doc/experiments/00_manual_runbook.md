@@ -4,9 +4,8 @@
 
 如果要把实验交给其他 Codex CLI worker 执行，统一使用：
 
-- `doc/experiments/04_codex_cli_handoff.md`
+- `doc/experiments/04_execution_protocol.md`
 - `doc/experiments/05_worker_result_template.md`
-- `doc/experiments/06_multi_agent_merge_checklist.md`
 - `doc/experiments/handoff/*.md`
 
 ## Default Facts
@@ -98,12 +97,12 @@ Stage B 不是单纯的 backend 打分。它先验证：
 #### Codex candidate registry
 
 - `codex_cli / gpt-5.4`
-- `codex_cli / gpt-5.4-mini`
 - `codex_cli / gpt-5.2`
 - `codex_cli / gpt-5.3-codex`
 
 #### OpenRouter candidate registry
 
+- `openrouter / z-ai/glm-4.5-air:free`
 - `openrouter / stepfun/step-3.5-flash:free`
 - `openrouter / google/gemini-2.0-flash-exp`
 - `openrouter / google/gemini-2.5-pro`
@@ -116,7 +115,8 @@ Stage B 不是单纯的 backend 打分。它先验证：
 - 当前 active Stage B set 以 `doc/experiments/01_result_ledger.md` 顶部的 YAML block 为准
 - 当前 shell wrapper 默认对齐的 active set 是：
   - `codex_cli / gpt-5.3-codex`
-  - `openrouter / stepfun/step-3.5-flash:free`
+  - `openrouter / z-ai/glm-4.5-air:free`
+- 历史 StepFun comparison row 保留在 ledger 中，但不计入当前 selection round
 
 ### Entry Rule
 
@@ -153,10 +153,10 @@ Stage B 不是单纯的 backend 打分。它先验证：
 
 ```bash
 python main.py +runs=ottawa_ml llm.mode=provider llm.provider=codex_cli llm.model=gpt-5.3-codex runtime.output_dir=artifacts/paper/ottawa_ml_codex_v1
-python main.py +runs=ottawa_ml llm.mode=provider llm.provider=openrouter llm.model=stepfun/step-3.5-flash:free runtime.output_dir=artifacts/paper/ottawa_ml_openrouter_v1
+python main.py +runs=ottawa_ml llm.mode=provider llm.provider=openrouter llm.model=z-ai/glm-4.5-air:free runtime.output_dir=artifacts/paper/ottawa_ml_openrouter_glm_v1
 
 python main.py +runs=rm101_ml llm.mode=provider llm.provider=codex_cli llm.model=gpt-5.3-codex runtime.output_dir=artifacts/paper/rm101_ml_codex_v1
-python main.py +runs=rm101_ml llm.mode=provider llm.provider=openrouter llm.model=stepfun/step-3.5-flash:free runtime.output_dir=artifacts/paper/rm101_ml_openrouter_v1
+python main.py +runs=rm101_ml llm.mode=provider llm.provider=openrouter llm.model=z-ai/glm-4.5-air:free runtime.output_dir=artifacts/paper/rm101_ml_openrouter_glm_v1
 ```
 
 对应 shell wrapper：

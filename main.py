@@ -25,7 +25,7 @@ def main(cfg: DictConfig) -> None:
     if action == "preflight":
         payload = run_preflight(runtime_config)
     elif action == "run_case":
-        payload = run_case(runtime_config, output_dir=runtime_config["runtime"].get("output_dir"))
+        payload = run_case(runtime_config)
     else:
         raise ValueError(f"Unsupported runtime.action: {action}")
     print(json.dumps(payload, ensure_ascii=False, indent=2))

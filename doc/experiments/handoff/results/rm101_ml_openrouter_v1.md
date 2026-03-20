@@ -53,4 +53,4 @@ Unavailable. The run failed in planning.
 
 ## Notes
 
-This second real-data failure is sufficient to keep the current active OpenRouter tuple out of backend selection.
+This second real-data failure is preserved as a historical comparison result and does not belong to the current active Stage B set.

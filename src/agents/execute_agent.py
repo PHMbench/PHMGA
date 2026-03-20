@@ -12,13 +12,13 @@ import re
 from typing import Any, Dict, List
 
 import numpy as np
-from langchain_core.prompts import ChatPromptTemplate
 
 from src.configuration import Configuration
 from src.dag import DAGTracker, DagNode
 from src.data import DatasetProtocol, materialize_preview_signal
 from src.llm import LLMClient
-from src.model import LangChainLLMAdapter, get_llm
+from src.llm import get_llm as get_llm_client
+from src.llm.structured import _local_param_resolution
 from src.operators import OperatorCatalog
 from src.prompts import render_param_resolution_prompt
 from src.states import ExecutionGap, PHMState
@@ -133,10 +133,10 @@ def _existing_nodes(state: PHMState, tracker: DAGTracker) -> None:
         tracker.add_node(node)
 
 
-def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LangChainLLMAdapter:
+def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LLMClient:
     if llm is not None:
-        return LangChainLLMAdapter(llm)
-    return get_llm(Configuration.from_runtime_config(state.runtime_config))
+        return llm
+    return get_llm_client(Configuration.from_runtime_config(state.runtime_config).to_runtime_dict())
 
 
 def _execute_single(op, parent_result: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
@@ -170,7 +170,7 @@ def execute_agent(
     existing_node_ids = [node.node_id for node in tracker.export().nodes]
     alias_to_canonical: Dict[str, str] = {node_id: node_id for node_id in existing_node_ids}
     state.execution_gaps = []
-    llm_adapter = _resolve_llm(state, llm)
+    llm_client = _resolve_llm(state, llm)
 
     for step_index, step in enumerate(state.step_plan.plan, start=1):
         raw_parent_ids = [item.strip() for item in step.parent.split(",") if item.strip()]
@@ -225,35 +225,51 @@ def execute_agent(
         ]
 
         try:
-            unresolved_tunable = [
-                param_name
-                for param_name in operator.spec.param_schema
-                if param_name not in step.params and param_name in operator.spec.llm_tunable_params
-            ]
-            prompt = render_param_resolution_prompt(
-                op_name=step.op_name,
-                requested_params=unresolved_tunable,
+            provided_params = dict(step.params)
+            locally_resolved = _local_param_resolution(
                 param_schema=operator.spec.param_schema,
                 param_defaults=operator.spec.param_defaults,
-                param_docs=operator.spec.param_docs,
-                llm_tunable_params=operator.spec.llm_tunable_params,
-                provided_params=step.params,
-                signal_context=state.signal_context.model_dump(),
-                parent_summaries=parent_summaries,
-            )
-            chain = ChatPromptTemplate.from_template("{prompt}") | llm_adapter.bind_task(
-                "param",
-                op_name=step.op_name,
-                param_schema=operator.spec.param_schema,
-                param_defaults=operator.spec.param_defaults,
-                param_docs=operator.spec.param_docs,
-                llm_tunable_params=operator.spec.llm_tunable_params,
-                provided_params=step.params,
+                provided_params=provided_params,
                 signal_context=state.signal_context,
                 parent_summaries=parent_summaries,
             )
-            response = chain.invoke({"prompt": prompt})
-            params = json.loads(response.content)
+            missing_params = [
+                param_name for param_name in operator.spec.param_schema if param_name not in locally_resolved
+            ]
+            missing_non_tunable = [
+                param_name for param_name in missing_params if param_name not in operator.spec.llm_tunable_params
+            ]
+            if missing_non_tunable:
+                raise ValueError(f"Missing required parameter(s) {missing_non_tunable} for op '{step.op_name}'.")
+
+            unresolved_tunable = [
+                param_name for param_name in missing_params if param_name in operator.spec.llm_tunable_params
+            ]
+            if not unresolved_tunable:
+                params = locally_resolved
+            else:
+                prompt = render_param_resolution_prompt(
+                    op_name=step.op_name,
+                    requested_params=unresolved_tunable,
+                    param_schema=operator.spec.param_schema,
+                    param_defaults=operator.spec.param_defaults,
+                    param_docs=operator.spec.param_docs,
+                    llm_tunable_params=operator.spec.llm_tunable_params,
+                    provided_params=provided_params,
+                    signal_context=state.signal_context.model_dump(),
+                    parent_summaries=parent_summaries,
+                )
+                params = llm_client.resolve_missing_params(
+                    prompt=prompt,
+                    op_name=step.op_name,
+                    param_schema=operator.spec.param_schema,
+                    param_defaults=operator.spec.param_defaults,
+                    param_docs=operator.spec.param_docs,
+                    llm_tunable_params=operator.spec.llm_tunable_params,
+                    provided_params=provided_params,
+                    signal_context=state.signal_context,
+                    parent_summaries=parent_summaries,
+                )
         except ValueError as exc:
             state.execution_gaps.append(
                 ExecutionGap(

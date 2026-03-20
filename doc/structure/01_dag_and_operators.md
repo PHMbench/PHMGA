@@ -276,7 +276,7 @@
    - `StepPlan.params`
    - state / signal-context derived values
    - `OperatorSpec.param_defaults`
-   - LLM 对 `llm_tunable_params` 做补全或优化
+   - 仅当 tunable 参数仍缺失时，LLM 对 `llm_tunable_params` 做补全或优化
 3. materialize 节点并写回 `execution_results`
 
 也就是说，LLM 只允许触碰 operator params，不允许越权触碰 training/model hyperparameters。

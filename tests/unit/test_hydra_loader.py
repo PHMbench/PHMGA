@@ -13,6 +13,7 @@ def test_load_runtime_config_still_accepts_run_preset_paths():
 
     assert runtime_config["data"]["dataset_name"] == "RM101_SYNTH"
     assert runtime_config["experiment"]["graph_path"] == "dag_only"
+    assert runtime_config["experiment"]["user_instruction"] == "Generate a paper-ready PHM workflow from canonical metadata."
     assert runtime_config["runtime"]["config_name"] == "rm101_synth_dag"
     assert runtime_config["runtime"]["action"] == "run_case"
 
@@ -23,5 +24,6 @@ def test_hydra_compose_and_plain_dict_conversion_match_path_loading():
 
     assert runtime_config["data"]["dataset_name"] == "RM101_SYNTH"
     assert runtime_config["experiment"]["graph_path"] == "ml"
+    assert runtime_config["experiment"]["user_instruction"] == "Generate a paper-ready PHM workflow from canonical metadata."
     assert runtime_config["runtime"]["action"] == "run_case"
     assert runtime_config["runtime"]["config_path"] == "<hydra>"

@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
@@ -16,7 +17,6 @@ from src.states import ExecutionGap, ReflectionResult, SignalContext, StepPlan
 from ..base import LLMProviderError, LLMSchemaError
 from ..structured import (
     _codex_reflection_schema,
-    _codex_step_plan_schema,
     _deterministic_param_resolution,
     _json_text_preview,
     _local_param_resolution,
@@ -26,6 +26,7 @@ from ..structured import (
     _parse_reflection_text_payload,
     _repair_prompt,
 )
+from ..tracing import append_planner_trace_event, write_planner_text_artifact
 from .http_provider import OpenRouterLLM
 
 
@@ -44,6 +45,7 @@ class CodexCliLLM(OpenRouterLLM):
     working_dir: str = field(default_factory=lambda: str(Path(__file__).resolve().parents[3]))
     sandbox_mode: str = "read-only"
     reasoning_effort: str = "low"
+    planner_smoke_timeout_sec: float = 15.0
 
     def _resolve_codex_bin(self) -> str:
         binary = shutil.which(self.codex_bin)
@@ -61,11 +63,76 @@ class CodexCliLLM(OpenRouterLLM):
             prefix += "Return only the final markdown answer.\n\n"
         return prefix + prompt
 
-    def _codex_exec(self, *, prompt: str, schema: Optional[Dict[str, Any]] = None) -> str:
+    def _record_transport_event(
+        self,
+        trace_context: Optional[Dict[str, Any]],
+        *,
+        stage: str,
+        status: str,
+        timeout_sec: float,
+        elapsed_sec: float,
+        stdout_preview: str = "",
+        stderr_preview: str = "",
+        output_preview: str = "",
+        message: Optional[str] = None,
+    ) -> None:
+        append_planner_trace_event(
+            trace_context,
+            filename="planner_transport_trace.json",
+            provider=self.provider,
+            model=self.model,
+            event={
+                "stage": stage,
+                "status": status,
+                "timeout_sec": timeout_sec,
+                "elapsed_sec": round(elapsed_sec, 3),
+                "stdout_preview": stdout_preview,
+                "stderr_preview": stderr_preview,
+                "output_preview": output_preview,
+                "message": message,
+            },
+        )
+
+    def _record_normalization_event(
+        self,
+        trace_context: Optional[Dict[str, Any]],
+        *,
+        attempt: str,
+        status: str,
+        raw_response_file: Optional[str] = None,
+        parsed_step_count: Optional[int] = None,
+        message: Optional[str] = None,
+    ) -> None:
+        append_planner_trace_event(
+            trace_context,
+            filename="planner_normalization_trace.json",
+            provider=self.provider,
+            model=self.model,
+            event={
+                "attempt": attempt,
+                "status": status,
+                "raw_response_file": raw_response_file,
+                "parsed_step_count": parsed_step_count,
+                "message": message,
+            },
+        )
+
+    def _codex_exec(
+        self,
+        *,
+        prompt: str,
+        schema: Optional[Dict[str, Any]] = None,
+        structured_output: bool = False,
+        timeout_sec: Optional[float] = None,
+        trace_context: Optional[Dict[str, Any]] = None,
+        trace_stage: str = "planner",
+    ) -> str:
         codex_bin = self._resolve_codex_bin()
         output_file = tempfile.NamedTemporaryFile(prefix="phmga_codex_output_", suffix=".txt", delete=False)
         output_file.close()
         schema_path: Optional[str] = None
+        effective_timeout = float(timeout_sec or self.timeout_sec)
+        started = time.monotonic()
         try:
             cmd = [
                 codex_bin,
@@ -95,14 +162,26 @@ class CodexCliLLM(OpenRouterLLM):
             cmd.append("-")
             result = subprocess.run(
                 cmd,
-                input=self._codex_prompt(prompt, structured=schema is not None),
+                input=self._codex_prompt(prompt, structured=(schema is not None or structured_output)),
                 text=True,
                 capture_output=True,
-                timeout=self.timeout_sec,
+                timeout=effective_timeout,
                 cwd=self.working_dir,
             )
+            elapsed = time.monotonic() - started
+            stdout_preview = _json_text_preview(result.stdout or "")
+            stderr_preview = _json_text_preview(result.stderr or "")
             if result.returncode != 0:
-                stderr_preview = _json_text_preview(result.stderr or result.stdout or "")
+                self._record_transport_event(
+                    trace_context,
+                    stage=trace_stage,
+                    status="returncode_error",
+                    timeout_sec=effective_timeout,
+                    elapsed_sec=elapsed,
+                    stdout_preview=stdout_preview,
+                    stderr_preview=stderr_preview,
+                    message=f"returncode={result.returncode}",
+                )
                 raise LLMProviderError(
                     f"{self.provider} exec failed with code {result.returncode}. stderr={stderr_preview!r}"
                 )
@@ -113,11 +192,44 @@ class CodexCliLLM(OpenRouterLLM):
             if not output_text:
                 output_text = (result.stdout or "").strip()
             if not output_text:
+                self._record_transport_event(
+                    trace_context,
+                    stage=trace_stage,
+                    status="empty_output",
+                    timeout_sec=effective_timeout,
+                    elapsed_sec=elapsed,
+                    stdout_preview=stdout_preview,
+                    stderr_preview=stderr_preview,
+                    message="provider returned empty output",
+                )
                 raise LLMSchemaError(f"{self.provider} returned empty output for model={self.model}.")
+            self._record_transport_event(
+                trace_context,
+                stage=trace_stage,
+                status="ok",
+                timeout_sec=effective_timeout,
+                elapsed_sec=elapsed,
+                stdout_preview=stdout_preview,
+                stderr_preview=stderr_preview,
+                output_preview=_json_text_preview(output_text),
+            )
             return output_text
         except subprocess.TimeoutExpired as exc:
+            elapsed = time.monotonic() - started
+            stdout_preview = _json_text_preview(str(getattr(exc, "stdout", "") or getattr(exc, "output", "") or ""))
+            stderr_preview = _json_text_preview(str(getattr(exc, "stderr", "") or ""))
+            self._record_transport_event(
+                trace_context,
+                stage=trace_stage,
+                status="timeout",
+                timeout_sec=effective_timeout,
+                elapsed_sec=elapsed,
+                stdout_preview=stdout_preview,
+                stderr_preview=stderr_preview,
+                message="codex exec did not return within timeout window",
+            )
             raise LLMProviderError(
-                f"{self.provider} exec timed out after {self.timeout_sec} seconds for model={self.model}."
+                f"{self.provider} exec timed out after {effective_timeout} seconds for model={self.model}."
             ) from exc
         finally:
             try:
@@ -130,6 +242,30 @@ class CodexCliLLM(OpenRouterLLM):
                 except FileNotFoundError:
                     pass
 
+    def _planner_transport_smoke(self, trace_context: Optional[Dict[str, Any]]) -> None:
+        smoke_schema = {
+            "type": "object",
+            "properties": {"ok": {"type": "string"}},
+            "required": ["ok"],
+            "additionalProperties": False,
+        }
+        smoke_text = self._codex_exec(
+            prompt="Return a JSON object with a single field `ok` set to `yes`.",
+            schema=smoke_schema,
+            timeout_sec=min(self.timeout_sec, self.planner_smoke_timeout_sec),
+            trace_context=trace_context,
+            trace_stage="planner_smoke",
+        )
+        parsed = _parse_json_object(
+            smoke_text,
+            model=self.model,
+            structured_mode="json_mode",
+        )
+        if str(parsed.get("ok", "")).strip().lower() != "yes":
+            raise LLMSchemaError(
+                f"{self.provider} planner smoke returned an unexpected payload for model={self.model}: {parsed}"
+            )
+
     def generate_step_plan(
         self,
         *,
@@ -139,22 +275,80 @@ class CodexCliLLM(OpenRouterLLM):
         dag_json: Optional[Dict[str, Any]],
         reflection: Iterable[str],
         operator_catalog_summary: Iterable[Dict[str, Any]],
+        trace_context: Optional[Dict[str, Any]] = None,
     ) -> StepPlan:
-        del instruction, signal_context, dag_json, reflection, operator_catalog_summary
-        text = self._codex_exec(prompt=prompt, schema=_codex_step_plan_schema())
+        del instruction, signal_context, dag_json, reflection
+        if str((trace_context or {}).get("graph_path", "")).strip().lower() != "ml":
+            trace_context = None
+        if trace_context is not None:
+            self._planner_transport_smoke(trace_context)
+        text = self._codex_exec(
+            prompt=prompt,
+            structured_output=True,
+            trace_context=trace_context,
+            trace_stage="planner_full",
+        )
+        normalized_from_attempt = "initial"
+        raw_response_file = write_planner_text_artifact(
+            trace_context,
+            filename="planner_raw_response.txt",
+            content=text,
+        )
         try:
-            payload = _parse_plan_text_payload(text, model=self.model, provider=self.provider)
+            payload = _parse_plan_text_payload(
+                text,
+                model=self.model,
+                provider=self.provider,
+                allow_text_fallback=False,
+            )
         except LLMSchemaError as first_error:
+            self._record_normalization_event(
+                trace_context,
+                attempt="initial",
+                status="schema_error",
+                raw_response_file=raw_response_file,
+                message=str(first_error),
+            )
             if not self.retry_once:
                 raise
             repair_text = self._codex_exec(
                 prompt=_repair_prompt(task="plan", original_prompt=prompt, raw_response=text),
-                schema=_codex_step_plan_schema(),
+                structured_output=True,
+                trace_context=trace_context,
+                trace_stage="planner_repair",
+            )
+            repair_response_file = write_planner_text_artifact(
+                trace_context,
+                filename="planner_repair_response.txt",
+                content=repair_text,
             )
             try:
-                payload = _parse_plan_text_payload(repair_text, model=self.model, provider=self.provider)
+                payload = _parse_plan_text_payload(
+                    repair_text,
+                    model=self.model,
+                    provider=self.provider,
+                    allow_text_fallback=True,
+                )
+                normalized_from_attempt = "repair"
+                raw_response_file = repair_response_file
+                text = repair_text
             except LLMSchemaError as second_error:
+                self._record_normalization_event(
+                    trace_context,
+                    attempt="repair",
+                    status="schema_error",
+                    raw_response_file=repair_response_file,
+                    message=f"{first_error} | repair_attempt_failed={second_error}",
+                )
                 raise LLMSchemaError(f"{first_error} | repair_attempt_failed={second_error}") from second_error
+        self._record_normalization_event(
+            trace_context,
+            attempt=normalized_from_attempt,
+            status="normalized",
+            raw_response_file=raw_response_file,
+            parsed_step_count=len(payload.get("plan", [])),
+            message=f"text_preview={_json_text_preview(text)!r}",
+        )
         return StepPlan.model_validate(payload)
 
     def resolve_missing_params(

@@ -21,9 +21,6 @@ codex_candidate_registry:
     model: gpt-5.4
     snapshot: null
   - provider: codex_cli
-    model: gpt-5.4-mini
-    snapshot: null
-  - provider: codex_cli
     model: gpt-5.2
     snapshot: null
   - provider: codex_cli
@@ -31,6 +28,9 @@ codex_candidate_registry:
     snapshot: null
 
 openrouter_candidate_registry:
+  - provider: openrouter
+    model: z-ai/glm-4.5-air:free
+    snapshot: null
   - provider: openrouter
     model: stepfun/step-3.5-flash:free
     snapshot: null
@@ -52,7 +52,7 @@ active_stage_b_set:
     snapshot: null
   openrouter:
     provider: openrouter
-    model: stepfun/step-3.5-flash:free
+    model: z-ai/glm-4.5-air:free
     snapshot: null
 
 selected_global_best_backend:
@@ -77,9 +77,11 @@ Stage B 只有在以下条件同时满足时，row 才能记为 `selection_eligi
 | rm101_ml_pilot_v1 | RM101 | ml | compiled | terminal_only | offline_stub | fixed | `artifacts/paper/rm101_ml_pilot_v1` | n/a | n/a | n/a | 0.25 | 0.125 | accept | pilot smoke (offline_stub) |
 | rm101_torch_pilot_v1 | RM101 | torch | compiled | terminal_only | offline_stub | fixed | `artifacts/paper/rm101_torch_pilot_v1` | n/a | n/a | n/a | 0.125 | 0.028 | accept | pilot smoke (offline_stub) |
 | ottawa_ml_codex_v1 | Ottawa | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/ottawa_ml_codex_v1` | fail | fail | no |  |  | reject | backend comparison candidate: codex_cli / gpt-5.3-codex; planner blocked in `codex exec`, no artifacts emitted after extended wait |
-| ottawa_ml_openrouter_v1 | Ottawa | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/ottawa_ml_openrouter_v1` | fail | fail | no |  |  | reject | backend comparison candidate: openrouter / stepfun/step-3.5-flash:free; planner output was not normalizable into `StepPlan` after repair |
+| ottawa_ml_openrouter_glm_v1 | Ottawa | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/ottawa_ml_openrouter_glm_v1` | pending | pending | no |  |  |  | backend comparison candidate: openrouter / z-ai/glm-4.5-air:free; current active OpenRouter tuple for this selection round |
 | rm101_ml_codex_v1 | RM101 | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/rm101_ml_codex_v1` | fail | fail | no |  |  | reject | backend comparison candidate: codex_cli / gpt-5.3-codex; planner failed to return within a bounded 180s Stage B window |
-| rm101_ml_openrouter_v1 | RM101 | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/rm101_ml_openrouter_v1` | fail | fail | no |  |  | reject | backend comparison candidate: openrouter / stepfun/step-3.5-flash:free; planner output was not normalizable into `StepPlan` after repair |
+| rm101_ml_openrouter_glm_v1 | RM101 | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/rm101_ml_openrouter_glm_v1` | pending | pending | no |  |  |  | backend comparison candidate: openrouter / z-ai/glm-4.5-air:free; current active OpenRouter tuple for this selection round |
+| ottawa_ml_openrouter_v1 | Ottawa | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/ottawa_ml_openrouter_v1` | fail | fail | no |  |  | reject | historical comparison failure: openrouter / stepfun/step-3.5-flash:free; planner output was not normalizable into `StepPlan` after repair; not in current active Stage B set |
+| rm101_ml_openrouter_v1 | RM101 | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/rm101_ml_openrouter_v1` | fail | fail | no |  |  | reject | historical comparison failure: openrouter / stepfun/step-3.5-flash:free; planner output was not normalizable into `StepPlan` after repair; not in current active Stage B set |
 | ottawa_ml_main_v1 | Ottawa | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/ottawa_ml_main_v1` | pending | pending | n/a |  |  |  | formal main using selected_global_best_backend on canonical diagnosis mainline |
 | ottawa_torch_main_v1 | Ottawa | torch | compiled | terminal_only | provider | fixed | `artifacts/paper/ottawa_torch_main_v1` | pending | n/a | n/a |  |  |  | path comparison using selected_global_best_backend |
 | rm101_ml_main_v1 | RM101 | ml | compiled | terminal_only | provider | fixed | `artifacts/paper/rm101_ml_main_v1` | pending | pending | n/a |  |  |  | formal main using selected_global_best_backend on canonical diagnosis mainline |

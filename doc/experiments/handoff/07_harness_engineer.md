@@ -9,7 +9,7 @@
 - `doc/experiments/handoff/results/*.md`
 - `artifacts/paper/<experiment_id>/`
 - `doc/experiments/01_result_ledger.md`
-- `doc/experiments/06_multi_agent_merge_checklist.md`
+- `doc/experiments/04_execution_protocol.md`
 
 ## Worker ID
 
@@ -20,9 +20,11 @@
 只复核以下 4 行：
 
 - `ottawa_ml_codex_v1`
-- `ottawa_ml_openrouter_v1`
+- `ottawa_ml_openrouter_glm_v1`
 - `rm101_ml_codex_v1`
-- `rm101_ml_openrouter_v1`
+- `rm101_ml_openrouter_glm_v1`
+
+历史 StepFun row 保留在 ledger 中，但不计入当前 selection round。
 
 ## Success Criteria
 
@@ -35,7 +37,7 @@
   - `feature_list.json`
   - `feature_separability_summary.json`
   - `artifact_index.json`
-- 只有在 merge checklist 条件满足时，才允许把 row 标为 `selection_eligible=yes`
+- 只有在 `04_execution_protocol.md` 的 gate 条件满足时，才允许把 row 标为 `selection_eligible=yes`
 
 ## Failure Rule
 

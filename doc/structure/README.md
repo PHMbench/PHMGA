@@ -11,7 +11,7 @@
 这些文档描述的是当前仓库已经落地的最小研究骨架，而不是抽象愿景：
 
 - 根目录 `main.py` 是正式 Hydra 入口。
-- `scripts/preflight.py` 与 `scripts/run_case.py` 是兼容入口和底层实现。
+- `scripts/preflight.py` 与 `scripts/run_case.py` 是由 `main.py` 调用的执行层库模块。
 - `config/runs/*.yaml` 是正式 Hydra preset 层。
 - `RM_101_THU_GEARBOX` 与 `RM_017_Ottawa19` 已接入统一 canonical protocol。
 - `dag_only`、`ml`、`torch` 三条 graph path 都已有最小可运行闭环。

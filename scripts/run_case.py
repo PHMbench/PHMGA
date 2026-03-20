@@ -1,20 +1,12 @@
-"""Single execution entrypoint for all graph paths in the rebuilt repo."""
+"""Library execution routine invoked by the root Hydra entrypoint."""
 
 from __future__ import annotations
 
-import argparse
 from copy import deepcopy
-import json
 from pathlib import Path
-import sys
-from typing import Any, Dict, Optional, Union
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+from typing import Any, Dict
 
 from src.bridge import DagArtifacts, FeaturePipelinePlan, ModelBuildPlan
-from src.config import load_runtime_config
 from src.data import build_protocol_from_config
 from src.evaluation import render_mermaid_dag
 from src.llm import get_llm
@@ -59,12 +51,16 @@ def _write_common_artifacts(
     else:
         manifest_payload = dict(compiled)
     dag_payload = state.dag.model_dump()
-    _record_json_artifact(artifact_index, output_dir, "dag.json", dag_payload)
     _record_json_artifact(artifact_index, output_dir, "validated_dag.json", dag_payload)
     _record_json_artifact(artifact_index, output_dir, "compiled_dag_manifest.json", manifest_payload)
     _record_text_artifact(artifact_index, output_dir, "dag_graph.md", render_mermaid_dag(state.dag))
     _record_json_artifact(artifact_index, output_dir, "resolved_splits.json", protocol.splits.model_dump())
-    _record_json_artifact(artifact_index, output_dir, "resolved_dataset_manifest.json", protocol.model_dump())
+    _record_json_artifact(
+        artifact_index,
+        output_dir,
+        "resolved_dataset_manifest.json",
+        protocol.model_dump(exclude={"splits"}),
+    )
     decision_outputs = _decision_side_outputs(state)
     if decision_outputs:
         _record_json_artifact(artifact_index, output_dir, "decision_side_outputs.json", decision_outputs)
@@ -92,18 +88,15 @@ def _run_frontend_loop(
 
 
 def run_case(
-    config_input: Union[str, Path, Dict[str, Any]],
-    *,
-    output_dir: Optional[str] = None,
+    runtime_config: Dict[str, Any],
 ) -> Dict[str, Any]:
     """Run the full paper-oriented workflow for one config-defined case."""
-    runtime_config = load_runtime_config(config_input, output_dir=output_dir)
     protocol = build_protocol_from_config(runtime_config)
     llm = get_llm(runtime_config)
     catalog = get_operator_catalog()
     graph_path = runtime_config["experiment"]["graph_path"]
     state = WorkflowState(
-        user_instruction="Generate a paper-ready PHM workflow from canonical metadata.",
+        user_instruction=str(runtime_config["experiment"]["user_instruction"]),
         dataset_name=protocol.dataset_name,
         graph_path=graph_path,
         runtime_config=runtime_config,
@@ -186,16 +179,19 @@ def run_case(
     artifact_index["workflow_state.json"] = "workflow_state.json"
     artifact_index["artifact_index.json"] = "artifact_index.json"
     state.artifact_index = dict(artifact_index)
+    workflow_state_payload = state.model_dump(
+        exclude={
+            "artifact_index",
+            "execution_results",
+            "last_stable_execution_results",
+        }
+    )
+    workflow_state_payload["artifact_index_path"] = "artifact_index.json"
     _record_json_artifact(
         artifact_index,
         output_root,
         "workflow_state.json",
-        state.model_dump(
-            exclude={
-                "execution_results",
-                "last_stable_execution_results",
-            }
-        ),
+        workflow_state_payload,
     )
     state.artifact_index = dict(artifact_index)
     _record_json_artifact(artifact_index, output_root, "artifact_index.json", artifact_index)
@@ -209,20 +205,3 @@ def run_case(
         "manifest_path": str(output_root / "compiled_dag_manifest.json"),
         "report_path": str(output_root / "final_report.md"),
     }
-
-
-def main() -> None:
-    """CLI entrypoint for one graph-dependent run."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", required=True)
-    parser.add_argument("--output-dir", default=None)
-    args = parser.parse_args()
-    result = run_case(
-        args.config,
-        output_dir=args.output_dir,
-    )
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-
-
-if __name__ == "__main__":
-    main()

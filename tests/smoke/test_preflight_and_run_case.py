@@ -17,7 +17,7 @@ REAL_OTTAWA_H5 = Path("/home/user/data/PHMbenchdata/PHM-Vibench/RM_017_Ottawa19.
 
 def test_preflight_reports_one_resolved_config():
     proc = subprocess.run(
-        [sys.executable, "scripts/preflight.py", "--config", "config/runs/rm101_synth_dag.yaml"],
+        [sys.executable, "main.py", "runtime.action=preflight", "+runs=rm101_synth_dag"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -40,15 +40,14 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
         ("config/runs/ottawa_synth_torch.yaml", "torch", "model_build_plan.json"),
     ]
     for config_name, graph_path, expected_file in combos:
+        preset_name = Path(config_name).stem
         output_dir = tmp_path / Path(config_name).stem
         proc = subprocess.run(
             [
                 sys.executable,
-                "scripts/run_case.py",
-                "--config",
-                config_name,
-                "--output-dir",
-                str(output_dir),
+                "main.py",
+                f"+runs={preset_name}",
+                f"runtime.output_dir={output_dir}",
             ],
             cwd=ROOT,
             capture_output=True,
@@ -57,7 +56,7 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
         )
         payload = json.loads(proc.stdout)
         assert payload["graph_path"] == graph_path
-        assert (output_dir / "dag.json").exists()
+        assert not (output_dir / "dag.json").exists()
         assert (output_dir / "validated_dag.json").exists()
         assert (output_dir / "compiled_dag_manifest.json").exists()
         assert (output_dir / "resolved_splits.json").exists()
@@ -84,6 +83,15 @@ def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
             assert "splits" in runtime_trace
             artifact_index = json.loads((output_dir / "artifact_index.json").read_text(encoding="utf-8"))
             assert "dataset_level_runtime_trace.json" in artifact_index
+        workflow_state = json.loads((output_dir / "workflow_state.json").read_text(encoding="utf-8"))
+        assert workflow_state["artifact_index_path"] == "artifact_index.json"
+        assert "artifact_index" not in workflow_state
+        resolved_manifest = json.loads((output_dir / "resolved_dataset_manifest.json").read_text(encoding="utf-8"))
+        assert "splits" not in resolved_manifest
+        resolved_splits = json.loads((output_dir / "resolved_splits.json").read_text(encoding="utf-8"))
+        assert resolved_splits["train_ids"]
+        assert resolved_splits["val_ids"]
+        assert resolved_splits["test_ids"]
 
 
 @pytest.mark.skipif(
@@ -95,8 +103,9 @@ def test_real_configs_preflight_and_dag_only(tmp_path: Path):
         ("config/runs/rm101_dag_test.yaml", "RM_101_THU_GEARBOX"),
         ("config/runs/ottawa_dag_test.yaml", "RM_017_Ottawa19"),
     ):
+        preset_name = Path(config_name).stem
         preflight = subprocess.run(
-            [sys.executable, "scripts/preflight.py", "--config", config_name],
+            [sys.executable, "main.py", "runtime.action=preflight", f"+runs={preset_name}"],
             cwd=ROOT,
             capture_output=True,
             text=True,
@@ -110,11 +119,9 @@ def test_real_configs_preflight_and_dag_only(tmp_path: Path):
         proc = subprocess.run(
             [
                 sys.executable,
-                "scripts/run_case.py",
-                "--config",
-                config_name,
-                "--output-dir",
-                str(output_dir),
+                "main.py",
+                f"+runs={preset_name}",
+                f"runtime.output_dir={output_dir}",
             ],
             cwd=ROOT,
             capture_output=True,
@@ -132,6 +139,11 @@ def test_real_configs_preflight_and_dag_only(tmp_path: Path):
         assert (output_dir / "resolved_splits.json").exists()
         assert (output_dir / "resolved_dataset_manifest.json").exists()
         assert (output_dir / "dag_quality_summary.json").exists()
+        workflow_state = json.loads((output_dir / "workflow_state.json").read_text(encoding="utf-8"))
+        assert workflow_state["artifact_index_path"] == "artifact_index.json"
+        assert "artifact_index" not in workflow_state
+        resolved_manifest = json.loads((output_dir / "resolved_dataset_manifest.json").read_text(encoding="utf-8"))
+        assert "splits" not in resolved_manifest
 
 
 @pytest.mark.skipif(
@@ -146,8 +158,9 @@ def test_real_configs_preflight_and_dag_only(tmp_path: Path):
     ),
 )
 def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_path: str, expected_file: str, report_section: str):
+    preset_name = Path(config_name).stem
     preflight = subprocess.run(
-        [sys.executable, "scripts/preflight.py", "--config", config_name],
+        [sys.executable, "main.py", "runtime.action=preflight", f"+runs={preset_name}"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -165,11 +178,9 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
     proc = subprocess.run(
         [
             sys.executable,
-            "scripts/run_case.py",
-            "--config",
-            config_name,
-            "--output-dir",
-            str(output_dir),
+            "main.py",
+            f"+runs={preset_name}",
+            f"runtime.output_dir={output_dir}",
         ],
         cwd=ROOT,
         capture_output=True,
@@ -182,7 +193,6 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
     assert payload["source_mode"] == "real"
 
     common_files = [
-        "dag.json",
         "validated_dag.json",
         "compiled_dag_manifest.json",
         "resolved_splits.json",
@@ -195,6 +205,7 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
     ]
     for filename in common_files + [expected_file]:
         assert (output_dir / filename).exists()
+    assert not (output_dir / "dag.json").exists()
 
     if graph_path == "ml":
         for filename in (
@@ -231,11 +242,15 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
     resolved_manifest = json.loads((output_dir / "resolved_dataset_manifest.json").read_text(encoding="utf-8"))
     assert resolved_manifest["dataset_name"] == "RM_017_Ottawa19"
     assert resolved_manifest["source_mode"] == "real"
+    assert "splits" not in resolved_manifest
 
     resolved_splits = json.loads((output_dir / "resolved_splits.json").read_text(encoding="utf-8"))
     assert resolved_splits["train_ids"]
     assert resolved_splits["val_ids"]
     assert resolved_splits["test_ids"]
+    workflow_state = json.loads((output_dir / "workflow_state.json").read_text(encoding="utf-8"))
+    assert workflow_state["artifact_index_path"] == "artifact_index.json"
+    assert "artifact_index" not in workflow_state
 
     report_text = (output_dir / "final_report.md").read_text(encoding="utf-8")
     assert report_section in report_text
@@ -253,8 +268,9 @@ def test_real_ottawa_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_
     ),
 )
 def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_path: str, expected_file: str, report_section: str):
+    preset_name = Path(config_name).stem
     preflight = subprocess.run(
-        [sys.executable, "scripts/preflight.py", "--config", config_name],
+        [sys.executable, "main.py", "runtime.action=preflight", f"+runs={preset_name}"],
         cwd=ROOT,
         capture_output=True,
         text=True,
@@ -272,11 +288,9 @@ def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_p
     proc = subprocess.run(
         [
             sys.executable,
-            "scripts/run_case.py",
-            "--config",
-            config_name,
-            "--output-dir",
-            str(output_dir),
+            "main.py",
+            f"+runs={preset_name}",
+            f"runtime.output_dir={output_dir}",
         ],
         cwd=ROOT,
         capture_output=True,
@@ -289,7 +303,6 @@ def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_p
     assert payload["source_mode"] == "real"
 
     common_files = [
-        "dag.json",
         "validated_dag.json",
         "compiled_dag_manifest.json",
         "resolved_splits.json",
@@ -302,6 +315,7 @@ def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_p
     ]
     for filename in common_files + [expected_file]:
         assert (output_dir / filename).exists()
+    assert not (output_dir / "dag.json").exists()
 
     if graph_path == "ml":
         for filename in (
@@ -338,11 +352,15 @@ def test_real_rm101_ml_and_torch_smoke(tmp_path: Path, config_name: str, graph_p
     resolved_manifest = json.loads((output_dir / "resolved_dataset_manifest.json").read_text(encoding="utf-8"))
     assert resolved_manifest["dataset_name"] == "RM_101_THU_GEARBOX"
     assert resolved_manifest["source_mode"] == "real"
+    assert "splits" not in resolved_manifest
 
     resolved_splits = json.loads((output_dir / "resolved_splits.json").read_text(encoding="utf-8"))
     assert resolved_splits["train_ids"]
     assert resolved_splits["val_ids"]
     assert resolved_splits["test_ids"]
+    workflow_state = json.loads((output_dir / "workflow_state.json").read_text(encoding="utf-8"))
+    assert workflow_state["artifact_index_path"] == "artifact_index.json"
+    assert "artifact_index" not in workflow_state
 
     report_text = (output_dir / "final_report.md").read_text(encoding="utf-8")
     assert report_section in report_text

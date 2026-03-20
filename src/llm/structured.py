@@ -53,25 +53,6 @@ def _strip_json_fence(text: str) -> str:
     return stripped
 
 
-def _structured_mode_for_model(model: str) -> Literal["json_mode", "text_mode"]:
-    normalized = model.strip().lower()
-    text_mode_models = {
-        "stepfun/step-3.5-flash:free",
-        "stepfun/step-3.5-flash",
-    }
-    if any(normalized == m or normalized.startswith(m.split(":")[0]) for m in text_mode_models):
-        return "text_mode"
-    return "json_mode"
-
-
-def _structured_provider_kind(provider: str, model: str) -> Literal["strict_structured_provider", "text_structured_provider"]:
-    if provider.strip().lower() in {"openai", "codex_cli"}:
-        return "strict_structured_provider"
-    if _structured_mode_for_model(model) == "text_mode":
-        return "text_structured_provider"
-    return "strict_structured_provider"
-
-
 def _extract_message_text(payload: Dict[str, Any]) -> str:
     choices = payload.get("choices")
     if not isinstance(choices, list) or not choices:
@@ -319,7 +300,52 @@ def _parse_reflection_text_payload(text: str, *, model: str, provider: str) -> D
     }
 
 
-def _parse_plan_text_payload(text: str, *, model: str, provider: str) -> Dict[str, Any]:
+def _clean_plan_token(raw: str) -> str:
+    return raw.strip().strip("`").strip().rstrip(",.;")
+
+
+def _parse_plan_params(raw: str) -> Dict[str, Any]:
+    cleaned = raw.strip()
+    if not cleaned or cleaned.lower() in {"{}", "none", "null", "n/a"}:
+        return {}
+    if cleaned[:1] in {"'", '"'} and cleaned[-1:] == cleaned[:1]:
+        cleaned = cleaned[1:-1]
+    parsed = _parse_json_candidate(cleaned)
+    return parsed if parsed is not None else {}
+
+
+def _extract_block_step(block_text: str) -> Optional[Dict[str, Any]]:
+    parent_match = re.search(
+        r"(?:^|\n)\s*(?:parent|input|source)\s*(?:=|:)\s*(?P<value>[A-Za-z0-9_,.-]+)",
+        block_text,
+        re.I,
+    )
+    op_match = re.search(
+        r"(?:^|\n)\s*(?:op|operator|operation|op_name)\s*(?:=|:)\s*(?P<value>[A-Za-z0-9_.-]+)",
+        block_text,
+        re.I,
+    )
+    params_match = re.search(
+        r"(?:^|\n)\s*(?:params?|parameters?)\s*(?:=|:)\s*(?P<value>\{.*?\}|\".*?\"|'.*?')",
+        block_text,
+        re.I | re.S,
+    )
+    if not (parent_match and op_match):
+        return None
+    return {
+        "parent": _clean_plan_token(parent_match.group("value")),
+        "op_name": _clean_plan_token(op_match.group("value")),
+        "params": _parse_plan_params(params_match.group("value")) if params_match else {},
+    }
+
+
+def _parse_plan_text_payload(
+    text: str,
+    *,
+    model: str,
+    provider: str,
+    allow_text_fallback: bool = False,
+) -> Dict[str, Any]:
     direct = _extract_json_object_from_text(text)
     if direct is not None and "plan" in direct:
         plan_items = direct.get("plan")
@@ -329,9 +355,6 @@ def _parse_plan_text_payload(text: str, *, model: str, provider: str) -> Dict[st
                 if not isinstance(item, dict):
                     continue
                 params = item.get("params", {})
-                if "params_json" in item and "params" not in item:
-                    parsed_params = _parse_json_candidate(str(item.get("params_json", "")))
-                    params = parsed_params if parsed_params is not None else {}
                 if params == "" or params is None:
                     params = {}
                 if not isinstance(params, dict):
@@ -347,6 +370,12 @@ def _parse_plan_text_payload(text: str, *, model: str, provider: str) -> Dict[st
                     }
                 )
             return {"plan": sanitized_steps}
+
+    if not allow_text_fallback:
+        raise LLMSchemaError(
+            "Provider planner response did not contain strict StepPlan JSON. "
+            f"provider={provider}, model={model}, text_preview={_json_text_preview(text)!r}"
+        )
 
     steps: List[Dict[str, Any]] = []
     text = re.sub(r"```(?:text|txt)?\s*(.*?)```", r"\1", text, flags=re.IGNORECASE | re.DOTALL)
@@ -379,6 +408,63 @@ def _parse_plan_text_payload(text: str, *, model: str, provider: str) -> Dict[st
     if steps:
         return {"plan": steps}
 
+    compact_patterns = [
+        re.compile(
+            r"^\s*(?:[-*]|\d+[.)])\s*(?P<op>[A-Za-z_][\w.]*)\s+(?:to|on|from|for)\s+(?P<parent>[A-Za-z0-9_,.-]+)"
+            r"(?:\s+(?:with\s+)?params?\s*(?:=|:)?\s*(?P<params>\{.*\}|\".*\"|'.*'))?\s*$",
+            re.I,
+        ),
+        re.compile(
+            r"^\s*(?:[-*]|\d+[.)])\s*(?P<parent>[A-Za-z0-9_,.-]+)\s*->\s*(?P<op>[A-Za-z_][\w.]*)"
+            r"(?:\s+(?:with\s+)?params?\s*(?:=|:)?\s*(?P<params>\{.*\}|\".*\"|'.*'))?\s*$",
+            re.I,
+        ),
+        re.compile(
+            r"^\s*(?:[-*]|\d+[.)])\s*(?:apply|use|run|compute|extract)\s+(?P<op>[A-Za-z_][\w.]*)\s+"
+            r"(?:to|on|from)\s+(?P<parent>[A-Za-z0-9_,.-]+)"
+            r"(?:\s+(?:with\s+)?params?\s*(?:=|:)?\s*(?P<params>\{.*\}|\".*\"|'.*'))?\s*$",
+            re.I,
+        ),
+    ]
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        for pattern in compact_patterns:
+            match = pattern.match(line)
+            if not match:
+                continue
+            steps.append(
+                {
+                    "parent": _clean_plan_token(match.group("parent")),
+                    "op_name": _clean_plan_token(match.group("op")),
+                    "params": _parse_plan_params(match.group("params") or ""),
+                }
+            )
+            break
+    if steps:
+        return {"plan": steps}
+
+    block_lines = [line.rstrip() for line in text.splitlines() if line.strip()]
+    if block_lines:
+        blocks: List[str] = []
+        current: List[str] = []
+        for line in block_lines:
+            if re.match(r"^\s*(?:step\s+\d+[:.)]?|\d+[.)])\s*", line, re.I):
+                if current:
+                    blocks.append("\n".join(current))
+                    current = []
+                line = re.sub(r"^\s*(?:step\s+\d+[:.)]?|\d+[.)])\s*", "", line, flags=re.I)
+            current.append(line)
+        if current:
+            blocks.append("\n".join(current))
+        for block in blocks:
+            parsed = _extract_block_step(block)
+            if parsed is not None:
+                steps.append(parsed)
+    if steps:
+        return {"plan": steps}
+
     raise LLMSchemaError(
         "Provider planner response could not be normalized into StepPlan. "
         f"provider={provider}, model={model}, text_preview={_json_text_preview(text)!r}"
@@ -396,31 +482,8 @@ def _param_json_schema(param_type: str) -> Dict[str, Any]:
     if any(token in normalized for token in ("dict", "object", "map", "json")):
         return {"type": "object", "properties": {}, "additionalProperties": False}
     if any(token in normalized for token in ("list", "array", "sequence", "tuple")):
-        return {"type": "array"}
-    return {"type": ["string", "number", "integer", "boolean", "array", "null"]}
-
-
-def _codex_step_plan_schema() -> Dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": {
-            "plan": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "parent": {"type": "string"},
-                        "op_name": {"type": "string"},
-                        "params_json": {"type": "string"},
-                    },
-                    "required": ["parent", "op_name", "params_json"],
-                    "additionalProperties": False,
-                },
-            }
-        },
-        "required": ["plan"],
-        "additionalProperties": False,
-    }
+        return {"type": "array", "items": {"type": "string"}}
+    return {"type": "string"}
 
 
 def _codex_reflection_schema() -> Dict[str, Any]:
@@ -529,6 +592,9 @@ def _repair_prompt(*, task: Literal["plan", "reflect"], original_prompt: str, ra
             "Normalize the following planner response into a machine-readable step plan.\n"
             "Return either a strict JSON object with a top-level `plan` list, or the exact DSL lines:\n"
             "`- parent=<node_id_or_csv> op=<operator_name> params=<json_object>`\n\n"
+            "Use only the minimum fields required for StepPlan: `parent`, `op_name`, `params`.\n"
+            "`params` must be a JSON object, not a string. If parameters are unspecified, use `{}`.\n"
+            "If the original response is prose, convert it into the DSL instead of explaining it.\n\n"
             f"Original planner contract:\n{original_prompt}\n\n"
             f"Raw model response:\n{raw_response}\n"
         )
@@ -547,7 +613,6 @@ __all__ = [
     "_append_step",
     "_catalog_entry",
     "_codex_reflection_schema",
-    "_codex_step_plan_schema",
     "_coerce_string_list",
     "_derived_param_candidates",
     "_deterministic_param_resolution",
@@ -564,8 +629,6 @@ __all__ = [
     "_parse_reflection_text_payload",
     "_planned_node_id",
     "_repair_prompt",
-    "_structured_mode_for_model",
-    "_structured_provider_kind",
     "_strip_json_fence",
     "_strip_line_prefix",
     "_supports",

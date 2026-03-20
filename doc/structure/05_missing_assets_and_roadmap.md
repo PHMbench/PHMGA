@@ -49,7 +49,9 @@
   - `bridge`
   - `ml` path 最小 compiled execution sanity
 - 暂停让 provider/path/runtime 复杂度干扰 M0 验收
-- 不新增第二套 workflow、bridge 或目录重构；`configuration.py` 和 `phm_outer_graph.py` 继续只作为 compat/transition layer 叙述
+- 不新增第二套 workflow、bridge 或目录重构
+- `src/configuration.py` 继续作为活跃 facade 保留，后续再审是否并回 `src/config/`
+- `src/phm_outer_graph.py` 继续作为当前 runtime 入口保留，直到 `run_case.py` 直接持有 LangGraph runtime
 
 ## M1: Dataset-Level Evidence
 

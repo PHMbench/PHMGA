@@ -42,7 +42,7 @@ phmga_default_model_for_provider() {
       echo "gpt-5.3-codex"
       ;;
     openrouter)
-      echo "stepfun/step-3.5-flash:free"
+      echo "z-ai/glm-4.5-air:free"
       ;;
     *)
       echo ""
