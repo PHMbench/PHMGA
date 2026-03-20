@@ -23,6 +23,18 @@
 - `MULTI_VARIABLE` 节点
 - `DECISION` terminal side-output
 
+并行还保留一条更轻的 proving lane，由 `runtime.workflow_mode=supervisor_proving` 激活：
+
+`PHMState -> StateGraph(plan -> execute -> compile -> verify) -> validated DAG JSON -> bridge -> ml artifacts`
+
+这条 proving lane 只服务最小存在性证明：
+
+- planner 只看 strict deterministic operator subset
+- execute 不再二次向 LLM 求参
+- 不经过 `dag_quality_evaluator / reflect_agent / rollback / inquirer_agent / report_agent`
+- 最终报告改由 deterministic `build_final_report()` 生成
+- 成功定义收敛到最小 artifact contract，而不是 richer comparison logic
+
 ## 最终目标状态机
 
 ```mermaid
@@ -66,6 +78,27 @@ flowchart TD
 - report 的 graph-dependent section
 
 但不改变 planner 的显式输入合同。
+
+## `workflow_mode` 的位置
+
+当前运行时存在两个前端模式：
+
+- `runtime.workflow_mode=rich`
+  - 默认论文主链
+  - 走 `plan -> execute -> dag_quality -> reflect -> rollback|compile_ready`
+- `runtime.workflow_mode=supervisor_proving`
+  - 轻量 proving lane
+  - 走 `plan -> execute -> compile -> verify`
+
+两者共享同一个入口：
+
+`python main.py +runs=<preset>`
+
+也共享同一个法定 bridge 边界：
+
+`validated DAG JSON -> compile_dag_for_path()`
+
+区别只在于前端是否启用 richer quality / reflection 闭环。
 
 ## DAG、bridge 与 path compilation 的分工
 

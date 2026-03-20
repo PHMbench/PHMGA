@@ -49,6 +49,7 @@ model:
 
 runtime:
   action: run_case
+  workflow_mode: rich
   output_dir: null
   max_iterations: 4
   provider_retry_once: true

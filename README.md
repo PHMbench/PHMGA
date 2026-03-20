@@ -52,6 +52,17 @@ python main.py runtime.action=preflight +runs=rm101_ml_test
 python main.py +runs=rm101_ml_test runtime.output_dir=artifacts/paper/rm101_ml_main_v1
 ```
 
+轻量 proving lane：
+
+```bash
+python main.py +runs=ottawa_ml_codex_proving
+python main.py +runs=ottawa_ml_openrouter_glm_proving
+```
+
+`runtime.workflow_mode=supervisor_proving` 会切到轻量 supervisor graph：
+
+`plan -> execute -> compile -> verify`
+
 执行层 `scripts/*.py` 不再作为公共 CLI 入口；正式运行只通过 `python main.py ...`。
 
 测试：

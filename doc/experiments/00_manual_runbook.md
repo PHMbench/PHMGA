@@ -35,6 +35,31 @@
 
 其中 canonical diagnosis backend 先固定为 `ml`；`torch` 当前继续作为比较层最小实现。
 
+## Supervisor Proving Lane
+
+这条 lane 只证明最小闭环是否存在：
+
+`raw plan -> StepPlan -> validated_dag.json -> compile_dag_for_path() -> ml artifacts`
+
+约束写死：
+
+- 只用于 engineering qualification，不写 ledger
+- 不参与 Stage B backend selection
+- `runtime.workflow_mode=supervisor_proving`
+- 只在 `Ottawa / canonical ml` 上先验证 codex 与 openrouter 各有一条 clean pass
+
+命令：
+
+```bash
+python main.py runtime.action=preflight +runs=ottawa_ml_codex_proving
+python main.py +runs=ottawa_ml_codex_proving
+
+python main.py runtime.action=preflight +runs=ottawa_ml_openrouter_glm_proving
+python main.py +runs=ottawa_ml_openrouter_glm_proving
+```
+
+OpenRouter preflight 现在会显式检查 `OPENROUTER_API_KEY` 是否存在；缺失时直接失败，不进入 planner。
+
 ## Stage A: Pilot Smoke
 
 ### Fixed Settings
