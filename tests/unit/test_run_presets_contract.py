@@ -46,6 +46,7 @@ def test_root_config_is_baseline_only_and_requires_explicit_runtime_selection():
     root_config = (ROOT / "config/config.yaml").read_text(encoding="utf-8")
     assert "- optional data: null" in root_config
     assert "- optional experiment: null" in root_config
+    assert "workflow_mode: rich" in root_config
     assert "stage_b:" not in root_config
     assert "candidate_registry" not in root_config
     assert "dag_json" not in root_config
@@ -60,6 +61,8 @@ def test_root_config_is_baseline_only_and_requires_explicit_runtime_selection():
 def test_formal_run_presets_hold_runtime_semantics():
     expected = [
         ROOT / "config/runs/ottawa_ml.yaml",
+        ROOT / "config/runs/ottawa_ml_codex_proving.yaml",
+        ROOT / "config/runs/ottawa_ml_openrouter_glm_proving.yaml",
         ROOT / "config/runs/ottawa_torch.yaml",
         ROOT / "config/runs/rm101_ml.yaml",
         ROOT / "config/runs/rm101_torch.yaml",
@@ -78,3 +81,15 @@ def test_formal_run_presets_hold_runtime_semantics():
         assert "provider: codex_cli" in text
         assert "mode: provider" in text
         assert "model: gpt-5.3-codex" in text
+
+    codex_proving = (ROOT / "config/runs/ottawa_ml_codex_proving.yaml").read_text(encoding="utf-8")
+    assert "workflow_mode: supervisor_proving" in codex_proving
+    assert "max_iterations: 1" in codex_proving
+    assert "provider: codex_cli" in codex_proving
+    assert "enabled: false" in codex_proving
+
+    openrouter_proving = (ROOT / "config/runs/ottawa_ml_openrouter_glm_proving.yaml").read_text(encoding="utf-8")
+    assert "workflow_mode: supervisor_proving" in openrouter_proving
+    assert "provider: openrouter" in openrouter_proving
+    assert "model: z-ai/glm-4.5-air:free" in openrouter_proving
+    assert "enabled: false" in openrouter_proving

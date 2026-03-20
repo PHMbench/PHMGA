@@ -26,4 +26,16 @@ def test_hydra_compose_and_plain_dict_conversion_match_path_loading():
     assert runtime_config["experiment"]["graph_path"] == "ml"
     assert runtime_config["experiment"]["user_instruction"] == "Generate a paper-ready PHM workflow from canonical metadata."
     assert runtime_config["runtime"]["action"] == "run_case"
+    assert runtime_config["runtime"]["workflow_mode"] == "rich"
     assert runtime_config["runtime"]["config_path"] == "<hydra>"
+
+
+def test_proving_run_preset_sets_supervisor_workflow_mode():
+    cfg = compose_runtime_config(overrides=["+runs=ottawa_ml_codex_proving", "data=ottawa_synth"])
+    runtime_config = to_runtime_dict(cfg)
+
+    assert runtime_config["data"]["dataset_name"] == "OTTAWA_SYNTH"
+    assert runtime_config["experiment"]["graph_path"] == "ml"
+    assert runtime_config["runtime"]["workflow_mode"] == "supervisor_proving"
+    assert runtime_config["runtime"]["max_iterations"] == 1
+    assert runtime_config["evaluation"]["dag_quality"]["enabled"] is False

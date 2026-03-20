@@ -221,3 +221,22 @@ def test_execute_agent_calls_param_resolution_only_for_missing_tunable_params():
 
     assert spy.param_calls == 1
     assert any(node.op_uid == "signal.fake_tunable" for node in state.dag.nodes)
+
+
+def test_execute_agent_supervisor_proving_rejects_tunable_ops_without_param_resolution():
+    state, protocol, _ = _manual_state(
+        "config/runs/rm101_synth_ml.yaml",
+        {"plan": [{"parent": "ch1", "op_name": "fake_tunable", "params": {}}]},
+    )
+    state.runtime_config = {
+        "runtime": {"workflow_mode": "supervisor_proving"},
+        "experiment": {"graph_path": "ml"},
+    }
+    catalog = FakeCatalog()
+    spy = SpyLLM(params_to_return={"custom_tau": 0.25})
+
+    state = execute_agent(state, protocol, catalog, spy)
+
+    assert spy.param_calls == 0
+    assert state.execution_gaps
+    assert "does not allow LLM-tunable params" in state.execution_gaps[0].message

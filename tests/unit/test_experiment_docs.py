@@ -41,6 +41,9 @@ def test_experiment_doc_content_contracts():
     assert "validated_dag.json" in runbook
     assert "artifact_index.json" in runbook
     assert "final_report.md" in runbook
+    assert "Supervisor Proving Lane" in runbook
+    assert "ottawa_ml_codex_proving" in runbook
+    assert "ottawa_ml_openrouter_glm_proving" in runbook
     assert "06_multi_agent_merge_checklist.md" not in runbook
 
     ledger = (ROOT / "doc/experiments/01_result_ledger.md").read_text(encoding="utf-8")
