@@ -1,0 +1,19 @@
+# @package _global_
+defaults:
+  - override /data: ottawa
+  - override /experiment: ml
+  - _self_
+
+llm:
+  mode: provider
+  provider: openrouter
+  model: z-ai/glm-4.5-air:free
+
+runtime:
+  workflow_mode: supervisor_proving
+  max_iterations: 1
+  output_dir: artifacts/proving/ottawa_ml_openrouter_glm_proving
+
+evaluation:
+  dag_quality:
+    enabled: false

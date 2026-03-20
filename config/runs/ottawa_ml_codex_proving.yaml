@@ -1,0 +1,19 @@
+# @package _global_
+defaults:
+  - override /data: ottawa
+  - override /experiment: ml
+  - _self_
+
+llm:
+  mode: provider
+  provider: codex_cli
+  model: gpt-5.3-codex
+
+runtime:
+  workflow_mode: supervisor_proving
+  max_iterations: 1
+  output_dir: artifacts/proving/ottawa_ml_codex_proving
+
+evaluation:
+  dag_quality:
+    enabled: false
