@@ -1,44 +1,42 @@
-import argparse
-import importlib
-import os
+"""Unified CLI for the simplified thesis_2026 runtime."""
 
-def main():
-    """
-    Main entry point for running PHM analysis cases.
-    Dynamically loads and runs a case module based on command-line arguments.
-    """
-    parser = argparse.ArgumentParser(description="Run PHM analysis cases.")
+from __future__ import annotations
+
+import argparse
+import json
+
+from dotenv import load_dotenv
+
+from src.config import load_runtime_config
+from src.runtime import run_experiment, run_preflight
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run a thesis_2026 preset.")
+    parser.add_argument("run_name", help="Run preset under config/runs/*.yaml or a legacy case alias.")
+    parser.add_argument("--action", choices=("run", "preflight"), default="run")
+    parser.add_argument("--output-dir", default=None)
     parser.add_argument(
-        "case_name", 
-        type=str, 
-        help="The name of the case to run (e.g., 'case1')."
-    )
-    parser.add_argument(
-        "--config", 
-        type=str, 
-        default=None,
-        help="Path to the configuration file. Defaults to 'config/<case_name>.yaml'."
+        "--set",
+        action="append",
+        default=[],
+        help="Override config values with dotted.key=value.",
     )
     args = parser.parse_args()
 
-    case_name = args.case_name
-    config_path = args.config or f"config/{case_name}.yaml"
+    load_dotenv()
+    runtime_config = load_runtime_config(
+        args.run_name,
+        action=args.action,
+        output_dir=args.output_dir,
+        overrides=args.set,
+    )
+    if args.action == "preflight":
+        payload = run_preflight(runtime_config)
+    else:
+        payload = run_experiment(runtime_config)
+    print(json.dumps(payload, ensure_ascii=False, indent=2))
 
-    if not os.path.exists(config_path):
-        print(f"Error: Configuration file not found at '{config_path}'")
-        return
-
-    try:
-        # Dynamically import the case module
-        case_module = importlib.import_module(f"src.cases.{case_name}")
-        
-        # Run the case
-        case_module.run_case(config_path)
-        
-    except ImportError:
-        print(f"Error: Case '{case_name}' not found. Make sure 'src/cases/{case_name}.py' exists.")
-    except Exception as e:
-        print(f"An error occurred while running case '{case_name}': {e}")
 
 if __name__ == "__main__":
     main()

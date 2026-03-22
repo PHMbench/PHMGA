@@ -4,7 +4,7 @@ import numpy as np
 import numpy.typing as npt
 from pydantic import Field
 from scipy.stats import skew, kurtosis
-from typing import ClassVar
+from typing import ClassVar, List, Tuple
 import scipy.stats
 
 # 假设基类和注册器位于此
@@ -196,7 +196,7 @@ class BandPowerOp(AggregateOp):
     output_spec: ClassVar[str] = "(..., N, C)"  # N = number of bands
 
     fs: float = Field(..., description="Sampling frequency of the signal.")
-    bands: list[tuple[float, float]] = Field(
+    bands: List[Tuple[float, float]] = Field(
         ..., description="List of frequency bands as (min_freq, max_freq)."
     )
 

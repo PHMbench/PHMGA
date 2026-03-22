@@ -1,7 +1,7 @@
 # src/tools/signal_ops.py
 from __future__ import annotations
 
-from typing import ClassVar, Literal, Dict
+from typing import ClassVar, Dict, Literal, Optional, Tuple, Union
 import numpy as np
 import numpy.typing as npt
 import scipy.signal
@@ -101,7 +101,7 @@ class FilterOp(TransformOp):
     
     filter_type: Literal["low", "high", "band"] = Field(..., description="Type of filter.")
     fs: float = Field(..., description="Sampling frequency of the signal.")
-    cutoff: float | tuple[float, float] = Field(..., description="Cutoff frequency or frequencies.")
+    cutoff: Union[float, Tuple[float, float]] = Field(..., description="Cutoff frequency or frequencies.")
     order: int = Field(5, description="Order of the Butterworth filter.")
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
@@ -244,7 +244,7 @@ class PowerToDecibelOp(TransformOp):
     output_spec: ClassVar[str] = "Same as input"
     
     ref: float = 1.0
-    top_db: float | None = 80.0
+    top_db: Optional[float] = 80.0
 
     def execute(self, x: np.ndarray, **kw) -> np.ndarray:
         try:

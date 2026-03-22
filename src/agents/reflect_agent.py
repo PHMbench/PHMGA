@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import json
 from typing import Any, Dict, Optional
-import networkx as nx
-
-from langchain_core.prompts import ChatPromptTemplate
 
 from src.model import get_llm
 from src.configuration import Configuration
@@ -26,75 +23,52 @@ def reflect_agent(
     state: "PHMState", # 添加 state 以访问 DAG 信息
 ) -> Dict[str, str]:
     """Quality check the DAG and return a decision with reason."""
-    # --- 诊断性打印 ---
-    print("\n--- Reflect Agent Inputs ---")
-    print(f"Stage: {stage}")
-    print(f"Issues Summary: '{issues_summary}'")
-    print("--------------------------\n")
-    # --- 结束诊断 ---
-
     if instruction is None or stage is None or dag_blueprint is None:
         return {"decision": "halt", "reason": "INVALID_INPUT"}
 
-    # 1. 计算DAG的深度，作为LLM决策的上下文之一
     depth = get_dag_depth(state.dag_state)
-    print(f"\n--- Current DAG Depth for Reflection: {depth} ---\n")
-
-    # 2. 准备给LLM的上下文，包括深度信息
-    # 即使没有错误，也把深度信息加进去，让LLM判断是否需要继续迭代
     contextual_issues = issues_summary or ""
     if not contextual_issues:
         contextual_issues = f"Execution was successful. The current DAG has a depth of {depth}."
     else:
         contextual_issues = f"{issues_summary}\nAdditionally, the current DAG has a depth of {depth}."
 
-
-    # 3. 总是调用LLM进行反思，而不是使用硬编码规则
-    # LLM将基于指令、阶段、DAG结构和深度等信息，做出更全面的决策
-    llm = get_llm(Configuration.from_runnable_config(None))
-    prompt = ChatPromptTemplate.from_template(REFLECT_PROMPT)
-    chain = prompt | llm
-    resp = chain.invoke(
-        {
-            "instruction": instruction,
-            "stage": stage,
-            "dag_blueprint": json.dumps(dag_blueprint, ensure_ascii=False),
-            "issues_summary": contextual_issues, # 使用包含深度信息的上下文
-            "min_depth": state.min_depth,
-            "min_width": state.min_width,
-            "max_depth": state.max_depth,
-            "current_depth": get_dag_depth(state.dag_state)
-        }
-    )
-    # 漂亮地打印出LLM的响应以供调试
-    print("\n--- Reflect Agent LLM Response ---")
-
-    # 从LLM响应中提取JSON字符串，移除Markdown代码块
-    json_str = resp.content
-    if "```json" in json_str:
-        json_str = json_str.split("```json")[1].strip()
-    if "```" in json_str:
-        json_str = json_str.split("```")[0].strip()
-
-    try:
-        # 假设响应内容是JSON字符串
-        parsed_json = json.loads(json_str)
-        print(json.dumps(parsed_json, indent=2, ensure_ascii=False))
-    except json.JSONDecodeError:
-        # 如果不是JSON，则按原样打印原始响应
-        print(resp.content)
-    print("---------------------------------\n")
-    try:
-        # 使用清理后的字符串进行解析
-        data = json.loads(json_str)
-        decision = data.get("decision", "halt")
-        reason = data.get("reason", "")
-        if decision not in VALID_DECISIONS:
+    runtime_config = state.runtime_config or {"llm": Configuration.from_runnable_config(None).model_dump()}
+    llm = get_llm(runtime_config)
+    if getattr(llm, "mode", "") == "offline_stub":
+        if issues_summary:
             decision = "halt"
-            reason = "INVALID_DECISION"
-    except Exception as exc:  # pragma: no cover - defensive
-        decision = "halt"
-        reason = f"PARSE_ERROR: {exc}"
+            reason = contextual_issues
+        elif depth < state.min_depth:
+            decision = "need_patch"
+            reason = "The process is healthy, but the minimum depth requirement has not been met. Continue building."
+        else:
+            decision = "finish"
+            reason = "The pipeline has reached the required depth and exposes terminal feature leaves."
+    else:
+        prompt = REFLECT_PROMPT.format(
+            instruction=instruction,
+            stage=stage,
+            dag_blueprint=json.dumps(dag_blueprint, ensure_ascii=False),
+            issues_summary=contextual_issues,
+            min_depth=state.min_depth,
+            min_width=state.min_width,
+            max_depth=state.max_depth,
+            current_depth=depth,
+        )
+        repair_prompt = (
+            "Return only a JSON object with `decision` and `reason`.\n\n" + prompt
+        )
+        try:
+            data = llm.generate_json(prompt, repair_prompt=repair_prompt)
+            decision = data.get("decision", "halt")
+            reason = data.get("reason", "")
+            if decision not in VALID_DECISIONS:
+                decision = "halt"
+                reason = "INVALID_DECISION"
+        except Exception as exc:  # pragma: no cover - defensive
+            decision = "halt"
+            reason = f"PARSE_ERROR: {exc}"
     return {"decision": decision, "reason": reason}
 
 
@@ -114,7 +88,11 @@ def reflect_agent_node(state: PHMState, *, stage: str) -> None:
     )
     needs_revision = result["decision"] != "finish"
     history = state.reflection_history + [result["reason"]]
-    return {"needs_revision": needs_revision, "reflection_history": history}
+    return {
+        "needs_revision": needs_revision,
+        "reflection_history": history,
+        "decision": result["decision"],
+    }
 
 
 if __name__ == "__main__":

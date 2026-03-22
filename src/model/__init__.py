@@ -1,62 +1,16 @@
-"""Utilities for language model instantiation."""
+"""Compatibility shim that routes old imports to the new LLM backends."""
 
 from __future__ import annotations
 
-import os
 from typing import Optional
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_community.chat_models import FakeListChatModel
-
 from ..configuration import Configuration
+from ..llm import get_llm as _get_runtime_llm
 
 
-_FAKE_LLM: FakeListChatModel | None = None
-
-
-def get_llm(
-    configurable: Optional[Configuration] = None,
-    *,
-    temperature: float = 1.0,
-    max_retries: int = 2,
-) -> ChatGoogleGenerativeAI:
-    """Return a chat model instance for agent use.
-
-    Parameters
-    ----------
-    configurable : Optional[Configuration]
-        Configuration object providing ``query_generator_model``. If ``None``, a
-        new :class:`Configuration` will be created with environment variables.
-    temperature : float, optional
-        Sampling temperature for the model. Defaults to ``1.0``.
-    max_retries : int, optional
-        Maximum number of API retries. Defaults to ``2``.
-
-    Returns
-    -------
-    ChatGoogleGenerativeAI
-        Instantiated LLM ready for calls.
-    """
+def get_llm(configurable: Optional[Configuration | dict] = None, **_: object):
     if configurable is None:
-        configurable = Configuration() # .from_runnable_config(None)
-    fake_llm =  False # configurable.fake_llm
-    if fake_llm:
-        global _FAKE_LLM
-        # Use a shared mock model for testing
-        if _FAKE_LLM is None:
-            responses = [
-                '[{"op_name": "mean", "params": {"parent": "ch1"}}]',
-                '{"decision": "finish", "reason": "analysis complete"}',
-                '{"plan": []}',
-            ]
-            _FAKE_LLM = FakeListChatModel(responses=responses)
-        return _FAKE_LLM
-    # Use real model with API key
-    else:
-        api_key = os.getenv("GEMINI_API_KEY")
-        return ChatGoogleGenerativeAI(
-            model=configurable.query_generator_model,
-            temperature=temperature,
-            max_retries=max_retries,
-            api_key=api_key,
-        )
+        return _get_runtime_llm({"llm": Configuration.from_runnable_config(None).model_dump()})
+    if isinstance(configurable, Configuration):
+        return _get_runtime_llm({"llm": configurable.model_dump()})
+    return _get_runtime_llm(configurable)

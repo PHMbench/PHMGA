@@ -1,13 +1,17 @@
 # src/tools/signal_ops.py
 from __future__ import annotations
-from typing import ClassVar, Literal
+from typing import ClassVar, List, Literal, Optional
 import numpy as np
 import numpy.typing as npt
 from pydantic import Field
 from scipy import signal
-from skimage.util import view_as_windows
 
 from .signal_processing_schemas import ExpandOp, register_op
+
+try:
+    from skimage.util import view_as_windows
+except ModuleNotFoundError:  # pragma: no cover
+    view_as_windows = None
 
 
 @register_op
@@ -41,7 +45,16 @@ class PatchOp(ExpandOp):
         window_shape = (1,) * (x_transposed.ndim - 1) + (self.patch_size,)
         step = (1,) * (x_transposed.ndim - 1) + (self.stride,)
 
-        patches = view_as_windows(x_transposed, window_shape=window_shape, step=step)
+        if view_as_windows is not None:
+            patches = view_as_windows(x_transposed, window_shape=window_shape, step=step)
+        else:
+            if self.patch_size > x_transposed.shape[-1]:
+                raise ValueError("patch_size cannot exceed signal length.")
+            patches = np.lib.stride_tricks.sliding_window_view(
+                x_transposed,
+                window_shape=window_shape,
+            )
+            patches = patches[:, :, :: self.stride, :, :, :]
 
         # Remove singleton dimensions introduced by view_as_windows
         patches = patches[..., 0, 0, :]
@@ -63,7 +76,7 @@ class STFTOp(ExpandOp):
     
     fs: float = Field(..., description="Sampling frequency of the signal.")
     nperseg: int = Field(256, description="Length of each segment.")
-    noverlap: int | None = Field(None, description="Number of points to overlap between segments.")
+    noverlap: Optional[int] = Field(None, description="Number of points to overlap between segments.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         """
@@ -141,7 +154,7 @@ class WaveletTransformOp(ExpandOp):
     output_spec: ClassVar[str] = "(..., S, L, C)"
 
     wavelet: str = Field("morl", description="Name of the wavelet to use (e.g., 'morl', 'mexh').")
-    scales: list[int] = Field(default_factory=lambda: list(np.logspace(0, 2, num=20, dtype=int)), description="List of scales to use for the CWT. Defaults to 20 log-spaced scales.")
+    scales: List[int] = Field(default_factory=lambda: list(np.logspace(0, 2, num=20, dtype=int)), description="List of scales to use for the CWT. Defaults to 20 log-spaced scales.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         try:
@@ -204,7 +217,7 @@ class SpectrogramOp(ExpandOp):
     
     fs: float = Field(..., description="Sampling frequency of the signal.")
     nperseg: int = Field(256, description="Length of each segment.")
-    noverlap: int | None = Field(None, description="Number of points to overlap between segments.")
+    noverlap: Optional[int] = Field(None, description="Number of points to overlap between segments.")
 
     def execute(self, x: npt.NDArray, **_) -> npt.NDArray:
         """

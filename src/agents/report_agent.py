@@ -4,12 +4,10 @@ import json
 import os
 from typing import Any, Dict, Optional
 
-from langchain_core.prompts import ChatPromptTemplate
-
 from src.configuration import Configuration
 from src.model import get_llm
 from src.prompts.report_prompt import REPORT_PROMPT
-from phm_core import PHMState
+from src.states.phm_states import PHMState
 
 
 def report_agent(
@@ -22,23 +20,17 @@ def report_agent(
 ) -> Dict[str, str]:
     """Generate a final markdown report via LLM."""
 
-    llm = get_llm(Configuration.from_runnable_config(None))
-    prompt = ChatPromptTemplate.from_template(REPORT_PROMPT)
-    chain = prompt | llm
-    resp = chain.invoke(
-        {
-            "instruction": instruction,
-            "dag_overview": json.dumps(dag_overview, ensure_ascii=False),
-            "similarity_stats": json.dumps(similarity_stats, ensure_ascii=False),
-            "ml_results": json.dumps(ml_results, ensure_ascii=False),
-            "issues_summary": issues_summary or "",
-        }
+    llm = get_llm({"llm": Configuration.from_runnable_config(None).model_dump()})
+    prompt = REPORT_PROMPT.format(
+        instruction=instruction,
+        dag_overview=json.dumps(dag_overview, ensure_ascii=False),
+        similarity_stats=json.dumps(similarity_stats, ensure_ascii=False),
+        ml_results=json.dumps(ml_results, ensure_ascii=False),
+        issues_summary=issues_summary or "",
     )
-    # 漂亮地打印出LLM的响应以供调试
-    print("\n--- Report Agent LLM Response ---")
-    print(resp.content)
-    print("--------------------------------\n")
-    return {"report_markdown": resp.content}
+    if getattr(llm, "mode", "") == "offline_stub":
+        return {"report_markdown": prompt}
+    return {"report_markdown": llm.generate_text(prompt)}
 
 
 def report_agent_node(state: PHMState) -> Dict[str, str]:

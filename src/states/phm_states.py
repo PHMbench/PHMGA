@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from typing import List, Dict, Any, Annotated, Tuple, Optional, TypedDict
+from typing import List, Dict, Any, Tuple, Optional, Literal, Union
 import numpy as np
-from pydantic import BaseModel, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 import uuid
-from langgraph.graph import add_messages
 from typing_extensions import Annotated
-import operator
-from typing import Literal
 import networkx as nx
 from ..tools.signal_processing_schemas import PHMOperator
 from ..schemas.insight_schema import AnalysisInsight
@@ -17,7 +14,7 @@ Shape = Tuple[int, ...]  # 支持多维形状
 
 class _NodeBase(BaseModel):
     node_id: str = Field(default_factory=lambda: f"n_{uuid.uuid4().hex[:8]}")
-    parents: List[str] | str     # 上游 node_id 列表（源节点为空）
+    parents: Union[List[str], str]     # 上游 node_id 列表（源节点为空）
     stage: Literal["input", "processed", "similarity", "dataset", "output"] = "input"  # 节点阶段
     shape: Shape
     kind: Literal["signal"] = "signal"
@@ -69,21 +66,21 @@ class Result(BaseModel):
     Represents the final result of a PHM analysis, structured to constrain LLM output based on a predefined schema.
     """
 
-    dataset: str | None = Field(None, description="Identifier for the dataset used.")
-    Description: str | None = Field(None, description="A brief description of the analysis performed.")
-    Label: int | None = Field(None, description="The primary label assigned to the result (e.g., fault type).")
-    Label_Description: str | None = Field(None, description="Description of the assigned label.")
-    Fault_level: float | None = Field(None, description="Severity level of the detected fault (e.g., 'Normal', 'Warning', 'Critical').")
-    RUL_label: float | None = Field(None, description="Categorical label for Remaining Useful Life.")
-    RUL_label_description: str | None = Field(None, description="Description of the RUL label.")
-    Domain_id: int | None = Field(None, description="Identifier for the operational domain.")
-    Domain_description: str | None = Field(None, description="Description of the operational domain.")
-    Sample_rate: int | None = Field(None, description="The sample rate of the signal data in Hz.")
-    Sample_length: int | None = Field(None, description="The length of the data sample used.")
-    Channel: int | None = Field(None, description="The specific data channel or sensor analyzed.")
+    dataset: Optional[str] = Field(None, description="Identifier for the dataset used.")
+    Description: Optional[str] = Field(None, description="A brief description of the analysis performed.")
+    Label: Optional[int] = Field(None, description="The primary label assigned to the result (e.g., fault type).")
+    Label_Description: Optional[str] = Field(None, description="Description of the assigned label.")
+    Fault_level: Optional[float] = Field(None, description="Severity level of the detected fault (e.g., 'Normal', 'Warning', 'Critical').")
+    RUL_label: Optional[float] = Field(None, description="Categorical label for Remaining Useful Life.")
+    RUL_label_description: Optional[str] = Field(None, description="Description of the RUL label.")
+    Domain_id: Optional[int] = Field(None, description="Identifier for the operational domain.")
+    Domain_description: Optional[str] = Field(None, description="Description of the operational domain.")
+    Sample_rate: Optional[int] = Field(None, description="The sample rate of the signal data in Hz.")
+    Sample_length: Optional[int] = Field(None, description="The length of the data sample used.")
+    Channel: Optional[int] = Field(None, description="The specific data channel or sensor analyzed.")
     Fault_Diagnosis: str = Field(..., description="The conclusive diagnosis of the fault. This field is mandatory.")
     Anomaly_Detection: str = Field(..., description="Results of the anomaly detection process. This field is mandatory.")
-    Remaining_Life: str | None = Field(None, description="Predicted Remaining Useful Life in appropriate units (e.g., cycles, hours).")
+    Remaining_Life: Optional[str] = Field(None, description="Predicted Remaining Useful Life in appropriate units (e.g., cycles, hours).")
 
 class DAGState(BaseModel):
     """只保存拓扑信息，不含业务数据"""
@@ -92,7 +89,7 @@ class DAGState(BaseModel):
     nodes: Dict[str, Any] = Field(default_factory=dict)
     leaves: List[str] = Field(default_factory=list)           # 当前末端信号节点
     error_log: List[str] = Field(default_factory=list)
-    graph_path: str | None = None
+    graph_path: Optional[str] = None
 
     
     def __init__(self, **data):
@@ -166,7 +163,7 @@ class DAGTracker:
         for nid in topo:
             n = self.state.nodes[nid]
             mini.append(
-                n.dict(
+                n.model_dump(
                     include={
                         "node_id",
                         "kind",
@@ -240,7 +237,7 @@ def get_node_data(state: "PHMState", node_id: str):
         """将 DAG 状态保存到指定路径."""
         import json
         with open(path, 'w') as f:
-            json.dump(self.state.dict(), f, indent=4)
+            json.dump(self.state.model_dump(), f, indent=4)
     def load(self, path: str) -> None:
         """从指定路径加载 DAG 状态."""
         import json
@@ -265,7 +262,7 @@ class PHMState(BaseModel):
     min_depth: int = 4
     min_width: int = 4
     max_depth: int = 8
-    fs: float | None = Field(default=None, description="Sampling frequency of the signals in Hz.")
+    fs: Optional[float] = Field(default=None, description="Sampling frequency of the signals in Hz.")
 
     # high_level_plan: List[str] = Field(default_factory=list)
     # analysis_plan: AnalysisPlan | None = None
@@ -299,10 +296,12 @@ class PHMState(BaseModel):
 
     final_report: str = ""
     datasets: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
-    dataset_path: str | None = None
-    model_path: str | None = None
+    dataset_path: Optional[str] = None
+    model_path: Optional[str] = None
     accuracy: Optional[float] = None
     ml_results: Dict[str, Any] = Field(default_factory=dict)
+    runtime_config: Dict[str, Any] = Field(default_factory=dict)
+    last_reflection_decision: str = ""
 
     _tracker_instance: Optional[Any] = PrivateAttr(default=None)
 
@@ -311,7 +310,4 @@ class PHMState(BaseModel):
             self._tracker_instance = DAGTracker(self.dag_state)
         return self._tracker_instance
 
-    class Config:
-        arbitrary_types_allowed = True
-
-
+    model_config = ConfigDict(arbitrary_types_allowed=True)

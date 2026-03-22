@@ -5,9 +5,21 @@ try:
 except Exception:  # pragma: no cover - optional dependency may be missing
     graph = None
 
-# MODIFIED: Import the new decoupled graph builders
-from .phm_outer_graph import build_builder_graph, build_executor_graph
+try:
+    from .phm_outer_graph import build_builder_graph, build_executor_graph
+except Exception:  # pragma: no cover - optional dependency may be missing
+    build_builder_graph = None
+    build_executor_graph = None
 from .model import get_llm
+from .config import load_runtime_config
+from .runtime import run_experiment, run_preflight
 
-# MODIFIED: Expose the new graph builders in the public API
-__all__ = ["build_builder_graph", "build_executor_graph", "graph", "get_llm"]
+__all__ = [
+    "build_builder_graph",
+    "build_executor_graph",
+    "graph",
+    "get_llm",
+    "load_runtime_config",
+    "run_experiment",
+    "run_preflight",
+]

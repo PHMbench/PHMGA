@@ -13,8 +13,16 @@ from src.tools.signal_processing_schemas import get_operator
 from src.tools.multi_schemas import MultiVariableOp
 
 
-DATA_DIR = os.environ.get("PHM_DATA_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
+DATA_DIR = os.environ.get("PHM_DATA_DIR", os.path.join(os.getcwd(), "artifacts"))
 MAX_STEPS = 20
+
+
+def _resolve_artifact_root(runtime_config: Dict[str, Any], case_name: str) -> str:
+    runtime_output_dir = str(runtime_config.get("runtime", {}).get("output_dir", "")).strip()
+    if runtime_output_dir:
+        return os.path.join(runtime_output_dir, "_intermediate")
+    base_save_dir = os.environ.get("PHM_SAVE_DIR", os.path.join(os.getcwd(), "artifacts"))
+    return os.path.join(base_save_dir, case_name)
 
 
 def _resolve_params(llm, op_cls, params: Dict[str, Any], state: PHMState) -> Dict[str, Any]:
@@ -47,22 +55,30 @@ A required parameter is missing:
 Context:
 - The signal sampling frequency (fs) is {fs} Hz.
 
-Based on this information, provide a valid JSON value for the '{field_name}' parameter.
-Your response MUST be a single JSON object containing only the generated value. For example, if generating a list of bands, respond with: [[0, 50], [50, 100]]
-
-Do not add any other text or explanations.
+Based on this information, return a JSON object with one key `value`.
 """
             try:
-                resp = llm.invoke(prompt)
-                # The response should be a JSON string representing the value
-                generated_value = json.loads(resp.content)
+                payload = llm.generate_json(prompt, repair_prompt="Return only a JSON object like {\"value\": ...}.")
+                generated_value = payload.get("value")
+                if generated_value is None:
+                    raise ValueError("Missing `value` in LLM parameter response.")
                 resolved_params[field_name] = generated_value
                 print(f"AI generated missing parameter '{field_name}': {generated_value}")
             except Exception as e:
-                print(f"Could not generate or parse parameter '{field_name}': {e}")
-                # If generation fails, we cannot proceed with this op if param is required
-                state.dag_state.error_log.append(f"Error setting parameter '{field_name}': {e}")
-                raise ValueError(f"Failed to generate required parameter '{field_name}' for operator '{op_cls.op_name}'.") from e
+                if field_name == "bands" and fs not in {None, "unknown"}:
+                    generated_value = [
+                        [0.0, float(fs) / 8.0],
+                        [float(fs) / 8.0, float(fs) / 4.0],
+                        [float(fs) / 4.0, float(fs) / 2.0],
+                    ]
+                elif "int" in str(field.annotation):
+                    generated_value = 256
+                elif "float" in str(field.annotation):
+                    generated_value = 1.0
+                else:
+                    state.dag_state.error_log.append(f"Error setting parameter '{field_name}': {e}")
+                    raise ValueError(f"Failed to generate required parameter '{field_name}' for operator '{op_cls.op_name}'.") from e
+                resolved_params[field_name] = generated_value
 
     return resolved_params
 
@@ -158,12 +174,11 @@ def _execute_single_variable_op(op, parent_id, new_nodes):
 
 def execute_agent(state: PHMState) -> Dict[str, Any]:
     executed_steps = 0
-    llm = get_llm(None)
+    runtime_config = state.runtime_config or {}
+    llm = get_llm(runtime_config)
     
-    # Get the base save directory from environment, fallback to a default
-    base_save_dir = os.environ.get("PHM_SAVE_DIR", "/home/lq/LQcode/2_project/PHMBench/PHMGA/save")
-    # Construct a case-specific directory
-    case_save_dir = os.path.join(base_save_dir, state.case_name, "nodes")
+    artifact_root = _resolve_artifact_root(runtime_config, state.case_name)
+    case_save_dir = os.path.join(artifact_root, "nodes")
 
     # 采用不可变模式：创建当前节点和叶子的副本
     new_nodes = state.dag_state.nodes.copy()
@@ -294,7 +309,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     temp_tracker.update(new_dag_state)
     
     # Save the graph image to a case-specific directory
-    case_graph_dir = os.path.join(base_save_dir, state.case_name, "graphs")
+    case_graph_dir = os.path.join(artifact_root, "graphs")
     os.makedirs(case_graph_dir, exist_ok=True)
     png_path = os.path.join(case_graph_dir, f"dag_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
     temp_tracker.write_png(png_path)
@@ -390,4 +405,3 @@ if __name__ == "__main__":
     assert updated_dag.leaves == ["fft_01_ch1", "fft_02_ch2", "fft_03_ch3", "cross_correlation_04_ch1_ch2"]
     
     print("✅ Execute Agent test passed!")
-

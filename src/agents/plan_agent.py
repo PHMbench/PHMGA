@@ -3,14 +3,13 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List
 
-from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field, RootModel  # 导入 RootModel
+from pydantic import BaseModel, Field
 
 from src.configuration import Configuration
 from src.model import get_llm
 from src.prompts.plan_prompt import PLANNER_PROMPT
 from src.states.phm_states import PHMState
-from src.tools.signal_processing_schemas import OP_REGISTRY, get_operator
+from src.tools.signal_processing_schemas import OP_REGISTRY, AggregateOp, MultiVariableOp, get_operator
 from src.utils import get_dag_depth
 
 # 1. 定义期望的输出结构
@@ -39,41 +38,62 @@ class Plan(BaseModel):
     )
 
 
-def plan_agent(state: PHMState) -> dict:
-    """Call LLM to generate a detailed processing plan using structured output."""
-
-    llm = get_llm(Configuration.from_runnable_config(None))
-    
-    # --- MODIFIED: Generate a concise, human-readable tool description ---
+def _tool_descriptions() -> str:
     tool_descriptions = []
     for op in OP_REGISTRY.values():
         schema = op.model_json_schema()
-        description = schema.get('description', 'No description available.')
-        
-        params_info = []
-        # Exclude common/internal fields from the parameter list
-        excluded_params = {'node_id', 'parent', 'kind', 'in_shape', 'out_shape', 'params'}
-        for name, prop in schema.get('properties', {}).items():
-            if name not in excluded_params:
-                param_desc = prop.get('description', 'No description.')
-                params_info.append(f"        - {name}: {param_desc}")
-        
-        params_str = "\n".join(params_info) if params_info else "        params: {}"
-        
+        description = schema.get("description", "No description available.")
         tool_descriptions.append(
             f"- op_name: {schema.get('title', op.op_name)}\n"
             f"  description: {description}\n"
-            # f"  params:\n{params_str}" # TODO 
         )
-    tools_description = "\n---\n".join(tool_descriptions)
+    return "\n---\n".join(tool_descriptions)
 
-    prompt = ChatPromptTemplate.from_template(PLANNER_PROMPT)
-    
-    # 不再使用 .with_structured_output()，而是手动解析
-    chain = prompt | llm
+
+def _is_feature_leaf(state: PHMState, node_id: str) -> bool:
+    node = state.dag_state.nodes[node_id]
+    if node.stage == "input":
+        return False
+    op_name = str(node.meta.get("tool") or node.meta.get("method") or getattr(node, "method", ""))
+    op_cls = get_operator(op_name)
+    if issubclass(op_cls, AggregateOp):
+        return True
+    if issubclass(op_cls, MultiVariableOp):
+        parent_ids = node.parents if isinstance(node.parents, list) else [node.parents]
+        return all(_is_feature_leaf(state, parent_id) for parent_id in parent_ids)
+    return False
+
+
+def _offline_plan(state: PHMState) -> List[Dict[str, Any]]:
+    leaves = list(state.dag_state.leaves)
+    if not leaves:
+        return []
+
+    if all(state.dag_state.nodes[leaf].stage == "input" for leaf in leaves):
+        return [{"parent": leaf, "op_name": "fft", "params": {}} for leaf in leaves]
+
+    if all(_is_feature_leaf(state, leaf) for leaf in leaves):
+        if len(leaves) >= 2 and get_dag_depth(state.dag_state) < state.min_depth:
+            return [{"parent": ",".join(leaves), "op_name": "concatenate", "params": {}}]
+        return []
+
+    feature_ops = ["mean", "std", "kurtosis"]
+    plan: List[Dict[str, Any]] = []
+    for leaf in leaves:
+        if state.dag_state.nodes[leaf].stage == "input":
+            plan.append({"parent": leaf, "op_name": "fft", "params": {}})
+            continue
+        if _is_feature_leaf(state, leaf):
+            continue
+        for op_name in feature_ops:
+            plan.append({"parent": leaf, "op_name": op_name, "params": {}})
+    return plan
+
+
+def plan_agent(state: PHMState) -> dict:
+    """Generate the next single-layer plan."""
 
     try:
-        # --- MODIFIED: Create a lightweight topology-only representation of the DAG ---
         dag_topology = {
             "nodes": [
                 {
@@ -88,43 +108,34 @@ def plan_agent(state: PHMState) -> dict:
             # "leaves": state.dag_state.leaves, # Optional: include leaves if needed
         }
         dag_json = json.dumps(dag_topology, indent=2)
-        
         reflection = state.reflection_history
+        runtime_config = state.runtime_config or {"llm": Configuration.from_runnable_config(None).model_dump()}
+        llm = get_llm(runtime_config)
+        if getattr(llm, "mode", "") == "offline_stub":
+            detailed_plan = _offline_plan(state)
+        else:
+            prompt = PLANNER_PROMPT.format(
+                instruction=state.user_instruction,
+                dag_json=dag_json,
+                tools=_tool_descriptions(),
+                reflection=json.dumps(reflection, indent=2),
+                min_depth=state.min_depth,
+                min_width=state.min_width,
+                max_depth=state.max_depth,
+                current_depth=get_dag_depth(state.dag_state),
+            )
+            repair_prompt = (
+                "Return only a JSON object with a single top-level key `plan`.\n"
+                "Each item in `plan` must include `parent`, `op_name`, and `params`.\n\n"
+                + prompt
+            )
+            plan_dict = llm.generate_json(prompt, repair_prompt=repair_prompt)
+            for step_data in plan_dict.get("plan", []):
+                if "params" in step_data and step_data["params"] == "":
+                    step_data["params"] = {}
+            plan_obj = Plan.model_validate(plan_dict)
+            detailed_plan = [step.model_dump() for step in plan_obj.plan]
 
-        resp = chain.invoke(
-            {
-                "instruction": state.user_instruction,
-                "dag_json": dag_json, # Pass the lightweight topology
-                "tools": tools_description,
-                "reflection": json.dumps(reflection, indent=2),
-                "min_depth": state.min_depth,
-                "min_width": state.min_width,
-                "max_depth": state.max_depth,
-                "current_depth": get_dag_depth(state.dag_state),
-
-            }
-        )
-        
-        # 1. 从 AIMessage.content 中提取 JSON 字符串
-        json_str = resp.content
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].strip()
-        if "```" in json_str:
-            json_str = json_str.split("```")[0].strip()
-
-        # 2. 使用 json.loads() 解析字符串
-        plan_dict = json.loads(json_str)
-
-        # 3. 手动预处理（例如，处理空的 params）
-        for step_data in plan_dict.get("plan", []):
-            if "params" in step_data and step_data["params"] == '':
-                step_data["params"] = {}
-        
-        # 4. 使用 Plan.model_validate() 验证和转换
-        plan_obj = Plan.model_validate(plan_dict)
-        detailed_plan = [step.model_dump() for step in plan_obj.plan]
-
-        # --- Inject sampling frequency if required ---
         fs = getattr(state, "fs", None)
         if fs is None:
             fs = getattr(state.reference_signal, "meta", {}).get("fs")
@@ -139,7 +150,6 @@ def plan_agent(state: PHMState) -> dict:
                     step["params"]["fs"] = fs
 
     except Exception as e:
-        # 捕获 LLM 调用、解析或验证中可能出现的错误
         detailed_plan = []
         error_logs = state.error_logs + [f"Planner error: {e}"]
         state.error_logs = error_logs
@@ -273,4 +283,3 @@ if __name__ == "__main__":
     # 依次运行测试
     # run_test_with_fake_llm(state)
     run_test_with_real_llm(state)
-

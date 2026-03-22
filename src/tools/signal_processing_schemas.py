@@ -3,10 +3,10 @@ from __future__ import annotations
 import abc
 import functools
 import logging
-from typing import Any, ClassVar, Dict, Tuple, Literal, Type
+from typing import Any, ClassVar, Dict, Tuple, Literal, Type, List, Optional, Union
 import uuid
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # 建议：可以从一个共享的工具模块导入
 # from utils.shape import assert_shape
@@ -58,19 +58,20 @@ class PHMOperator(BaseModel, abc.ABC):
     description: ClassVar[str]
     input_spec: ClassVar[str]
     output_spec: ClassVar[str]
-    parent: str | list[str] = Field(default=None, description="上游节点 ID 或 ID 列表，表示依赖的输入节点。")
+    parent: Optional[Union[str, List[str]]] = Field(default=None, description="上游节点 ID 或 ID 列表，表示依赖的输入节点。")
     kind: Literal["op"] = "op"
 
 
     # 运行时状态，由钩子自动填充，便于调试和检查点
-    in_shape: Tuple[int, ...] | None = Field(default=None, description="最近一次执行时的输入形状。")
-    out_shape: Tuple[int, ...] | None = Field(default=None, description="最近一次执行时的输出形状。")
+    in_shape: Optional[Tuple[int, ...]] = Field(default=None, description="最近一次执行时的输入形状。")
+    out_shape: Optional[Tuple[int, ...]] = Field(default=None, description="最近一次执行时的输出形状。")
     params: Dict[str, Any] = Field(default_factory=dict, description="算子参数字典，包含所有可配置的参数。")
 
-    class Config:
-        extra = "forbid"  # 不允许未定义的字段
-        arbitrary_types_allowed = True
-        frozen = True  # 算子实例一旦创建即不可变，保证图执行的纯粹性
+    model_config = ConfigDict(
+        extra="forbid",
+        arbitrary_types_allowed=True,
+        frozen=True,
+    )
 
     # --- 对 LangGraph 公开的统一接口 --- #
     def __call__(self, x: np.ndarray, **kwargs) -> np.ndarray | dict:
