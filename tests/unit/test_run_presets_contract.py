@@ -64,10 +64,12 @@ def test_formal_run_presets_hold_runtime_semantics():
         ROOT / "config/runs/ottawa_ml_codex_proving.yaml",
         ROOT / "config/runs/ottawa_ml_openrouter_glm_proving.yaml",
         ROOT / "config/runs/ottawa_synth_ml_simple.yaml",
+        ROOT / "config/runs/ottawa_ml_codex_simple.yaml",
         ROOT / "config/runs/ottawa_ml_codex_v3.yaml",
         ROOT / "config/runs/ottawa_ml_openrouter_nemotron_v3.yaml",
         ROOT / "config/runs/ottawa_torch.yaml",
         ROOT / "config/runs/rm101_ml.yaml",
+        ROOT / "config/runs/rm101_ml_codex_simple.yaml",
         ROOT / "config/runs/rm101_ml_codex_v3.yaml",
         ROOT / "config/runs/rm101_ml_openrouter_nemotron_v3.yaml",
         ROOT / "config/runs/rm101_torch.yaml",
@@ -104,6 +106,28 @@ def test_formal_run_presets_hold_runtime_semantics():
     assert "mode: offline_stub" in simple_fullchain
     assert "provider: codex_cli" in simple_fullchain
     assert "enabled: false" in simple_fullchain
+
+    ottawa_real_simple = (ROOT / "config/runs/ottawa_ml_codex_simple.yaml").read_text(encoding="utf-8")
+    assert "workflow_mode: simple_fullchain" in ottawa_real_simple
+    assert "mode: provider" in ottawa_real_simple
+    assert "provider: codex_cli" in ottawa_real_simple
+    assert "model: gpt-5.3-codex" in ottawa_real_simple
+    assert "output_dir: artifacts/simple/ottawa_ml_codex_simple" in ottawa_real_simple
+    assert "max_iterations: 3" in ottawa_real_simple
+    assert "train_per_class: 2" in ottawa_real_simple
+    assert "slice_mode: centered" in ottawa_real_simple
+    assert "enabled: false" in ottawa_real_simple
+
+    rm101_real_simple = (ROOT / "config/runs/rm101_ml_codex_simple.yaml").read_text(encoding="utf-8")
+    assert "workflow_mode: simple_fullchain" in rm101_real_simple
+    assert "mode: provider" in rm101_real_simple
+    assert "provider: codex_cli" in rm101_real_simple
+    assert "model: gpt-5.3-codex" in rm101_real_simple
+    assert "output_dir: artifacts/simple/rm101_ml_codex_simple" in rm101_real_simple
+    assert "max_iterations: 3" in rm101_real_simple
+    assert "train_per_class: 2" in rm101_real_simple
+    assert "slice_mode: centered" in rm101_real_simple
+    assert "enabled: false" in rm101_real_simple
 
     openrouter_formal_v3 = (ROOT / "config/runs/ottawa_ml_openrouter_nemotron_v3.yaml").read_text(encoding="utf-8")
     assert "workflow_mode: rich" in openrouter_formal_v3

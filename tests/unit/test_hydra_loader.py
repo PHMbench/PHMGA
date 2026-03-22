@@ -52,6 +52,34 @@ def test_simple_fullchain_run_preset_sets_simple_workflow_mode():
     assert runtime_config["evaluation"]["dag_quality"]["enabled"] is False
 
 
+def test_real_simple_run_presets_freeze_real_smoke_contract():
+    for preset_name, dataset_name, output_suffix in (
+        ("ottawa_ml_codex_simple", "RM_017_Ottawa19", "artifacts/simple/ottawa_ml_codex_simple"),
+        ("rm101_ml_codex_simple", "RM_101_THU_GEARBOX", "artifacts/simple/rm101_ml_codex_simple"),
+    ):
+        cfg = compose_runtime_config(overrides=[f"+runs={preset_name}"])
+        runtime_config = to_runtime_dict(cfg)
+
+        assert runtime_config["data"]["dataset_name"] == dataset_name
+        assert runtime_config["experiment"]["graph_path"] == "ml"
+        assert runtime_config["llm"]["provider"] == "codex_cli"
+        assert runtime_config["llm"]["model"] == "gpt-5.3-codex"
+        assert runtime_config["runtime"]["workflow_mode"] == "simple_fullchain"
+        assert runtime_config["runtime"]["max_iterations"] == 3
+        assert runtime_config["runtime"]["min_depth"] == 2
+        assert runtime_config["runtime"]["min_width"] == 1
+        assert runtime_config["runtime"]["max_depth"] == 8
+        assert runtime_config["runtime"]["output_dir"].endswith(output_suffix)
+        assert runtime_config["evaluation"]["dag_quality"]["enabled"] is False
+        assert runtime_config["evaluation"]["dag_quality"]["use_proxy_probe"] is False
+        assert runtime_config["model"]["ml"]["max_iter"] == 50
+        assert runtime_config["data"]["split"]["strategy"] == "stratified_fixed_per_class"
+        assert runtime_config["data"]["split"]["train_per_class"] == 2
+        assert runtime_config["data"]["split"]["val_per_class"] == 1
+        assert runtime_config["data"]["split"]["test_per_class"] == 1
+        assert runtime_config["data"]["window"]["slice_mode"] == "centered"
+
+
 def test_formal_v3_run_preset_freezes_depth_constraints_and_output_dir():
     cfg = compose_runtime_config(overrides=["+runs=ottawa_ml_openrouter_nemotron_v3"])
     runtime_config = to_runtime_dict(cfg)

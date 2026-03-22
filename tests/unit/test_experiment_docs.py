@@ -37,6 +37,10 @@ def test_experiment_doc_content_contracts():
     assert "| layer | stage | preset_name | experiment_id | dataset | provider | model | workflow_mode | command | artifact_dir | result_md | paper_target | current_status |" in runbook
     assert "ottawa_ml_codex_proving" in runbook
     assert "ottawa_ml_openrouter_glm_proving" in runbook
+    assert "ottawa_ml_codex_simple" in runbook
+    assert "rm101_ml_codex_simple" in runbook
+    assert "`simple_qualification`" in runbook
+    assert "runtime closure on real data" in runbook
     assert "- `rm101_ml_codex_proving`" in runbook
     assert "- `rm101_ml_openrouter_glm_proving`" in runbook
     assert "| `M0` | `proving` | `rm101_ml_codex_proving`" not in runbook
@@ -54,6 +58,8 @@ def test_experiment_doc_content_contracts():
     assert "selected_global_best_backend:" in ledger
     assert "| experiment_id | preset_name | dataset | graph_path | run_type | artifact_dir | result_md | artifact_contract_pass | feature_separability_pass | selection_eligible | accuracy | macro_f1 | keep | note |" in ledger
     assert "ottawa_ml_codex_proving" not in ledger
+    assert "ottawa_ml_codex_simple" not in ledger
+    assert "rm101_ml_codex_simple" not in ledger
     assert "artifact_dir" in ledger
     assert "result_md" in ledger
     assert "ottawa_ml_openrouter_v1" in ledger
@@ -78,6 +84,8 @@ def test_experiment_doc_content_contracts():
     assert "accept" in execution_protocol
     assert "reject" in execution_protocol
     assert "needs_rerun" in execution_protocol
+    assert "`M0 simple_qualification`" in execution_protocol
+    assert "不回写 formal ledger" in execution_protocol
 
     worker_template = (ROOT / "doc/experiments/05_worker_result_template.md").read_text(encoding="utf-8")
     assert "本文件只保留模板和字段规则" in worker_template
@@ -86,12 +94,16 @@ def test_experiment_doc_content_contracts():
     assert "artifact_index.json" in worker_template
     assert "feature_separability_summary" in worker_template
     assert "progress_record" in worker_template
+    assert "simple_qualification" in worker_template
+    assert "workflow_mode" in worker_template
+    assert "dag_depth" in worker_template
     assert "## Authority" not in worker_template
 
     results_readme = (ROOT / "doc/experiments/handoff/results/README.md").read_text(encoding="utf-8")
     assert "results/<experiment_id>.md" in results_readme
     assert "feature_list" in results_readme
     assert "progress_record" in results_readme
+    assert "M0 simple_qualification" in results_readme
 
     comparison_ticket = (ROOT / "doc/experiments/handoff/06_backend_comparison_owner.md").read_text(encoding="utf-8")
     assert "ottawa_ml_openrouter_nemotron_v3" in comparison_ticket

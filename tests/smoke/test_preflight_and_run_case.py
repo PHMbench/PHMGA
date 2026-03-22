@@ -146,6 +146,142 @@ def test_simple_fullchain_preset_runs_through_with_offline_stub_and_synth_data(t
     assert report_text.startswith("# PHMGA Final Report:")
 
 
+@pytest.mark.skipif(
+    not all(path.exists() for path in (REAL_OTTAWA_METADATA, REAL_OTTAWA_H5)),
+    reason="Real Ottawa PHM-Vibench files are not available in this environment.",
+)
+@pytest.mark.xfail(reason="Ottawa real simple qualification has evidence of pass but is not yet reproducibly clean-pass.", strict=False)
+def test_real_ottawa_ml_simple_smoke(tmp_path: Path):
+    preflight = subprocess.run(
+        [sys.executable, "main.py", "runtime.action=preflight", "+runs=ottawa_ml_codex_simple"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    preflight_payload = json.loads(preflight.stdout)
+    assert preflight_payload["dataset_name"] == "RM_017_Ottawa19"
+    assert preflight_payload["graph_path"] == "ml"
+    assert preflight_payload["source_mode"] == "real"
+
+    output_dir = tmp_path / "ottawa_ml_codex_simple"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "main.py",
+            "+runs=ottawa_ml_codex_simple",
+            f"runtime.output_dir={output_dir}",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(proc.stdout)
+    assert payload["dataset"] == "RM_017_Ottawa19"
+    assert payload["graph_path"] == "ml"
+    assert payload["source_mode"] == "real"
+
+    for filename in (
+        "validated_dag.json",
+        "compiled_dag_manifest.json",
+        "resolved_splits.json",
+        "resolved_dataset_manifest.json",
+        "artifact_index.json",
+        "workflow_state.json",
+        "feature_pipeline.json",
+        "feature_list.json",
+        "feature_separability_summary.json",
+        "metrics.json",
+        "predictions.json",
+        "importance.json",
+        "similarity_artifacts.json",
+        "final_report.md",
+    ):
+        assert (output_dir / filename).exists()
+    assert not (output_dir / "dag_quality_summary.json").exists()
+    assert not (output_dir / "dataset_level_runtime_trace.json").exists()
+
+    workflow_state = json.loads((output_dir / "workflow_state.json").read_text(encoding="utf-8"))
+    assert workflow_state["artifact_index_path"] == "artifact_index.json"
+    assert "artifact_index" not in workflow_state
+
+    dag_payload = json.loads((output_dir / "validated_dag.json").read_text(encoding="utf-8"))
+    assert dag_payload["nodes"]
+    metrics = json.loads((output_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert "test" in metrics
+    report_text = (output_dir / "final_report.md").read_text(encoding="utf-8")
+    assert "Front-end simple chain" in report_text
+
+
+@pytest.mark.skipif(
+    not all(path.exists() for path in (REAL_RM101_METADATA, REAL_RM101_H5)),
+    reason="Real RM101 PHM-Vibench files are not available in this environment.",
+)
+@pytest.mark.xfail(reason="RM101 real simple qualification is not yet clean-pass on live Codex.", strict=False)
+def test_real_rm101_ml_simple_smoke(tmp_path: Path):
+    preflight = subprocess.run(
+        [sys.executable, "main.py", "runtime.action=preflight", "+runs=rm101_ml_codex_simple"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    preflight_payload = json.loads(preflight.stdout)
+    assert preflight_payload["dataset_name"] == "RM_101_THU_GEARBOX"
+    assert preflight_payload["graph_path"] == "ml"
+    assert preflight_payload["source_mode"] == "real"
+
+    output_dir = tmp_path / "rm101_ml_codex_simple"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "main.py",
+            "+runs=rm101_ml_codex_simple",
+            f"runtime.output_dir={output_dir}",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(proc.stdout)
+    assert payload["dataset"] == "RM_101_THU_GEARBOX"
+    assert payload["graph_path"] == "ml"
+    assert payload["source_mode"] == "real"
+
+    for filename in (
+        "validated_dag.json",
+        "compiled_dag_manifest.json",
+        "resolved_splits.json",
+        "resolved_dataset_manifest.json",
+        "artifact_index.json",
+        "workflow_state.json",
+        "feature_pipeline.json",
+        "feature_list.json",
+        "feature_separability_summary.json",
+        "metrics.json",
+        "predictions.json",
+        "importance.json",
+        "similarity_artifacts.json",
+        "final_report.md",
+    ):
+        assert (output_dir / filename).exists()
+    assert not (output_dir / "dag_quality_summary.json").exists()
+    assert not (output_dir / "dataset_level_runtime_trace.json").exists()
+
+    workflow_state = json.loads((output_dir / "workflow_state.json").read_text(encoding="utf-8"))
+    assert workflow_state["artifact_index_path"] == "artifact_index.json"
+    assert "artifact_index" not in workflow_state
+
+    dag_payload = json.loads((output_dir / "validated_dag.json").read_text(encoding="utf-8"))
+    assert dag_payload["nodes"]
+    metrics = json.loads((output_dir / "metrics.json").read_text(encoding="utf-8"))
+    assert "test" in metrics
+    report_text = (output_dir / "final_report.md").read_text(encoding="utf-8")
+    assert "Front-end simple chain" in report_text
+
+
 def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
     combos = [
         ("config/runs/rm101_synth_dag.yaml", "dag_only", "dag_artifacts.json"),
