@@ -16,11 +16,17 @@ def test_run_case_uses_configured_experiment_user_instruction(tmp_path: Path, mo
         output_dir=str(tmp_path / "artifacts"),
     )
     runtime_config["experiment"]["user_instruction"] = "Config-owned instruction for smoke validation."
-    captured: dict[str, str] = {}
+    captured: dict[str, object] = {}
+    runtime_config["runtime"]["min_depth"] = 3
+    runtime_config["runtime"]["min_width"] = 1
+    runtime_config["runtime"]["max_depth"] = 8
 
     def fake_frontend_loop(state, protocol, llm, catalog, runtime_config):
         del protocol, llm, catalog, runtime_config
         captured["user_instruction"] = state.user_instruction
+        captured["min_depth"] = state.data_context["min_depth"]
+        captured["min_width"] = state.data_context["min_width"]
+        captured["max_depth"] = state.data_context["max_depth"]
         state.dag = validate_dag_json(
             {
                 "nodes": [
@@ -58,4 +64,7 @@ def test_run_case_uses_configured_experiment_user_instruction(tmp_path: Path, mo
     payload = run_case_module.run_case(runtime_config)
 
     assert captured["user_instruction"] == "Config-owned instruction for smoke validation."
+    assert captured["min_depth"] == 3
+    assert captured["min_width"] == 1
+    assert captured["max_depth"] == 8
     assert payload["graph_path"] == "dag_only"

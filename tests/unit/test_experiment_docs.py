@@ -33,31 +33,40 @@ def test_experiment_docs_exist_and_legacy_protocol_docs_are_gone():
 
 def test_experiment_doc_content_contracts():
     runbook = (ROOT / "doc/experiments/00_manual_runbook.md").read_text(encoding="utf-8")
-    assert "Backend Comparison On Canonical ML Mainline" in runbook
-    assert "04_execution_protocol.md" in runbook
-    assert "05_worker_result_template.md" in runbook
-    assert "Artifact Contract Gate" in runbook
-    assert "Feature Separability Gate" in runbook
-    assert "validated_dag.json" in runbook
-    assert "artifact_index.json" in runbook
-    assert "final_report.md" in runbook
-    assert "Supervisor Proving Lane" in runbook
+    assert "## Experiment Matrix" in runbook
+    assert "| layer | stage | preset_name | experiment_id | dataset | provider | model | workflow_mode | command | artifact_dir | result_md | paper_target | current_status |" in runbook
     assert "ottawa_ml_codex_proving" in runbook
     assert "ottawa_ml_openrouter_glm_proving" in runbook
-    assert "06_multi_agent_merge_checklist.md" not in runbook
+    assert "- `rm101_ml_codex_proving`" in runbook
+    assert "- `rm101_ml_openrouter_glm_proving`" in runbook
+    assert "| `M0` | `proving` | `rm101_ml_codex_proving`" not in runbook
+    assert "| `M0` | `proving` | `rm101_ml_openrouter_glm_proving`" not in runbook
+    assert "| `M2` | `stage_b` | `ottawa_ml` | `ottawa_ml_openrouter_v1`" not in runbook
+    assert "| `M2` | `stage_b` | `rm101_ml` | `rm101_ml_openrouter_v1`" not in runbook
+    assert "04_execution_protocol.md" in runbook
+    assert "05_worker_result_template.md" in runbook
+    assert "pass_with_local_incident" in runbook
+    assert "selected_global_best_backend.selected_from_stage_b=true" in runbook
 
     ledger = (ROOT / "doc/experiments/01_result_ledger.md").read_text(encoding="utf-8")
-    assert "active_stage_b_set" in ledger
-    assert "selected_global_best_backend" in ledger
-    assert "artifact_contract_pass" in ledger
-    assert "feature_separability_pass" in ledger
-    assert "selection_eligible" in ledger
+    assert "candidate_registry:" in ledger
+    assert "active_stage_b_set:" in ledger
+    assert "selected_global_best_backend:" in ledger
+    assert "| experiment_id | preset_name | dataset | graph_path | run_type | artifact_dir | result_md | artifact_contract_pass | feature_separability_pass | selection_eligible | accuracy | macro_f1 | keep | note |" in ledger
+    assert "ottawa_ml_codex_proving" not in ledger
+    assert "artifact_dir" in ledger
+    assert "result_md" in ledger
+    assert "ottawa_ml_openrouter_v1" in ledger
+    assert "rm101_ml_openrouter_v1" in ledger
 
     main_tables = (ROOT / "doc/experiments/02_main_tables.md").read_text(encoding="utf-8")
-    assert "Backend Comparison And Selection" in main_tables
-    assert "Best-Backend Ablations" in main_tables
-    assert "ottawa_ml_openrouter_glm_v1" in main_tables
-    assert "selected_global_best_backend" in main_tables
+    assert "No row enters the paper main tables unless artifact contract passed." in main_tables
+    assert "No pending, no no_evidence, no planner timeout, no transport failure rows." in main_tables
+    assert "No passed run_ids yet for Table 1." in main_tables
+    assert "No passed run_ids yet for Table 2." in main_tables
+    assert "No selection-eligible backend comparison rows yet for Table 3." in main_tables
+    assert "ottawa_ml_openrouter_glm_v1" not in main_tables
+    assert "ottawa_ml_main_v1" not in main_tables
 
     execution_protocol = (ROOT / "doc/experiments/04_execution_protocol.md").read_text(encoding="utf-8")
     assert "worker tool = Codex CLI" in execution_protocol
@@ -85,8 +94,8 @@ def test_experiment_doc_content_contracts():
     assert "progress_record" in results_readme
 
     comparison_ticket = (ROOT / "doc/experiments/handoff/06_backend_comparison_owner.md").read_text(encoding="utf-8")
-    assert "ottawa_ml_openrouter_glm_v1" in comparison_ticket
-    assert "rm101_ml_openrouter_glm_v1" in comparison_ticket
+    assert "ottawa_ml_openrouter_nemotron_v3" in comparison_ticket
+    assert "rm101_ml_openrouter_nemotron_v3" in comparison_ticket
     assert "only modify" not in comparison_ticket.lower()
 
     harness_ticket = (ROOT / "doc/experiments/handoff/07_harness_engineer.md").read_text(encoding="utf-8")

@@ -63,8 +63,13 @@ def test_formal_run_presets_hold_runtime_semantics():
         ROOT / "config/runs/ottawa_ml.yaml",
         ROOT / "config/runs/ottawa_ml_codex_proving.yaml",
         ROOT / "config/runs/ottawa_ml_openrouter_glm_proving.yaml",
+        ROOT / "config/runs/ottawa_synth_ml_simple.yaml",
+        ROOT / "config/runs/ottawa_ml_codex_v3.yaml",
+        ROOT / "config/runs/ottawa_ml_openrouter_nemotron_v3.yaml",
         ROOT / "config/runs/ottawa_torch.yaml",
         ROOT / "config/runs/rm101_ml.yaml",
+        ROOT / "config/runs/rm101_ml_codex_v3.yaml",
+        ROOT / "config/runs/rm101_ml_openrouter_nemotron_v3.yaml",
         ROOT / "config/runs/rm101_torch.yaml",
         ROOT / "config/runs/ottawa_ml_test.yaml",
         ROOT / "config/runs/rm101_ml_test.yaml",
@@ -93,3 +98,16 @@ def test_formal_run_presets_hold_runtime_semantics():
     assert "provider: openrouter" in openrouter_proving
     assert "model: z-ai/glm-4.5-air:free" in openrouter_proving
     assert "enabled: false" in openrouter_proving
+
+    simple_fullchain = (ROOT / "config/runs/ottawa_synth_ml_simple.yaml").read_text(encoding="utf-8")
+    assert "workflow_mode: simple_fullchain" in simple_fullchain
+    assert "mode: offline_stub" in simple_fullchain
+    assert "provider: codex_cli" in simple_fullchain
+    assert "enabled: false" in simple_fullchain
+
+    openrouter_formal_v3 = (ROOT / "config/runs/ottawa_ml_openrouter_nemotron_v3.yaml").read_text(encoding="utf-8")
+    assert "workflow_mode: rich" in openrouter_formal_v3
+    assert "provider: openrouter" in openrouter_formal_v3
+    assert "model: nvidia/nemotron-3-super-120b-a12b:free" in openrouter_formal_v3
+    assert "min_depth: 3" in openrouter_formal_v3
+    assert "max_depth: 8" in openrouter_formal_v3

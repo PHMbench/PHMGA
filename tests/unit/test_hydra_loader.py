@@ -39,3 +39,29 @@ def test_proving_run_preset_sets_supervisor_workflow_mode():
     assert runtime_config["runtime"]["workflow_mode"] == "supervisor_proving"
     assert runtime_config["runtime"]["max_iterations"] == 1
     assert runtime_config["evaluation"]["dag_quality"]["enabled"] is False
+
+
+def test_simple_fullchain_run_preset_sets_simple_workflow_mode():
+    cfg = compose_runtime_config(overrides=["+runs=ottawa_synth_ml_simple"])
+    runtime_config = to_runtime_dict(cfg)
+
+    assert runtime_config["data"]["dataset_name"] == "OTTAWA_SYNTH"
+    assert runtime_config["experiment"]["graph_path"] == "ml"
+    assert runtime_config["runtime"]["workflow_mode"] == "simple_fullchain"
+    assert runtime_config["runtime"]["max_iterations"] == 2
+    assert runtime_config["evaluation"]["dag_quality"]["enabled"] is False
+
+
+def test_formal_v3_run_preset_freezes_depth_constraints_and_output_dir():
+    cfg = compose_runtime_config(overrides=["+runs=ottawa_ml_openrouter_nemotron_v3"])
+    runtime_config = to_runtime_dict(cfg)
+
+    assert runtime_config["data"]["dataset_name"] == "RM_017_Ottawa19"
+    assert runtime_config["experiment"]["graph_path"] == "ml"
+    assert runtime_config["llm"]["provider"] == "openrouter"
+    assert runtime_config["llm"]["model"] == "nvidia/nemotron-3-super-120b-a12b:free"
+    assert runtime_config["runtime"]["workflow_mode"] == "rich"
+    assert runtime_config["runtime"]["min_depth"] == 3
+    assert runtime_config["runtime"]["min_width"] == 1
+    assert runtime_config["runtime"]["max_depth"] == 8
+    assert runtime_config["runtime"]["output_dir"].endswith("artifacts/paper/ottawa_ml_openrouter_nemotron_v3")

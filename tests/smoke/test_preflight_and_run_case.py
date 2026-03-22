@@ -91,6 +91,61 @@ def test_supervisor_proving_presets_run_through_with_offline_stub_and_synth_data
         assert report_text.startswith("# PHMGA Final Report:")
 
 
+def test_simple_fullchain_preset_runs_through_with_offline_stub_and_synth_data(tmp_path: Path):
+    preflight = subprocess.run(
+        [
+            sys.executable,
+            "main.py",
+            "runtime.action=preflight",
+            "+runs=ottawa_synth_ml_simple",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    preflight_payload = json.loads(preflight.stdout)
+    assert preflight_payload["dataset_name"] == "OTTAWA_SYNTH"
+    assert preflight_payload["graph_path"] == "ml"
+    assert preflight_payload["source_mode"] == "synthetic"
+
+    output_dir = tmp_path / "ottawa_synth_ml_simple"
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "main.py",
+            "+runs=ottawa_synth_ml_simple",
+            f"runtime.output_dir={output_dir}",
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(proc.stdout)
+    assert payload["dataset"] == "OTTAWA_SYNTH"
+    assert payload["graph_path"] == "ml"
+    assert payload["source_mode"] == "synthetic"
+
+    for filename in (
+        "validated_dag.json",
+        "compiled_dag_manifest.json",
+        "feature_pipeline.json",
+        "feature_list.json",
+        "feature_separability_summary.json",
+        "artifact_index.json",
+        "metrics.json",
+        "final_report.md",
+    ):
+        assert (output_dir / filename).exists()
+    assert not (output_dir / "dag_quality_summary.json").exists()
+
+    workflow_state = json.loads((output_dir / "workflow_state.json").read_text(encoding="utf-8"))
+    assert workflow_state["artifact_index_path"] == "artifact_index.json"
+    report_text = (output_dir / "final_report.md").read_text(encoding="utf-8")
+    assert report_text.startswith("# PHMGA Final Report:")
+
+
 def test_run_case_all_synthetic_path_pairs(tmp_path: Path):
     combos = [
         ("config/runs/rm101_synth_dag.yaml", "dag_only", "dag_artifacts.json"),

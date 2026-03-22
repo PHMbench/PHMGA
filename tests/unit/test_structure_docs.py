@@ -52,6 +52,8 @@ def test_structure_doc_content_contracts():
     workflow_doc = (ROOT / "doc/structure/02_workflow_and_bridge.md").read_text(encoding="utf-8")
     assert "validated DAG JSON" in workflow_doc
     assert "`workflow_state.json` 只保存状态快照与 `artifact_index_path`" in workflow_doc
+    assert "runtime.workflow_mode=simple_fullchain" in workflow_doc
+    assert "`plan -> execute -> reflect -> compile -> inquirer -> report`" in workflow_doc
     assert "runtime.workflow_mode=supervisor_proving" in workflow_doc
     assert "`plan -> execute -> compile -> verify`" in workflow_doc
 

@@ -364,6 +364,91 @@ def test_openrouter_glm_active_candidate_returns_json(monkeypatch: pytest.Monkey
         operator_catalog_summary=[],
     )
     assert isinstance(plan, StepPlan)
+
+
+def test_openrouter_glm_single_step_json_is_promoted_to_plan(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        assert "response_format" not in payload
+        return httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps({"parent": "ch1", "op_name": "normalize", "params": {}}),
+                        }
+                    }
+                ]
+            },
+        )
+
+    llm = OpenRouterLLM(model="z-ai/glm-4.5-air:free", http_client=_mock_client(handler))
+    plan = llm.generate_step_plan(
+        prompt="planner prompt",
+        instruction="plan",
+        signal_context=_signal_context(),
+        dag_json=None,
+        reflection=[],
+        operator_catalog_summary=[],
+    )
+    assert isinstance(plan, StepPlan)
+    assert len(plan.plan) == 1
+    assert plan.plan[0].parent == "ch1"
+    assert plan.plan[0].op_name == "normalize"
+
+
+def test_openrouter_glm_empty_object_triggers_compact_retry(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    seen_prompts: list[str] = []
+
+    responses = [
+        httpx.Response(
+            200,
+            json={"choices": [{"message": {"content": "{}"}}]},
+        ),
+        httpx.Response(
+            200,
+            json={
+                "choices": [
+                    {
+                        "message": {
+                            "content": json.dumps(
+                                {
+                                    "plan": [
+                                        {"parent": "ch1", "op_name": "normalize", "params": {}},
+                                        {"parent": "ch2", "op_name": "normalize", "params": {}},
+                                    ]
+                                }
+                            )
+                        }
+                    }
+                ]
+            },
+        ),
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        seen_prompts.append(payload["messages"][0]["content"])
+        assert "response_format" not in payload
+        return responses.pop(0)
+
+    llm = OpenRouterLLM(model="z-ai/glm-4.5-air:free", http_client=_mock_client(handler))
+    plan = llm.generate_step_plan(
+        prompt="planner prompt",
+        instruction="Generate a paper-ready PHM workflow from canonical metadata.",
+        signal_context=_signal_context(),
+        dag_json=None,
+        reflection=[],
+        operator_catalog_summary=[{"op_name": "normalize"}],
+    )
+
+    assert isinstance(plan, StepPlan)
+    assert [step.parent for step in plan.plan] == ["ch1", "ch2"]
+    assert "Do not return `{}`." in seen_prompts[1]
     assert plan.plan[0].op_name == "normalize"
 
 
