@@ -19,7 +19,10 @@
 - start_time:
 - end_time:
 - provider/model:
+- dataset:
+- workflow_mode:
 - output_dir:
+- dag_depth:
 - artifact_contract_pass:
 - feature_separability_pass:
 - status:
@@ -60,15 +63,25 @@
 - `run_type`
   - 只能写：
     - `pilot`
+    - `simple_qualification`
     - `backend_comparison`
     - `formal_main`
     - `ablation`
+- `ticket_id`
+  - formal rows 固定写 handoff ticket 文件名
+  - `M0 proving` / `M0 simple_qualification` 可写 `n/a (qualification lane)`
 - `experiment_id`
-  - 必须与 `artifacts/paper/<experiment_id>/` 一致
+  - 必须与实际 artifact 目录一致，例如 `artifacts/paper/<experiment_id>/` 或 `artifacts/simple/<experiment_id>/`
 - `command`
   - 优先记录实际执行的 wrapper；如果使用了 env override，要原样写出
 - `provider/model`
   - 固定写实际实验 backend tuple，而不是 worker tool
+- `dataset`
+  - 固定写实际数据集名称
+- `workflow_mode`
+  - 固定写运行时前端模式，例如 `rich`、`supervisor_proving`、`simple_fullchain`
+- `dag_depth`
+  - 写 `validated_dag.json` 的最大深度；如果 DAG 未生成，写 `n/a`
 - `artifact_contract_pass`
   - worker 先写：
     - `pass`
@@ -85,6 +98,7 @@
   - 只能写：
     - `yes`
     - `no`
+  - `M0 proving` / `M0 simple_qualification` 固定写 `no`
 
 ## Evidence Rules
 

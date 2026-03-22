@@ -16,6 +16,8 @@
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `M0` | `proving` | `ottawa_ml_codex_proving` | `ottawa_ml_codex_proving` | Ottawa | `codex_cli` | `gpt-5.3-codex` | `supervisor_proving` | `python main.py +runs=ottawa_ml_codex_proving` | `artifacts/proving/ottawa_ml_codex_proving` | `n/a (proving lane; use artifact bundle)` | engineering qualification | `pass` |
 | `M0` | `proving` | `ottawa_ml_openrouter_glm_proving` | `ottawa_ml_openrouter_glm_proving` | Ottawa | `openrouter` | `z-ai/glm-4.5-air:free` | `supervisor_proving` | `python main.py +runs=ottawa_ml_openrouter_glm_proving` | `artifacts/proving/ottawa_ml_openrouter_glm_proving` | `n/a (proving lane; use artifact bundle)` | engineering qualification | `pass_with_local_incident` |
+| `M0` | `simple_qualification` | `ottawa_ml_codex_simple` | `ottawa_ml_codex_simple` | Ottawa | `codex_cli` | `gpt-5.3-codex` | `simple_fullchain` | `python main.py runtime.action=preflight +runs=ottawa_ml_codex_simple && python main.py +runs=ottawa_ml_codex_simple` | `artifacts/simple/ottawa_ml_codex_simple` | `doc/experiments/handoff/results/ottawa_ml_codex_simple.md` | engineering qualification | `pass_with_local_incident` |
+| `M0` | `simple_qualification` | `rm101_ml_codex_simple` | `rm101_ml_codex_simple` | RM101 | `codex_cli` | `gpt-5.3-codex` | `simple_fullchain` | `python main.py runtime.action=preflight +runs=rm101_ml_codex_simple && python main.py +runs=rm101_ml_codex_simple` | `artifacts/simple/rm101_ml_codex_simple` | `doc/experiments/handoff/results/rm101_ml_codex_simple.md` | engineering qualification | `fail` |
 | `M2` | `stage_b` | `ottawa_ml_codex_v3` | `ottawa_ml_codex_v3` | Ottawa | `codex_cli` | `gpt-5.3-codex` | `rich` | `python main.py runtime.action=preflight +runs=ottawa_ml_codex_v3 && python main.py +runs=ottawa_ml_codex_v3` | `artifacts/paper/ottawa_ml_codex_v3` | `doc/experiments/handoff/results/ottawa_ml_codex_v3.md` | Table 3 comparison gate | `pending` |
 | `M2` | `stage_b` | `ottawa_ml_openrouter_nemotron_v3` | `ottawa_ml_openrouter_nemotron_v3` | Ottawa | `openrouter` | `nvidia/nemotron-3-super-120b-a12b:free` | `rich` | `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy python main.py runtime.action=preflight +runs=ottawa_ml_openrouter_nemotron_v3 && env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy python main.py +runs=ottawa_ml_openrouter_nemotron_v3` | `artifacts/paper/ottawa_ml_openrouter_nemotron_v3` | `doc/experiments/handoff/results/ottawa_ml_openrouter_nemotron_v3.md` | Table 3 comparison gate | `pending` |
 | `M2` | `stage_b` | `rm101_ml_codex_v3` | `rm101_ml_codex_v3` | RM101 | `codex_cli` | `gpt-5.3-codex` | `rich` | `python main.py runtime.action=preflight +runs=rm101_ml_codex_v3 && python main.py +runs=rm101_ml_codex_v3` | `artifacts/paper/rm101_ml_codex_v3` | `doc/experiments/handoff/results/rm101_ml_codex_v3.md` | Table 3 comparison gate | `pending` |
@@ -70,6 +72,41 @@ Supervisor proving lane 只回答一个问题：
   - `step_plan.json`
 
 当前 `ottawa_ml_openrouter_glm_proving` 的文档状态固定记为 `pass_with_local_incident`：仓库内有 clean pass artifact bundle，但最近一次本机复现暴露过 transport/proxy incident，因此不写成“完全稳定复现”。
+
+## Simple Qualification Lane
+
+`simple_fullchain` lane 只回答一个更现实的问题：
+
+`plan -> execute -> reflect -> compile -> inquirer -> report`
+
+能否在真实数据上稳定闭环，同时继续遵守：
+
+- `validated DAG JSON -> compile_dag_for_path()`
+- 同一套核心 artifact schema
+- `workflow_state.json` 只保存状态快照与 `artifact_index_path`
+
+固定规则：
+
+- simple qualification lane 不写 `doc/experiments/01_result_ledger.md`
+- simple qualification lane 不进入 `doc/experiments/02_main_tables.md`
+- simple qualification lane 的成功只表示 runtime closure on real data，不表示 formal paper pass
+- 当前 simple qualification round 只做：
+  - `ottawa_ml_codex_simple`
+  - `rm101_ml_codex_simple`
+- 执行顺序固定为 Ottawa 先、RM101 后；如果 Ottawa 未 clean pass，就停止本轮，不继续 RM101 或 OpenRouter simple
+- 当前已知结果：
+  - `ottawa_ml_codex_simple = pass_with_local_incident`
+  - `rm101_ml_codex_simple = fail`
+- simple qualification artifact contract 固定为：
+  - `validated_dag.json`
+  - `compiled_dag_manifest.json`
+  - `feature_pipeline.json`
+  - `feature_list.json`
+  - `feature_separability_summary.json`
+  - `artifact_index.json`
+  - `metrics.json`
+  - `final_report.md`
+  - `workflow_state.json`
 
 ## Canonical And Active Comparison
 

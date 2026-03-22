@@ -91,6 +91,22 @@ worker、harness engineer 和 coordinator 只依赖以下材料：
 5. harness engineer 复核 gate
 6. coordinator 最后更新 `selected_global_best_backend` 与主表
 
+Qualification lane 例外固定为：
+
+- `M0 proving`
+- `M0 simple_qualification`
+
+这两类只写：
+
+1. artifact bundle
+2. `doc/experiments/handoff/results/<experiment_id>.md`
+
+并且：
+
+- 不回写 formal ledger
+- 不更新 `doc/experiments/02_main_tables.md`
+- 不触发 `selected_global_best_backend`
+
 ## Gates
 
 字段解释基线固定参考：

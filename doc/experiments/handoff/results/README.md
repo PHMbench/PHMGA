@@ -12,10 +12,15 @@
 
 - `doc/experiments/01_result_ledger.md`
 
+但以下 qualification lane 不回写 formal ledger：
+
+- `M0 proving`
+- `M0 simple_qualification`
+
 worker 必须遵守固定顺序：
 
 1. 先写本目录中的结果文件
-2. 再更新 `doc/experiments/01_result_ledger.md`
+2. formal row 再更新 `doc/experiments/01_result_ledger.md`
 
 coordinator 之后再根据：
 
