@@ -1,0 +1,2 @@
+graph_path: torch
+user_instruction: Build a PHM diagnosis DAG and evaluate terminal feature branches with learned torch fusion.
