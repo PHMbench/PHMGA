@@ -31,13 +31,12 @@ worker、harness engineer 和 coordinator 只依赖以下材料：
 
 - `ml` 是 canonical diagnosis mainline
 - `torch` 只做 path comparison
-- Stage B 只比较 active backend set
+- Stage B 只比较当前 active backend set
 - Stage C / D 只围绕 `selected_global_best_backend`
-- 当前 shell wrapper 默认 tuple 仍是 `codex_cli / gpt-5.3-codex`
-- 如果 selected backend 与 wrapper 默认值不同，worker 必须通过：
-  - `PHMGA_LLM_PROVIDER`
-  - `PHMGA_LLM_MODEL`
-  显式覆盖
+- 当前 active Stage B set 是：
+  - `codex_cli / gpt-5.3-codex`
+  - `openrouter / nvidia/nemotron-3-super-120b-a12b:free`
+- 当前 formal comparison round 统一使用 `v3` presets，不再依赖 wrapper 默认 tuple 充当实验真值
 
 ## Roles
 
@@ -73,6 +72,13 @@ worker、harness engineer 和 coordinator 只依赖以下材料：
   - `codex login` 已完成
 - OpenRouter comparison 额外需要：
   - `OPENROUTER_API_KEY`
+- OpenRouter comparison 还需要清掉本地坏代理环境变量：
+  - `HTTP_PROXY`
+  - `HTTPS_PROXY`
+  - `ALL_PROXY`
+  - `http_proxy`
+  - `https_proxy`
+  - `all_proxy`
 - 输出目录固定为：
   - `artifacts/paper/<experiment_id>/`
 
@@ -173,7 +179,7 @@ worker、harness engineer 和 coordinator 只依赖以下材料：
 - worker 不得改 provider 默认、experiment matrix 或 main table 语义
 - worker 不得直接更新 `doc/experiments/02_main_tables.md`
 - `openrouter/free` 不能进入最终 backend 选择
-- `stepfun/step-3.5-flash:free` 的历史失败 row 不参与当前 selection round
+- 历史 `*_v1` / `*_v2` StepFun / GLM comparison row 不参与当前 selection round
 - 如果 ledger 冲突，先保留 worker 报告，再由 harness engineer / coordinator 重写 ledger
 
 ## Tickets

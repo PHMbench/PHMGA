@@ -7,7 +7,12 @@
 1. DAG JSON 需要表达什么，才能成为论文版前后端唯一法定接口
 2. operator schema 需要表达什么，才能同时服务 planner、executor、bridge 和 report
 
-当前 operator schema 的描述层明确参考了 `/home/user/LQ/C_Agent/PHMGA/src/tools/readme.md` 与五类 schema 文件，但只吸收其分类、rank 语义和输入输出合同，不回流旧 `src/tools` 平台壳。
+当前 operator schema 的描述层明确参考了 `/home/user/LQ/C_Agent/PHMGA/src/tools/readme.md` 与五类 schema 文件，但只吸收其分类、rank 语义和 输入输出合同，不回流旧 `src/tools` 平台壳。
+
+
+$$
+x^2_2
+$$
 
 ## 五类 operator schema 分类
 
@@ -181,6 +186,12 @@
 - `multi.cross_correlation`
 - `decision.threshold`
 
+
+$$
+
+
+$$
+
 ## `TRANSFORM` family：WaveFilters 路线
 
 以下模块现在已经进入统一 operator 系统，但当前默认仍不要求 planner 主动生成：
@@ -226,25 +237,25 @@
 
 当前 role / path 约束如下：
 
-| op_uid | schema_category | rank_class | execution_role | legal_paths | 说明 |
-| --- | --- | --- | --- | --- | --- |
-| `signal.normalize` | `TRANSFORM` | `rank_same` | `fixed` | `dag_only, ml, torch` | 时域归一化 |
-| `signal.fft_mag` | `TRANSFORM` | `rank_same` | `fixed` | `dag_only, ml, torch` | 全局谱变换 |
-| `signal.stft` | `EXPAND` | `rank_up` | `fixed` | `dag_only, ml, torch` | 时频展开 |
-| `signal.patch` | `EXPAND` | `rank_up` | `fixed` | `dag_only, ml, torch` | 局部 patch 展开 |
-| `signal.filter` | `TRANSFORM` | `rank_same` | `fixed` | `dag_only, ml, torch` | 带限滤波 |
-| `signal.hilbert_envelope` | `TRANSFORM` | `rank_same` | `fixed` | `dag_only, ml, torch` | 包络提取 |
-| `signal.psd` | `TRANSFORM` | `rank_same` | `fixed` | `dag_only, ml, torch` | Welch PSD |
-| `feature.mean` | `AGGREGATE` | `rank_down` | `outer_only` | `dag_only, ml` | 均值特征 |
-| `feature.std` | `AGGREGATE` | `rank_down` | `outer_only` | `dag_only, ml` | 标准差特征 |
-| `feature.rms` | `AGGREGATE` | `rank_down` | `outer_only` | `dag_only, ml, torch` | RMS 特征 |
-| `feature.kurtosis` | `AGGREGATE` | `rank_down` | `outer_only` | `dag_only, ml, torch` | 冲击性特征 |
-| `feature.crest_factor` | `AGGREGATE` | `rank_down` | `outer_only` | `dag_only, ml, torch` | 瞬态峰值特征 |
-| `feature.band_power` | `AGGREGATE` | `rank_down` | `outer_only` | `dag_only, ml, torch` | 频带能量特征 |
-| `feature.spectral_centroid` | `AGGREGATE` | `rank_down` | `outer_only` | `dag_only, ml, torch` | 谱心特征 |
-| `multi.concatenate` | `MULTI_VARIABLE` | `multi_input` | `proxy` | `dag_only, ml, torch` | 多分支向量融合 |
-| `multi.cross_correlation` | `MULTI_VARIABLE` | `multi_input` | `proxy` | `dag_only, ml, torch` | 跨分支相关性特征 |
-| `decision.threshold` | `DECISION` | `terminal_decision` | `outer_only` | `dag_only, ml, torch` | terminal side-output 决策节点 |
+| op_uid                        | schema_category    | rank_class            | execution_role | legal_paths             | 说明                          |
+| ----------------------------- | ------------------ | --------------------- | -------------- | ----------------------- | ----------------------------- |
+| `signal.normalize`          | `TRANSFORM`      | `rank_same`         | `fixed`      | `dag_only, ml, torch` | 时域归一化                    |
+| `signal.fft_mag`            | `TRANSFORM`      | `rank_same`         | `fixed`      | `dag_only, ml, torch` | 全局谱变换                    |
+| `signal.stft`               | `EXPAND`         | `rank_up`           | `fixed`      | `dag_only, ml, torch` | 时频展开                      |
+| `signal.patch`              | `EXPAND`         | `rank_up`           | `fixed`      | `dag_only, ml, torch` | 局部 patch 展开               |
+| `signal.filter`             | `TRANSFORM`      | `rank_same`         | `fixed`      | `dag_only, ml, torch` | 带限滤波                      |
+| `signal.hilbert_envelope`   | `TRANSFORM`      | `rank_same`         | `fixed`      | `dag_only, ml, torch` | 包络提取                      |
+| `signal.psd`                | `TRANSFORM`      | `rank_same`         | `fixed`      | `dag_only, ml, torch` | Welch PSD                     |
+| `feature.mean`              | `AGGREGATE`      | `rank_down`         | `outer_only` | `dag_only, ml`        | 均值特征                      |
+| `feature.std`               | `AGGREGATE`      | `rank_down`         | `outer_only` | `dag_only, ml`        | 标准差特征                    |
+| `feature.rms`               | `AGGREGATE`      | `rank_down`         | `outer_only` | `dag_only, ml, torch` | RMS 特征                      |
+| `feature.kurtosis`          | `AGGREGATE`      | `rank_down`         | `outer_only` | `dag_only, ml, torch` | 冲击性特征                    |
+| `feature.crest_factor`      | `AGGREGATE`      | `rank_down`         | `outer_only` | `dag_only, ml, torch` | 瞬态峰值特征                  |
+| `feature.band_power`        | `AGGREGATE`      | `rank_down`         | `outer_only` | `dag_only, ml, torch` | 频带能量特征                  |
+| `feature.spectral_centroid` | `AGGREGATE`      | `rank_down`         | `outer_only` | `dag_only, ml, torch` | 谱心特征                      |
+| `multi.concatenate`         | `MULTI_VARIABLE` | `multi_input`       | `proxy`      | `dag_only, ml, torch` | 多分支向量融合                |
+| `multi.cross_correlation`   | `MULTI_VARIABLE` | `multi_input`       | `proxy`      | `dag_only, ml, torch` | 跨分支相关性特征              |
+| `decision.threshold`        | `DECISION`       | `terminal_decision` | `outer_only` | `dag_only, ml, torch` | terminal side-output 决策节点 |
 
 ## 当前 planner / executor 如何使用 operator schema
 

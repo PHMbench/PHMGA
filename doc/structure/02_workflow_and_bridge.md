@@ -35,6 +35,18 @@
 - 最终报告改由 deterministic `build_final_report()` 生成
 - 成功定义收敛到最小 artifact contract，而不是 richer comparison logic
 
+为了先验证更接近 `C_Agent/PHMGA` 的简单范式，当前还并行保留一条 `runtime.workflow_mode=simple_fullchain`：
+
+`PHMState -> StateGraph(plan -> execute -> reflect -> compile -> inquirer -> report) -> validated DAG JSON -> bridge -> ml artifacts`
+
+这条 simple lane 的目标不是论文 richer gate，而是先证明：
+
+- `plan -> execute -> reflect` 能形成一个更轻的 supervisor-style loop
+- 不经过 `dag_quality_evaluator`
+- 不使用 `rollback`
+- 仍然走正式 `validated DAG JSON -> compile_dag_for_path()` bridge 边界
+- 最终报告也由 deterministic `build_final_report()` 生成，避免末端再次被 LLM 卡住
+
 ## 最终目标状态机
 
 ```mermaid
@@ -86,6 +98,9 @@ flowchart TD
 - `runtime.workflow_mode=rich`
   - 默认论文主链
   - 走 `plan -> execute -> dag_quality -> reflect -> rollback|compile_ready`
+- `runtime.workflow_mode=simple_fullchain`
+  - 更轻的 C_Agent-style 全链路
+  - 走 `plan -> execute -> reflect -> compile -> inquirer -> report`
 - `runtime.workflow_mode=supervisor_proving`
   - 轻量 proving lane
   - 走 `plan -> execute -> compile -> verify`
