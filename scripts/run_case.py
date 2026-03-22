@@ -11,7 +11,7 @@ from src.data import build_protocol_from_config
 from src.evaluation import evaluate_artifact_contract, render_mermaid_dag
 from src.llm import get_llm
 from src.operators import get_operator_catalog
-from src.phm_outer_graph import run_phm_graph, run_supervisor_proving_graph
+from src.phm_outer_graph import run_phm_graph, run_simple_fullchain_graph, run_supervisor_proving_graph
 from src.states import WorkflowState
 from src.utils import ensure_dir, write_json, write_text
 
@@ -89,8 +89,11 @@ def _run_frontend_loop(
     runtime_config: Dict[str, Any],
 ) -> WorkflowState:
     """Compatibility wrapper over the LangGraph frontend runtime."""
-    if _workflow_mode(runtime_config) == "supervisor_proving":
+    workflow_mode = _workflow_mode(runtime_config)
+    if workflow_mode == "supervisor_proving":
         return run_supervisor_proving_graph(state, protocol, catalog, runtime_config, llm_override=llm)
+    if workflow_mode == "simple_fullchain":
+        return run_simple_fullchain_graph(state, protocol, catalog, runtime_config, llm_override=llm)
     return run_phm_graph(state, protocol, catalog, runtime_config, llm_override=llm)
 
 
@@ -112,10 +115,13 @@ def run_case(
             "catalog": protocol.catalog,
             "metadata_schema_version": protocol.metadata_schema_version,
             "source_mode": protocol.source_mode,
-            "min_depth": 2,
-            "min_width": 1,
-            "max_depth": 8,
-            "stage": "SUPERVISOR_PROVING" if _workflow_mode(runtime_config) == "supervisor_proving" else "RUN_CASE",
+            "min_depth": int(runtime_config.get("runtime", {}).get("min_depth", 2)),
+            "min_width": int(runtime_config.get("runtime", {}).get("min_width", 1)),
+            "max_depth": int(runtime_config.get("runtime", {}).get("max_depth", 8)),
+            "stage": {
+                "supervisor_proving": "SUPERVISOR_PROVING",
+                "simple_fullchain": "SIMPLE_FULLCHAIN",
+            }.get(_workflow_mode(runtime_config), "RUN_CASE"),
         },
     )
     state = _run_frontend_loop(state, protocol, llm, catalog, runtime_config)
