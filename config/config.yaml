@@ -52,6 +52,9 @@ runtime:
   workflow_mode: rich
   output_dir: null
   max_iterations: 4
+  min_depth: 2
+  min_width: 1
+  max_depth: 8
   provider_retry_once: true
 
 evaluation:

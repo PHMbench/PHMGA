@@ -1,0 +1,20 @@
+# @package _global_
+defaults:
+  - override /data: ottawa
+  - override /experiment: ml
+  - _self_
+
+llm:
+  mode: provider
+  provider: openrouter
+  model: z-ai/glm-4.5-air:free
+  api_key_env: OPENROUTER_API_KEY
+  max_tokens_structured: 2000
+
+runtime:
+  workflow_mode: rich
+  max_iterations: 4
+  min_depth: 3
+  min_width: 1
+  max_depth: 8
+  output_dir: /home/user/LQ/B_Signal/PHMGA/artifacts/paper/ottawa_ml_openrouter_glm_v2

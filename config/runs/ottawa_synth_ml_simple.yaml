@@ -1,0 +1,18 @@
+# @package _global_
+defaults:
+  - override /data: ottawa_synth
+  - override /experiment: ml
+  - _self_
+
+llm:
+  provider: codex_cli
+  mode: offline_stub
+  model: gpt-5.3-codex
+
+runtime:
+  workflow_mode: simple_fullchain
+  max_iterations: 2
+
+evaluation:
+  dag_quality:
+    enabled: false
