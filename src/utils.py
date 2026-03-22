@@ -15,9 +15,14 @@ os.environ["LANGCHAIN_ENDPOINT"] = ""
 os.environ["LANGCHAIN_API_KEY"] = ""
 os.environ["LANGCHAIN_PROJECT"] = ""
 
-# Load environment variables from .env file
-from dotenv import load_dotenv
-load_dotenv()
+# Load environment variables from .env file when python-dotenv is available.
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:  # pragma: no cover
+    load_dotenv = None
+
+if load_dotenv is not None:
+    load_dotenv()
 
 # 导入解耦后的两个图构建器
 from src.phm_outer_graph import build_builder_graph, build_executor_graph
@@ -373,4 +378,3 @@ def load_state(filepath: str):
     except Exception as e:
         print(f"Error loading state: {e}")
         return None
-
