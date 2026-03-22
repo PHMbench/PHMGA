@@ -28,11 +28,13 @@ EXECUTE_PROMPT_TEMPLATE = """You are an execution planner for a PHM DAG workflow
 
 {contract}
 Task:
-- Materialize `step_plan` into DAG node additions.
+- Materialize `step_plan` into legal DAG node additions.
+- Treat the plan as the execution source of truth. Execute it faithfully instead of inventing a different branch.
 - Resolve missing parameters only from operator schema, signal context, or explicit reasoning.
 - Only tune parameters declared in `llm_tunable_params`.
 - Enforce `input_spec`, `output_spec`, and `rank_class` before executing a node.
 - If a step cannot be executed, emit an execution gap instead of inventing a fallback branch.
+- Keep the result aligned with PHM workflow logic such as transform -> feature extraction instead of arbitrary operator chaining.
 
 Graph path from config: {graph_path}
 Signal context: {signal_context}

@@ -28,6 +28,7 @@ def build_final_report(
     path_artifacts: Dict[str, Any],
 ) -> str:
     """Assemble the final markdown report from protocol and artifact evidence."""
+    workflow_mode = str(state.runtime_config.get("runtime", {}).get("workflow_mode", "rich"))
     plan_steps = len(state.step_plan.plan) if state.step_plan else 0
     lines = [
         f"# PHMGA Final Report: {protocol.dataset_name} / {state.graph_path}",
@@ -85,15 +86,31 @@ def build_final_report(
                 f"- Dataset-level issues: {', '.join(dataset_level.get('issues', [])) or 'none'}",
             ]
         )
-    lines.extend(
-        [
-            "",
-            "## Analysis Workflow",
-            "- Front-end main chain: signal_context -> StepPlan -> execute -> dag_quality_evaluator -> reflect",
-            "- Replan policy: `need_patch` keeps the current round; `need_replan` rolls back to the last stable DAG.",
-            "- Back-end hand-off: validated DAG JSON -> bridge -> graph-dependent artifacts -> final report",
-        ]
-    )
+    lines.extend(["", "## Analysis Workflow"])
+    if workflow_mode == "supervisor_proving":
+        lines.extend(
+            [
+                "- Front-end proving chain: signal_context -> StepPlan -> execute -> compile -> verify",
+                "- Proving policy: no dag_quality evaluator, no reflection loop, no rollback.",
+                "- Back-end hand-off: validated DAG JSON -> bridge -> graph-dependent artifacts -> final report",
+            ]
+        )
+    elif workflow_mode == "simple_fullchain":
+        lines.extend(
+            [
+                "- Front-end simple chain: signal_context -> StepPlan -> execute -> reflect -> compile -> inquirer -> report",
+                "- Simple policy: use reflection as the only loop controller; do not run dag_quality or rollback.",
+                "- Back-end hand-off: validated DAG JSON -> bridge -> graph-dependent artifacts -> final report",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "- Front-end main chain: signal_context -> StepPlan -> execute -> dag_quality_evaluator -> reflect",
+                "- Replan policy: `need_patch` keeps the current round; `need_replan` rolls back to the last stable DAG.",
+                "- Back-end hand-off: validated DAG JSON -> bridge -> graph-dependent artifacts -> final report",
+            ]
+        )
     if "similarity_artifacts" in path_artifacts:
         lines.extend(
             [

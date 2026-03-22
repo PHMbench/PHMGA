@@ -290,6 +290,119 @@ def build_supervisor_proving_graph(
     return builder.compile()
 
 
+def build_simple_fullchain_graph(
+    protocol,
+    catalog: OperatorCatalog,
+    runtime_config: Dict[str, Any],
+    llm_override=None,
+):
+    builder = StateGraph(PHMState)
+
+    def plan_node(state: PHMState) -> Dict[str, Any]:
+        state.iteration_index += 1
+        state.current_round_input_hash = _dag_hash(state)
+        state.current_round_previous_node_ids = [node.node_id for node in state.dag.nodes] if state.dag else []
+        state = plan_agent(state, protocol, llm_override, catalog)
+        return state.model_dump()
+
+    def execute_node(state: PHMState) -> Dict[str, Any]:
+        state = execute_agent(state, protocol, catalog, llm_override)
+        return state.model_dump()
+
+    def reflect_node(state: PHMState) -> Dict[str, Any]:
+        state.dag_quality_summary = {}
+        state = reflect_agent(state, llm_override)
+        current_reflection = state.reflection_results[-1]
+        current_node_ids = {node.node_id for node in state.dag.nodes} if state.dag else set()
+        added_node_ids = sorted(current_node_ids - set(state.current_round_previous_node_ids))
+        state.round_history.append(
+            RoundTrace(
+                round_index=state.iteration_index,
+                input_dag_hash=state.current_round_input_hash,
+                step_plan=state.step_plan.model_copy(deep=True) if state.step_plan else None,
+                added_node_ids=added_node_ids,
+                execution_gaps=[gap.model_copy(deep=True) for gap in state.execution_gaps],
+                reflection_result=current_reflection.model_copy(deep=True),
+                rolled_back=False,
+            )
+        )
+        if current_reflection.decision in {"need_patch", "need_replan", "finish"}:
+            state.stable_snapshot()
+        elif current_reflection.decision == "halt":
+            state.halt_reason = current_reflection.reason
+        return state.model_dump()
+
+    def compile_node(state: PHMState) -> Dict[str, Any]:
+        compiled = compile_dag_for_path(
+            state.dag,
+            state.graph_path,
+            output_policy=_resolve_output_policy(runtime_config, state.graph_path),
+        )
+        split_records = None if state.graph_path == "dag_only" else materialize_split_signals(protocol)
+        path_artifacts = _run_path(state.graph_path, compiled, split_records, runtime_config, catalog, protocol.dataset_name)
+        decision_outputs = _decision_side_outputs(state)
+        if decision_outputs:
+            path_artifacts["decision_side_outputs"] = decision_outputs
+        state.compiled_bundle = compiled
+        state.compiled_manifest = compiled.manifest.model_dump()
+        state.path_artifacts = path_artifacts
+        state.status = "compiled"
+        return state.model_dump()
+
+    def inquirer_node(state: PHMState) -> Dict[str, Any]:
+        state = inquirer_agent(state)
+        return state.model_dump()
+
+    def report_node(state: PHMState) -> Dict[str, Any]:
+        manifest = CompiledDagManifest.model_validate(state.compiled_manifest)
+        state.final_report = build_final_report(state, protocol, manifest, state.path_artifacts)
+        state.status = "reported"
+        return state.model_dump()
+
+    def halt_node(state: PHMState) -> Dict[str, Any]:
+        if not state.halt_reason:
+            state.halt_reason = "Workflow halted."
+        state.status = "halted"
+        return state.model_dump()
+
+    def reflect_router(state: PHMState) -> str:
+        decision = state.reflection_results[-1].decision
+        if decision == "finish":
+            return "compile"
+        if decision in {"need_patch", "need_replan"}:
+            if state.iteration_index >= state.max_iterations:
+                state.halt_reason = f"Workflow exceeded max_iterations={state.max_iterations} without reaching finish."
+                return "halt"
+            return "plan"
+        return "halt"
+
+    builder.add_node("plan", plan_node)
+    builder.add_node("execute", execute_node)
+    builder.add_node("reflect", reflect_node)
+    builder.add_node("compile", compile_node)
+    builder.add_node("inquirer", inquirer_node)
+    builder.add_node("report", report_node)
+    builder.add_node("halt", halt_node)
+
+    builder.add_edge(START, "plan")
+    builder.add_edge("plan", "execute")
+    builder.add_edge("execute", "reflect")
+    builder.add_conditional_edges(
+        "reflect",
+        reflect_router,
+        {
+            "plan": "plan",
+            "compile": "compile",
+            "halt": "halt",
+        },
+    )
+    builder.add_edge("compile", "inquirer")
+    builder.add_edge("inquirer", "report")
+    builder.add_edge("report", END)
+    builder.add_edge("halt", END)
+    return builder.compile()
+
+
 def run_phm_graph(
     state: PHMState,
     protocol,
@@ -309,4 +422,15 @@ def run_supervisor_proving_graph(
     llm_override=None,
 ) -> PHMState:
     graph = build_supervisor_proving_graph(protocol, catalog, runtime_config, llm_override)
+    return PHMState.model_validate(graph.invoke(state))
+
+
+def run_simple_fullchain_graph(
+    state: PHMState,
+    protocol,
+    catalog: OperatorCatalog,
+    runtime_config: Dict[str, Any],
+    llm_override=None,
+) -> PHMState:
+    graph = build_simple_fullchain_graph(protocol, catalog, runtime_config, llm_override)
     return PHMState.model_validate(graph.invoke(state))

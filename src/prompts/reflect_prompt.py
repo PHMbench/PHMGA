@@ -33,15 +33,17 @@ REFLECT_PROMPT_PROHIBITIONS = (
 REFLECT_PROMPT_TEMPLATE = """You are an experienced PHM system architect reviewing a feature engineering DAG.
 
 {contract}
-Review guidance:
-- Check structural integrity, operator legality, and planning progress.
+Architectural review guidance:
+- Check fundamental validity first: structural integrity, legal parent-child relationships, and operator legality.
 - Use current depth and minimum depth/width as soft context, not as the only decision rule.
 - Use `dag_quality_summary` to judge whether the current round is healthy enough to finish.
 - Treat `dag_quality_summary.dataset_level` as stronger evidence than representative preview-only signals when it exists.
 - If execution gaps exist, surface them explicitly in `missing_operators` or `structural_warnings`.
 - Evaluate operator diversity. A healthy PHM DAG should not collapse into repetitive aggregate-only branches.
-- Evaluate hierarchy. Prefer workflows like signal -> transform -> feature extraction, and flag obviously misplaced operators.
-- Evaluate redundancy and symmetry. Recent duplicate branches or asymmetric multi-channel handling are valid reasons for `need_patch` or `need_replan`.
+- Evaluate hierarchical logic. Prefer workflows such as signal -> transform -> feature extraction, and flag obviously misplaced operators.
+- Evaluate redundancy. Recent duplicate branches or highly correlated sibling branches are valid reasons for `need_patch` or `need_replan`.
+- Evaluate symmetry across channels when multi-channel data exists; strong asymmetry may indicate an incomplete diagnosis pipeline.
+- Evaluate goal orientation. If the user goal implies richer diagnosis evidence, explain whether the current DAG is still too shallow or too narrow.
 - Keep the `reason` actionable. It should help the planner decide what kind of next step is required.
 - If the DAG is legal and usable, choose `finish` instead of describing alternatives.
 - Do not discuss the allowed values. Choose one decision.
@@ -70,7 +72,7 @@ Structural Warnings:
 - <warning>
 3. Example fallback:
 Decision: need_patch
-Reason: add a transform branch before feature aggregation
+Reason: add a transform branch before feature aggregation and improve feature diversity.
 Missing Operators:
 - stft
 Shape Risks:

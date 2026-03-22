@@ -347,29 +347,48 @@ def _parse_plan_text_payload(
     allow_text_fallback: bool = False,
 ) -> Dict[str, Any]:
     direct = _extract_json_object_from_text(text)
-    if direct is not None and "plan" in direct:
-        plan_items = direct.get("plan")
-        if isinstance(plan_items, list):
-            sanitized_steps: List[Dict[str, Any]] = []
-            for item in plan_items:
-                if not isinstance(item, dict):
-                    continue
-                params = item.get("params", {})
-                if params == "" or params is None:
-                    params = {}
-                if not isinstance(params, dict):
-                    raise LLMSchemaError(
-                        "Provider planner response contained a non-object params field. "
-                        f"provider={provider}, model={model}, text_preview={_json_text_preview(text)!r}"
+    if direct is not None:
+        if "plan" in direct:
+            plan_items = direct.get("plan")
+            if isinstance(plan_items, list):
+                sanitized_steps: List[Dict[str, Any]] = []
+                for item in plan_items:
+                    if not isinstance(item, dict):
+                        continue
+                    params = item.get("params", {})
+                    if params == "" or params is None:
+                        params = {}
+                    if not isinstance(params, dict):
+                        raise LLMSchemaError(
+                            "Provider planner response contained a non-object params field. "
+                            f"provider={provider}, model={model}, text_preview={_json_text_preview(text)!r}"
+                        )
+                    sanitized_steps.append(
+                        {
+                            "parent": str(item.get("parent", "")).strip(),
+                            "op_name": str(item.get("op_name", "")).strip(),
+                            "params": params,
+                        }
                     )
-                sanitized_steps.append(
+                return {"plan": sanitized_steps}
+        if {"parent", "op_name"}.issubset(direct.keys()):
+            params = direct.get("params", {})
+            if params == "" or params is None:
+                params = {}
+            if not isinstance(params, dict):
+                raise LLMSchemaError(
+                    "Provider planner response contained a non-object params field. "
+                    f"provider={provider}, model={model}, text_preview={_json_text_preview(text)!r}"
+                )
+            return {
+                "plan": [
                     {
-                        "parent": str(item.get("parent", "")).strip(),
-                        "op_name": str(item.get("op_name", "")).strip(),
+                        "parent": str(direct.get("parent", "")).strip(),
+                        "op_name": str(direct.get("op_name", "")).strip(),
                         "params": params,
                     }
-                )
-            return {"plan": sanitized_steps}
+                ]
+            }
 
     if not allow_text_fallback:
         raise LLMSchemaError(

@@ -36,7 +36,15 @@ Use this section scaffold:
 # Dataset-Level Diagnosis Evidence
 # Diagnostics
 # Limitations
-If an artifact is missing, say it is missing. Do not infer it.
+
+Writing guidance:
+- Start with a concise process overview that explains how the DAG supports the diagnosis objective.
+- Use the compiled manifest and path artifacts as the primary factual source of truth.
+- Use reflection and dag-quality outputs as review context, not as substitutes for missing evidence.
+- Highlight the strongest available diagnosis evidence and the main operational caveats.
+- If an artifact is missing, say it is missing. Do not infer it.
+- Keep the report consistent with the actual graph path. Do not claim a richer backend or training stack than the artifacts support.
+- When discussing limitations, convert them into concrete PHM-oriented next-step recommendations when possible.
 
 Instruction: {instruction}
 Graph path: {graph_path}

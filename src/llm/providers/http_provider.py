@@ -15,6 +15,7 @@ from src.states import ExecutionGap, ReflectionResult, SignalContext, StepPlan
 from ..base import LLMProviderError, LLMSchemaError
 from ..structured import (
     _deterministic_param_resolution,
+    _extract_json_object_from_text,
     _extract_message_text,
     _json_text_preview,
     _local_param_resolution,
@@ -193,6 +194,43 @@ class OpenRouterLLM:
         )
         return _parse_json_object(text, model=self.model, structured_mode=structured_mode)
 
+    def _compact_plan_retry_prompt(
+        self,
+        *,
+        instruction: str,
+        signal_context: SignalContext,
+        dag_json: Optional[Dict[str, Any]],
+        operator_catalog_summary: Iterable[Dict[str, Any]],
+    ) -> str:
+        current_nodes = []
+        if dag_json and isinstance(dag_json.get("nodes"), list):
+            current_nodes = [
+                str(node.get("node_id", "")).strip()
+                for node in dag_json["nodes"]
+                if isinstance(node, dict) and str(node.get("node_id", "")).strip()
+            ]
+        available_parents = current_nodes or [str(node_id) for node_id in signal_context.root_node_ids]
+        operator_names = [
+            str(item.get("op_name", "")).strip()
+            for item in operator_catalog_summary
+            if isinstance(item, dict) and str(item.get("op_name", "")).strip()
+        ]
+        operator_list = ", ".join(operator_names[:24])
+        parent_list = ", ".join(available_parents)
+        return (
+            "Return strict JSON only. Do not explain. Do not echo any context object. Do not return `{}`.\n"
+            "The only allowed top-level key is `plan`.\n"
+            "Each item in `plan` must contain `parent`, `op_name`, `params`.\n"
+            "`params` must always be a JSON object.\n"
+            f"Instruction: {instruction}\n"
+            f"Dataset: {signal_context.dataset_name}\n"
+            f"Current available parent node ids: {parent_list}\n"
+            f"Allowed operator names: {operator_list}\n"
+            "If the DAG is empty, use the root node ids as parents.\n"
+            "Return one DAG layer only.\n"
+            'Example: {"plan":[{"parent":"ch1","op_name":"normalize","params":{}},{"parent":"ch2","op_name":"normalize","params":{}}]}'
+        )
+
     def generate_step_plan(
         self,
         *,
@@ -204,7 +242,7 @@ class OpenRouterLLM:
         operator_catalog_summary: Iterable[Dict[str, Any]],
         trace_context: Optional[Dict[str, Any]] = None,
     ) -> StepPlan:
-        del instruction, signal_context, dag_json, reflection, operator_catalog_summary
+        del reflection
         if str((trace_context or {}).get("graph_path", "")).strip().lower() != "ml":
             trace_context = None
         try:
@@ -240,6 +278,54 @@ class OpenRouterLLM:
             )
             if not self.retry_once:
                 raise
+            direct_json = _extract_json_object_from_text(text)
+            if direct_json == {}:
+                try:
+                    compact_retry_text = self._request_text(
+                        prompt=self._compact_plan_retry_prompt(
+                            instruction=instruction,
+                            signal_context=signal_context,
+                            dag_json=dag_json,
+                            operator_catalog_summary=operator_catalog_summary,
+                        ),
+                        max_tokens=self.max_tokens_structured,
+                        expect_json=True,
+                    )
+                except LLMProviderError as exc:
+                    self._record_planner_transport_event(
+                        trace_context,
+                        stage="planner_compact_retry",
+                        status="transport_error",
+                        message=str(exc),
+                    )
+                    raise
+                compact_retry_response_file = write_planner_text_artifact(
+                    trace_context,
+                    filename="planner_repair_response.txt",
+                    content=compact_retry_text,
+                )
+                try:
+                    payload = _parse_plan_text_payload(
+                        compact_retry_text,
+                        model=self.model,
+                        provider=self.provider,
+                        allow_text_fallback=True,
+                    )
+                    normalized_from_attempt = "repair"
+                    raw_response_file = compact_retry_response_file
+                    text = compact_retry_text
+                except LLMSchemaError:
+                    repair_text = None
+                else:
+                    self._record_planner_normalization_event(
+                        trace_context,
+                        attempt=normalized_from_attempt,
+                        status="normalized",
+                        raw_response_file=raw_response_file,
+                        parsed_step_count=len(payload.get("plan", [])),
+                        message=f"text_preview={_json_text_preview(text)!r}",
+                    )
+                    return StepPlan.model_validate(payload)
             try:
                 repair_text = self._request_text(
                     prompt=_repair_prompt(task="plan", original_prompt=prompt, raw_response=text),
