@@ -1,0 +1,40 @@
+# @package _global_
+defaults:
+  - override /data: ottawa
+  - override /experiment: ml
+  - _self_
+
+llm:
+  mode: provider
+  provider: codex_cli
+  model: gpt-5.3-codex
+
+data:
+  split:
+    strategy: stratified_fixed_per_class
+    seed: 17
+    train_per_class: 2
+    val_per_class: 1
+    test_per_class: 1
+  window:
+    window_size: 32768
+    stride: 16384
+    slice_mode: centered
+    drop_last_window: false
+
+runtime:
+  workflow_mode: simple_fullchain
+  output_dir: artifacts/simple/ottawa_ml_codex_simple
+  max_iterations: 3
+  min_depth: 2
+  min_width: 1
+  max_depth: 8
+
+evaluation:
+  dag_quality:
+    enabled: false
+    use_proxy_probe: false
+
+model:
+  ml:
+    max_iter: 50
