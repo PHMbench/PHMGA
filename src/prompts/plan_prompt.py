@@ -118,6 +118,45 @@ Reflection: {reflection}
 """
 
 
+PLANNER_PROMPT_COMPACT = """
+You are designing exactly one new DAG layer for PHM signal analysis.
+
+Return only one JSON object:
+{{
+  "plan": [
+    {{"parent": "...", "op_name": "...", "params": {{}}}}
+  ]
+}}
+
+Rules:
+- Output JSON only. No prose. No markdown. No code fences.
+- Add one layer only. Do not reference nodes that do not already exist.
+- `parent` must be an existing node id, or a comma-joined pair of existing node ids for a multi-input operator.
+- Current builder phase: {phase}
+- Use only operator names from `tools`.
+- Do not return an empty plan.
+- Do not produce a root-only plan with no processed feature branch.
+- Do not produce a `mean`-only or single weak-reducer plan.
+- The plan must cover at least two processing branches whenever enough parent nodes exist.
+- In raw/input phase, the plan must contain spectral/time-frequency transform ops only. Do not jump directly from raw input to feature/stat ops.
+- In raw/input phase, `normalize` alone is never enough. Prefer `psd`, `stft`, `hilbert_envelope`, or `fft`.
+- In feature phase, add only discriminative feature/stat operators on transformed leaves.
+- In combine phase, use combine/cross operators only when transformed leaves have already been featurized.
+- Use only operator names from `tools`.
+
+Input:
+- instruction: {instruction}
+- phase: {phase}
+- current_depth: {current_depth}
+- min_depth: {min_depth}
+- max_depth: {max_depth}
+- min_width: {min_width}
+- reflection: {reflection}
+- dag_json: {dag_json}
+- tools: {tools}
+"""
+
+
 PLANNER_PROMPT_V2 = """
 You are a world-class AI strategist specializing in signal processing for Prognostics and Health Management (PHM). Your role is to architect an optimal feature extraction pipeline by intelligently expanding a Directed Acyclic Graph (DAG).
 

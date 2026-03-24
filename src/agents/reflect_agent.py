@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, Optional
 
+from src.builder_quality import evaluate_builder_richness, reflection_fallback
 from src.model import get_llm
 from src.configuration import Configuration
 from src.prompts.reflect_prompt import REFLECT_PROMPT
@@ -36,15 +37,7 @@ def reflect_agent(
     runtime_config = state.runtime_config or {"llm": Configuration.from_runnable_config(None).model_dump()}
     llm = get_llm(runtime_config)
     if getattr(llm, "mode", "") == "offline_stub":
-        if issues_summary:
-            decision = "halt"
-            reason = contextual_issues
-        elif depth < state.min_depth:
-            decision = "need_patch"
-            reason = "The process is healthy, but the minimum depth requirement has not been met. Continue building."
-        else:
-            decision = "finish"
-            reason = "The pipeline has reached the required depth and exposes terminal feature leaves."
+        decision, reason = reflection_fallback(state, extra_reason=contextual_issues if issues_summary else "")
     else:
         prompt = REFLECT_PROMPT.format(
             instruction=instruction,
@@ -61,18 +54,26 @@ def reflect_agent(
         )
         try:
             data = llm.generate_json(prompt, repair_prompt=repair_prompt)
-            decision = data.get("decision", "halt")
-            reason = data.get("reason", "")
-            if decision not in VALID_DECISIONS:
-                decision = "halt"
-                reason = "INVALID_DECISION"
+            candidate_decision = data.get("decision", "halt")
+            candidate_reason = str(data.get("reason", "") or "")
+            if candidate_decision not in VALID_DECISIONS:
+                candidate_decision = "halt"
+                candidate_reason = "INVALID_DECISION"
+            quality = evaluate_builder_richness(state)
+            if quality["passes"] and depth >= state.min_depth and candidate_decision not in {"need_patch", "need_replan"}:
+                decision = "finish"
+                reason = candidate_reason or quality["reason"]
+            elif candidate_decision == "need_replan":
+                decision = "need_replan"
+                reason = candidate_reason or quality["reason"]
+            else:
+                decision, reason = reflection_fallback(state, extra_reason=candidate_reason)
         except Exception as exc:  # pragma: no cover - defensive
-            decision = "halt"
-            reason = f"PARSE_ERROR: {exc}"
+            decision, reason = reflection_fallback(state, extra_reason=f"PROVIDER_FAILURE: {exc}")
     return {"decision": decision, "reason": reason}
 
 
-def reflect_agent_node(state: PHMState, *, stage: str) -> None:
+def reflect_agent_node(state: PHMState, *, stage: str) -> Dict[str, Any]:
     """Adapter for the outer graph using :class:`PHMState`."""
     try:
         dag_blueprint = json.loads(state.tracker().export_json())
@@ -91,7 +92,7 @@ def reflect_agent_node(state: PHMState, *, stage: str) -> None:
     return {
         "needs_revision": needs_revision,
         "reflection_history": history,
-        "decision": result["decision"],
+        "last_reflection_decision": result["decision"],
     }
 
 

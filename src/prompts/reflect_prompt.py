@@ -30,6 +30,7 @@ You are an experienced PHM (Prognostics and Health Management) system architect.
 Based on the above assessment, make the most appropriate decision. **Your `reason` is crucial as it will directly guide the next planning step.**
 
 - **`"decision": "halt"`**: A hard, unrecoverable error exists (e.g., collapsed structure, use of a non-existent tool). The `reason` must clearly state the error.
+- **`"decision": "need_patch"`**: The DAG is structurally valid but still too weak or too shallow. Another builder round should continue from the current graph.
 - **`"decision": "need_replan"`**: The structure is valid, but the previous plan has a logical flaw (e.g., redundant operation, tool used at the wrong stage). This will require the `PLANNER` to re-plan the **previous step**. The `reason` should clearly explain why the last step was unreasonable.
     - For example:
         - If `current_depth < min_depth`, the `reason` should be: "The process is healthy, but the minimum depth requirement has not been met. Continue building."
@@ -43,7 +44,7 @@ Based on the above assessment, make the most appropriate decision. **Your `reaso
 **Strictly** return in the following JSON format, without any additional explanations.
 ```json
 {{
-  "decision": "finish|need_replan|halt",
+  "decision": "finish|need_patch|need_replan|halt",
   "reason": "..."
 }}
 """
@@ -81,6 +82,7 @@ REFLECT_PROMPT_V1CN = """
 请根据上述评估，做出最恰当的决策。**你的`reason`至关重要，它将直接指导下一步的规划。**
 
 - **`"decision": "halt"`**: 存在无法修复的硬性错误（如结构崩溃、使用了不存在的工具）。`reason`必须明确指出错误所在。
+- **`"decision": "need_patch"`**: DAG 结构有效，但仍然过浅或过弱，需要在当前图基础上继续补一轮构建。
 - **`"decision": "need_replan"`**: 结构有效，但上一步的规划存在逻辑缺陷（如冗余操作、在错误阶段使用了工具）。这会要求`PLANNER`重新规划**上一步**。`reason`应清晰地解释为什么上一步是不合理的。
 - **`"decision": "finish"`**: DAG健康且正在正确发展。
     - **即使是 "finish"，`reason` 也应该包含指导性建议**，以激发更丰富的DAG。例如：
@@ -92,7 +94,7 @@ REFLECT_PROMPT_V1CN = """
 **严格**按照以下JSON格式返回，不要包含任何额外说明。
 ```json
 {{
-  "decision": "finish|need_replan|halt",
+  "decision": "finish|need_patch|need_replan|halt",
   "reason": "..."
 }}
 """

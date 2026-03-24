@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from typing import List, Dict, Any, Tuple, Optional, Literal, Union
+import json
+from pathlib import Path
+import subprocess
 import numpy as np
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
 import uuid
@@ -154,11 +157,11 @@ class DAGTracker:
         return node.node_id
 
     # ---------- 导出给 LLM ---------- #
-    def export_json(self, max_nodes: int = 40) -> str:
-        """Serialize a trimmed version of the DAG for LLM consumption."""
-        import json
-
-        topo = list(nx.topological_sort(self.g))[-max_nodes:]
+    def export_dict(self, max_nodes: Optional[int] = 40) -> Dict[str, Any]:
+        """Serialize a trimmed version of the DAG for LLM/manual consumption."""
+        topo = list(nx.topological_sort(self.g))
+        if max_nodes is not None:
+            topo = topo[-max_nodes:]
         mini = []
         for nid in topo:
             n = self.state.nodes[nid]
@@ -177,10 +180,54 @@ class DAGTracker:
                     }
                 )
             )
-        # return json.dumps({"graph": mini, "user_instruction": self.state.user_instruction})
-        return json.dumps({"graph": mini})
+        return {"graph": mini}
+
+    def export_json(self, max_nodes: Optional[int] = 40) -> str:
+        """Serialize a trimmed version of the DAG for LLM consumption."""
+        return json.dumps(self.export_dict(max_nodes=max_nodes), ensure_ascii=False)
+
+    def write_json(self, path: str, max_nodes: Optional[int] = None) -> str:
+        """Persist a JSON snapshot of the DAG to disk."""
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(self.export_dict(max_nodes=max_nodes), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        return str(target)
 
     # ---------- 可视化 ---------- #
+    def to_dot_source(self) -> str:
+        """Return the DAG as DOT source without requiring the Python graphviz package."""
+        lines = ["digraph DAG {", '  rankdir="LR";', '  node [style="filled"];']
+
+        for nid in self.g.nodes:
+            node = self.state.nodes[nid]
+            stage = getattr(node, "stage", "")
+            method = getattr(node, "method", "")
+            label = nid if not method else f"{nid}\n{method}"
+            shape = "ellipse"
+            color = "lightgray"
+            if stage == "processed":
+                shape = "box"
+                color = "lightblue"
+            elif stage == "dataset":
+                shape = "folder"
+                color = "lightgoldenrod1"
+            elif stage == "output":
+                shape = "note"
+                color = "palegreen"
+            quoted_label = json.dumps(label, ensure_ascii=False)
+            lines.append(
+                f'  "{nid}" [label={quoted_label}, shape="{shape}", fillcolor="{color}"];'
+            )
+
+        for u, v in self.g.edges:
+            lines.append(f'  "{u}" -> "{v}";')
+
+        lines.append("}")
+        return "\n".join(lines) + "\n"
+
     def to_dot(self) -> "graphviz.Digraph":
         """Convert the internal graph into a ``graphviz`` object."""
         import graphviz
@@ -201,16 +248,37 @@ class DAGTracker:
             dot.edge(u, v)
         return dot
 
-    def write_png(self, path: str) -> None:
+    def write_dot(self, path: str) -> str:
+        """Persist the DAG as DOT source on disk."""
+        target = Path(path)
+        if target.suffix != ".dot":
+            target = target.with_suffix(".dot")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(self.to_dot_source(), encoding="utf-8")
+        return str(target)
+
+    def write_png(self, path: str) -> str:
         """Render the DAG to a PNG image on disk."""
+        target = Path(path)
+        if target.suffix != ".png":
+            target = target.with_suffix(".png")
+        target.parent.mkdir(parents=True, exist_ok=True)
         try:
-            dot = self.to_dot()
-            base = path[:-4] if path.endswith(".png") else path
-            dot.render(filename=base, format="png", cleanup=True)
-        except Exception:
-            fname = path if path.endswith(".png") else f"{path}.png"
-            with open(fname, "wb") as f:
-                f.write(b"")
+            subprocess.run(
+                ["dot", "-Tpng", "-o", str(target)],
+                input=self.to_dot_source(),
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+        except FileNotFoundError as exc:
+            raise RuntimeError("Graphviz binary `dot` is not installed.") from exc
+        except subprocess.CalledProcessError as exc:
+            stderr = (exc.stderr or "").strip()
+            raise RuntimeError(f"Failed to render DAG PNG with dot: {stderr or exc}") from exc
+        if not target.exists() or target.stat().st_size <= 0:
+            raise RuntimeError(f"Rendered DAG PNG is empty: {target}")
+        return str(target)
 
     # ---------- 内部 ---------- #
     def _add_node(self, n):

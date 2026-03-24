@@ -5,9 +5,18 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
+from src.builder_quality import (
+    PHASE_COMBINE,
+    PHASE_FEATURE,
+    PHASE_RAW,
+    build_fallback_plan,
+    compact_tool_descriptions_for_phase,
+    infer_builder_phase,
+    validate_plan_steps,
+)
 from src.configuration import Configuration
 from src.model import get_llm
-from src.prompts.plan_prompt import PLANNER_PROMPT
+from src.prompts.plan_prompt import PLANNER_PROMPT, PLANNER_PROMPT_COMPACT
 from src.states.phm_states import PHMState
 from src.tools.signal_processing_schemas import OP_REGISTRY, AggregateOp, MultiVariableOp, get_operator
 from src.utils import get_dag_depth
@@ -50,44 +59,77 @@ def _tool_descriptions() -> str:
     return "\n---\n".join(tool_descriptions)
 
 
-def _is_feature_leaf(state: PHMState, node_id: str) -> bool:
-    node = state.dag_state.nodes[node_id]
-    if node.stage == "input":
-        return False
-    op_name = str(node.meta.get("tool") or node.meta.get("method") or getattr(node, "method", ""))
-    op_cls = get_operator(op_name)
-    if issubclass(op_cls, AggregateOp):
-        return True
-    if issubclass(op_cls, MultiVariableOp):
-        parent_ids = node.parents if isinstance(node.parents, list) else [node.parents]
-        return all(_is_feature_leaf(state, parent_id) for parent_id in parent_ids)
-    return False
-
-
 def _offline_plan(state: PHMState) -> List[Dict[str, Any]]:
-    leaves = list(state.dag_state.leaves)
-    if not leaves:
-        return []
+    return build_fallback_plan(state)
 
-    if all(state.dag_state.nodes[leaf].stage == "input" for leaf in leaves):
-        return [{"parent": leaf, "op_name": "fft", "params": {}} for leaf in leaves]
 
-    if all(_is_feature_leaf(state, leaf) for leaf in leaves):
-        if len(leaves) >= 2 and get_dag_depth(state.dag_state) < state.min_depth:
-            return [{"parent": ",".join(leaves), "op_name": "concatenate", "params": {}}]
-        return []
+def _normalize_plan_steps(state: PHMState, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Coerce provider plans into executable single-layer steps."""
+    known_nodes = set(state.dag_state.nodes)
+    normalized: list[Dict[str, Any]] = []
+    seen: set[tuple[str, str, str]] = set()
 
-    feature_ops = ["mean", "std", "kurtosis"]
-    plan: List[Dict[str, Any]] = []
-    for leaf in leaves:
-        if state.dag_state.nodes[leaf].stage == "input":
-            plan.append({"parent": leaf, "op_name": "fft", "params": {}})
+    for raw_step in steps:
+        op_name = str(raw_step.get("op_name", "")).strip()
+        parent_text = raw_step.get("parent", "")
+        if not op_name or not str(parent_text).strip():
             continue
-        if _is_feature_leaf(state, leaf):
+        try:
+            op_cls = get_operator(op_name)
+        except KeyError:
             continue
-        for op_name in feature_ops:
-            plan.append({"parent": leaf, "op_name": op_name, "params": {}})
-    return plan
+
+        if isinstance(parent_text, list):
+            parent_ids = [str(item).strip() for item in parent_text if str(item).strip()]
+        else:
+            parent_ids = [segment.strip() for segment in str(parent_text).split(",") if segment.strip()]
+        parent_ids = [parent_id for parent_id in parent_ids if parent_id in known_nodes]
+        if not parent_ids:
+            continue
+
+        params = raw_step.get("params")
+        params = dict(params) if isinstance(params, dict) else {}
+
+        candidate_steps: list[Dict[str, Any]] = []
+        if issubclass(op_cls, MultiVariableOp):
+            if len(parent_ids) < 2:
+                continue
+            candidate_steps.append(
+                {
+                    "parent": ",".join(parent_ids[:2]),
+                    "op_name": op_name,
+                    "params": params,
+                }
+            )
+        else:
+            for parent_id in parent_ids:
+                candidate_steps.append(
+                    {
+                        "parent": parent_id,
+                        "op_name": op_name,
+                        "params": dict(params),
+                    }
+                )
+
+        for step in candidate_steps:
+            signature = (
+                step["parent"],
+                step["op_name"],
+                json.dumps(step["params"], ensure_ascii=False, sort_keys=True),
+            )
+            if signature in seen:
+                continue
+            seen.add(signature)
+            normalized.append(step)
+
+    return normalized
+
+
+def _planner_prompt_and_tools(state: PHMState, llm) -> tuple[str, str, str]:
+    phase = infer_builder_phase(state)
+    if getattr(llm, "provider", "") == "gemini":
+        return phase, PLANNER_PROMPT, _tool_descriptions()
+    return phase, PLANNER_PROMPT_COMPACT, compact_tool_descriptions_for_phase(phase)
 
 
 def plan_agent(state: PHMState) -> dict:
@@ -114,11 +156,13 @@ def plan_agent(state: PHMState) -> dict:
         if getattr(llm, "mode", "") == "offline_stub":
             detailed_plan = _offline_plan(state)
         else:
-            prompt = PLANNER_PROMPT.format(
+            phase, prompt_template, tools_text = _planner_prompt_and_tools(state, llm)
+            prompt = prompt_template.format(
                 instruction=state.user_instruction,
                 dag_json=dag_json,
-                tools=_tool_descriptions(),
+                tools=tools_text,
                 reflection=json.dumps(reflection, indent=2),
+                phase=phase,
                 min_depth=state.min_depth,
                 min_width=state.min_width,
                 max_depth=state.max_depth,
@@ -131,10 +175,31 @@ def plan_agent(state: PHMState) -> dict:
             )
             plan_dict = llm.generate_json(prompt, repair_prompt=repair_prompt)
             for step_data in plan_dict.get("plan", []):
+                if isinstance(step_data.get("parent"), list):
+                    step_data["parent"] = ",".join(str(item).strip() for item in step_data["parent"] if str(item).strip())
                 if "params" in step_data and step_data["params"] == "":
                     step_data["params"] = {}
-            plan_obj = Plan.model_validate(plan_dict)
-            detailed_plan = [step.model_dump() for step in plan_obj.plan]
+            normalized_plan = []
+            try:
+                plan_obj = Plan.model_validate(plan_dict)
+                normalized_plan = _normalize_plan_steps(
+                    state,
+                    [step.model_dump() for step in plan_obj.plan],
+                )
+            except Exception as exc:
+                state.error_logs = state.error_logs + [f"Planner validation failed: {exc}"]
+            is_valid, validation_reason = validate_plan_steps(state, normalized_plan, phase=phase)
+            if not is_valid:
+                state.error_logs = state.error_logs + [f"Planner gate rejected provider plan: {validation_reason}"]
+                detailed_plan = build_fallback_plan(state, phase=phase)
+            else:
+                detailed_plan = normalized_plan
+
+        phase = infer_builder_phase(state)
+        is_valid, validation_reason = validate_plan_steps(state, detailed_plan, phase=phase)
+        if not is_valid:
+            state.error_logs = state.error_logs + [f"Planner fallback triggered: {validation_reason}"]
+            detailed_plan = build_fallback_plan(state, phase=phase)
 
         fs = getattr(state, "fs", None)
         if fs is None:
