@@ -1,9 +1,8 @@
-from __future__ import annotations
-
 import os
 from typing import Dict, Any, Tuple
 
 import numpy as np
+from langchain_core.runnables import RunnableConfig
 
 from src.states.phm_states import PHMState, ProcessedData, DataSetNode, InputData
 
@@ -62,12 +61,12 @@ def _build_dataset_from_features(
     return X, y
 
 
-def dataset_preparer_agent(state: PHMState, *, config: Dict | None = None) -> Dict:
+def dataset_preparer_agent(state: PHMState, *, config: RunnableConfig | None = None) -> Dict:
     """
     Gathers features and assembles datasets using true labels found by traversing
     the DAG back to the root nodes.
     """
-    cfg = config or {}
+    cfg = dict(config or {})
     stage = cfg.get("stage", "processed")
     datasets: Dict[str, Dict[str, Any]] = {}
     tracker = state.tracker()

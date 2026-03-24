@@ -10,6 +10,7 @@ import os
 import pickle
 import uuid
 import networkx as nx
+from pathlib import Path
 
 # 禁用 LangSmith
 os.environ["LANGCHAIN_TRACING_V2"] = "false"
@@ -23,8 +24,9 @@ try:
 except ModuleNotFoundError:  # pragma: no cover
     load_dotenv = None
 
-if load_dotenv is not None:
-    load_dotenv()
+_DOTENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+if load_dotenv is not None and _DOTENV_PATH.exists():
+    load_dotenv(_DOTENV_PATH)
 
 # 导入解耦后的两个图构建器
 # from src.phm_outer_graph import build_builder_graph, build_executor_graph
@@ -311,12 +313,20 @@ def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -
         try:
             signal_data = h5_file[str(sample_id)][()]
             signal_data = np.squeeze(signal_data)
-            
-            if signal_data.shape == (sample_length, num_channels):
-                signals[str(sample_id)] = signal_data.reshape(1, sample_length, num_channels)
-                labels[str(sample_id)] = label
-            else:
-                print(f"Warning: Shape mismatch for ID {sample_id}. Expected {(sample_length, num_channels)}, got {signal_data.shape}")
+
+            if signal_data.ndim != 2 or signal_data.shape[1] != num_channels:
+                print(f"Warning: Shape mismatch for ID {sample_id}. Expected (*, {num_channels}), got {signal_data.shape}")
+                continue
+
+            observed_length = int(signal_data.shape[0])
+            if observed_length != sample_length:
+                print(
+                    f"Warning: Length mismatch for ID {sample_id}. "
+                    f"Metadata says {sample_length}, observed {observed_length}. Using observed length."
+                )
+
+            signals[str(sample_id)] = signal_data.reshape(1, observed_length, num_channels)
+            labels[str(sample_id)] = label
 
         except KeyError:
             print(f"Warning: ID {sample_id} not found in HDF5 file.")
@@ -335,6 +345,10 @@ def apply_windowing(signals: Dict[str, np.ndarray], labels: Dict[str, str], wind
     
     for sig_id, sig_array in signals.items():
         B, L, C = sig_array.shape
+        if L <= window_size:
+            windowed_signals[f"{sig_id}_w1"] = sig_array
+            windowed_labels[f"{sig_id}_w1"] = labels[sig_id]
+            continue
         step = window_size - overlap
         num_windows = max(1, (L - overlap) // step)
 
@@ -419,6 +433,7 @@ def initialize_state(
         reference_signal=next(iter(nodes.values())),
         test_signal=next(iter(nodes.values())),
         dag_state=dag_state,
+        fs=float(ref_metadata["Sample_rate"].iloc[0]),
     )
 
 

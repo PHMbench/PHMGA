@@ -240,12 +240,20 @@ def load_signal_data(metadata_path: str, h5_path: str, ids_to_load: list[int]) -
         try:
             signal_data = h5_file[str(sample_id)][()]
             signal_data = np.squeeze(signal_data)
-            
-            if signal_data.shape == (sample_length, num_channels):
-                signals[str(sample_id)] = signal_data.reshape(1, sample_length, num_channels)
-                labels[str(sample_id)] = label
-            else:
-                print(f"Warning: Shape mismatch for ID {sample_id}. Expected {(sample_length, num_channels)}, got {signal_data.shape}")
+
+            if signal_data.ndim != 2 or signal_data.shape[1] != num_channels:
+                print(f"Warning: Shape mismatch for ID {sample_id}. Expected (*, {num_channels}), got {signal_data.shape}")
+                continue
+
+            observed_length = int(signal_data.shape[0])
+            if observed_length != sample_length:
+                print(
+                    f"Warning: Length mismatch for ID {sample_id}. "
+                    f"Metadata says {sample_length}, observed {observed_length}. Using observed length."
+                )
+
+            signals[str(sample_id)] = signal_data.reshape(1, observed_length, num_channels)
+            labels[str(sample_id)] = label
 
         except KeyError:
             print(f"Warning: ID {sample_id} not found in HDF5 file.")

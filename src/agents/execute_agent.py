@@ -3,26 +3,17 @@ from __future__ import annotations
 import os
 from datetime import datetime
 from typing import Dict, Any
-import json
 
 import numpy as np
 
+from src.dag_artifacts import export_tracker_artifacts, resolve_artifact_root
 from src.states.phm_states import PHMState, InputData, ProcessedData
 from src.model import get_llm
 from src.tools.signal_processing_schemas import get_operator
 from src.tools.multi_schemas import MultiVariableOp
 
 
-DATA_DIR = os.environ.get("PHM_DATA_DIR", os.path.join(os.getcwd(), "artifacts"))
 MAX_STEPS = 20
-
-
-def _resolve_artifact_root(runtime_config: Dict[str, Any], case_name: str) -> str:
-    runtime_output_dir = str(runtime_config.get("runtime", {}).get("output_dir", "")).strip()
-    if runtime_output_dir:
-        return os.path.join(runtime_output_dir, "_intermediate")
-    base_save_dir = os.environ.get("PHM_SAVE_DIR", os.path.join(os.getcwd(), "artifacts"))
-    return os.path.join(base_save_dir, case_name)
 
 
 def _resolve_params(llm, op_cls, params: Dict[str, Any], state: PHMState) -> Dict[str, Any]:
@@ -177,7 +168,7 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     runtime_config = state.runtime_config or {}
     llm = get_llm(runtime_config)
     
-    artifact_root = _resolve_artifact_root(runtime_config, state.case_name)
+    artifact_root = resolve_artifact_root(runtime_config, state.case_name)
     case_save_dir = os.path.join(artifact_root, "nodes")
 
     # 采用不可变模式：创建当前节点和叶子的副本
@@ -308,12 +299,24 @@ def execute_agent(state: PHMState) -> Dict[str, Any]:
     temp_tracker = state.tracker()
     temp_tracker.update(new_dag_state)
     
-    # Save the graph image to a case-specific directory
-    case_graph_dir = os.path.join(artifact_root, "graphs")
-    os.makedirs(case_graph_dir, exist_ok=True)
-    png_path = os.path.join(case_graph_dir, f"dag_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
-    temp_tracker.write_png(png_path)
-    new_dag_state.graph_path = png_path + ".png"
+    # Save DAG artifacts for manual inspection and downstream reuse.
+    case_graph_dir = os.path.join(str(artifact_root), "graphs")
+    graph_stem = f"dag_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    graph_artifacts = export_tracker_artifacts(
+        temp_tracker,
+        output_dir=case_graph_dir,
+        stem=graph_stem,
+        max_nodes=None,
+        save_png=True,
+        save_json=True,
+    )
+    if graph_artifacts["warnings"]:
+        state.dag_state.error_log.extend(graph_artifacts["warnings"])
+    new_dag_state.graph_path = (
+        graph_artifacts["png_path"]
+        or graph_artifacts["dot_path"]
+        or graph_artifacts["json_path"]
+    )
 
     return {"dag_state": new_dag_state, "executed_steps": executed_steps}
 

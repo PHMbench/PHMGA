@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections import Counter, defaultdict
 from typing import Any, Dict, List, Literal, Optional
 
 import h5py
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from src.rm101_metadata import get_channel_aliases, summarize_channel_aliases
 
 
 def _is_missing(value: Any) -> bool:
@@ -39,6 +42,21 @@ def _clean_optional_int(value: Any) -> Optional[int]:
     if _is_missing(value):
         return None
     return int(value)
+
+
+def _clean_optional_int_list(value: Any) -> Optional[List[int]]:
+    if value is None:
+        return None
+    if isinstance(value, list) and not value:
+        return None
+    try:
+        if _is_missing(value):
+            return None
+    except Exception:
+        pass
+    if isinstance(value, (str, bytes)):
+        return [int(value)]
+    return [int(item) for item in value]
 
 
 def _normalize_h5_shape(shape: tuple[int, ...]) -> tuple[int, int]:
@@ -205,6 +223,112 @@ def _resolve_real_splits(filtered_df: pd.DataFrame, split_cfg: Dict[str, Any]) -
     raise ValueError(f"Unsupported split strategy: {strategy}")
 
 
+def _validate_split_manifest_by_label(filtered_df: pd.DataFrame, split_manifest: SplitManifest) -> None:
+    id_to_label = {
+        _stringify_id(getattr(row, "Id")): _clean_label(getattr(row, "Label"))
+        for row in filtered_df.itertuples(index=False)
+    }
+    label_set = sorted(set(id_to_label.values()))
+    split_lookup = {
+        "train": list(split_manifest.train_ids),
+        "val": list(split_manifest.val_ids),
+        "test": list(split_manifest.test_ids),
+    }
+    for label in label_set:
+        for split_name, split_ids in split_lookup.items():
+            count = sum(1 for sample_id in split_ids if id_to_label.get(sample_id) == label)
+            if count < 1:
+                raise ValueError(
+                    f"Split '{split_name}' has no samples for label {label}; "
+                    "every class must appear in train/val/test."
+                )
+
+
+def summarize_split_records(split_records: Dict[str, List["SignalRecord"]]) -> Dict[str, Any]:
+    summary: Dict[str, Any] = {}
+    for split_name, records in split_records.items():
+        counts = Counter(int(record.label) for record in records)
+        summary[f"n_{split_name}_windows"] = int(len(records))
+        summary[f"{split_name}_windows_by_class"] = {
+            str(label): int(count)
+            for label, count in sorted(counts.items())
+        }
+    return summary
+
+
+def export_split_manifest(protocol: DatasetProtocol) -> Dict[str, List[str]]:
+    return {
+        "train_ids": list(protocol.splits.train_ids),
+        "val_ids": list(protocol.splits.val_ids),
+        "test_ids": list(protocol.splits.test_ids),
+    }
+
+
+def summarize_split_ids_by_label_domain(protocol: DatasetProtocol) -> List[Dict[str, Any]]:
+    split_lookup = {
+        "train": set(protocol.splits.train_ids),
+        "val": set(protocol.splits.val_ids),
+        "test": set(protocol.splits.test_ids),
+    }
+    counts: dict[tuple[str, int, int | None, str], int] = defaultdict(int)
+    for sample in protocol.samples:
+        split_name = None
+        for current_split, ids in split_lookup.items():
+            if sample.sample_id in ids:
+                split_name = current_split
+                break
+        if split_name is None:
+            continue
+        key = (
+            split_name,
+            int(sample.label),
+            int(sample.domain_id) if sample.domain_id is not None else None,
+            str(sample.domain_description or sample.operating_condition or ""),
+        )
+        counts[key] += 1
+
+    rows: list[dict[str, Any]] = []
+    for (split_name, label, domain_id, domain_description), count in sorted(
+        counts.items(),
+        key=lambda item: (
+            item[0][0],
+            item[0][1],
+            -1 if item[0][2] is None else int(item[0][2]),
+            item[0][3],
+        ),
+    ):
+        rows.append(
+            {
+                "split": split_name,
+                "label": int(label),
+                "domain_id": None if domain_id is None else int(domain_id),
+                "domain_description": domain_description,
+                "n_ids": int(count),
+            }
+        )
+    return rows
+
+
+def summarize_protocol(protocol: DatasetProtocol) -> Dict[str, Any]:
+    channel_aliases = get_channel_aliases(
+        dataset_name=protocol.dataset_name,
+        dataset_id=int(protocol.selection.get("dataset_id")) if protocol.selection.get("dataset_id") is not None else None,
+        channel_count=int(protocol.samples[0].channels) if protocol.samples else 0,
+    )
+    return {
+        "dataset_name": protocol.dataset_name,
+        "selection": dict(protocol.selection),
+        "split": dict(protocol.split),
+        "window": protocol.window.model_dump(),
+        "n_samples": len(protocol.samples),
+        "n_train_ids": len(protocol.splits.train_ids),
+        "n_val_ids": len(protocol.splits.val_ids),
+        "n_test_ids": len(protocol.splits.test_ids),
+        "channel_aliases": channel_aliases,
+        "channel_alias_summary": summarize_channel_aliases(channel_aliases),
+    }
+
+
 def build_protocol_from_config(config: Dict[str, Any]) -> DatasetProtocol:
     data_cfg = dict(config.get("data", {}))
     metadata_path = Path(str(data_cfg["metadata_path"])).expanduser().resolve()
@@ -216,6 +340,9 @@ def build_protocol_from_config(config: Dict[str, Any]) -> DatasetProtocol:
 
     metadata_df = pd.read_excel(metadata_path)
     selection = dict(data_cfg.get("selection", {}))
+    domain_ids = _clean_optional_int_list(selection.get("domain_ids"))
+    if domain_ids is not None:
+        selection["domain_ids"] = domain_ids
     filtered_df = metadata_df.copy()
     if selection.get("name"):
         filtered_df = filtered_df[filtered_df["Name"] == str(selection["name"])]
@@ -227,11 +354,15 @@ def build_protocol_from_config(config: Dict[str, Any]) -> DatasetProtocol:
         numeric_labels = pd.to_numeric(filtered_df["Label"], errors="coerce")
         filtered_df = filtered_df[numeric_labels.notna()]
         filtered_df = filtered_df[numeric_labels != -1]
+    if domain_ids is not None:
+        numeric_domains = pd.to_numeric(filtered_df["Domain_id"], errors="coerce")
+        filtered_df = filtered_df[numeric_domains.isin(domain_ids)]
     filtered_df = filtered_df.reset_index(drop=True)
     if filtered_df.empty:
         raise ValueError(f"No metadata rows matched selection={selection!r}.")
 
     split_manifest = _resolve_real_splits(filtered_df, dict(data_cfg.get("split", {})))
+    _validate_split_manifest_by_label(filtered_df, split_manifest)
     samples: list[SampleMeta] = []
     with h5py.File(h5_path, "r") as handle:
         for row in filtered_df.itertuples(index=False):
