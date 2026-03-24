@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any, Dict
 
@@ -65,6 +66,17 @@ class OpenRouterBackend:
     timeout_sec: float = 60.0
     temperature: float = 0.0
     max_tokens: int = 2000
+    max_retries: int = 3
+
+    def _retry_delay(self, attempt: int, retry_after: str | None) -> float:
+        if retry_after:
+            try:
+                return max(0.0, float(retry_after))
+            except ValueError:
+                pass
+        backoff = [2.0, 5.0, 10.0]
+        index = max(0, min(attempt - 1, len(backoff) - 1))
+        return backoff[index]
 
     def _api_key(self) -> str:
         api_key = os.getenv(self.api_key_env, "").strip()
@@ -72,26 +84,50 @@ class OpenRouterBackend:
             raise LLMBackendError(f"Missing API key in env var {self.api_key_env}.")
         return api_key
 
+    def _timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=10.0,
+            read=float(self.timeout_sec),
+            write=10.0,
+            pool=5.0,
+        )
+
     def _request(self, prompt: str, *, expect_json: bool) -> str:
+        del expect_json
         body: Dict[str, Any] = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
         }
-        if expect_json:
-            body["response_format"] = {"type": "json_object"}
+        timeout = self._timeout()
         try:
-            with httpx.Client(timeout=self.timeout_sec) as client:
-                response = client.post(
-                    f"{self.base_url.rstrip('/')}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {self._api_key()}",
-                        "Content-Type": "application/json",
-                    },
-                    json=body,
-                )
-                response.raise_for_status()
+            with httpx.Client(timeout=timeout, trust_env=False) as client:
+                for attempt in range(1, self.max_retries + 1):
+                    try:
+                        response = client.post(
+                            f"{self.base_url.rstrip('/')}/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {self._api_key()}",
+                                "Content-Type": "application/json",
+                            },
+                            json=body,
+                        )
+                        response.raise_for_status()
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 429 and attempt < self.max_retries:
+                            time.sleep(self._retry_delay(attempt, exc.response.headers.get("Retry-After")))
+                            continue
+                        raise
+        except httpx.ConnectTimeout as exc:
+            raise LLMBackendError(
+                f"OpenRouter connect timeout after {timeout.connect:.1f}s: {exc}"
+            ) from exc
+        except httpx.ReadTimeout as exc:
+            raise LLMBackendError(
+                f"OpenRouter read timeout after {timeout.read:.1f}s while waiting for the response body: {exc}"
+            ) from exc
         except httpx.HTTPError as exc:
             raise LLMBackendError(f"OpenRouter transport failed: {exc}") from exc
         payload = response.json()
@@ -99,6 +135,126 @@ class OpenRouterBackend:
             return str(payload["choices"][0]["message"]["content"] or "")
         except Exception as exc:
             raise LLMBackendError(f"OpenRouter returned unexpected payload: {payload}") from exc
+
+    def generate_json(self, prompt: str, *, repair_prompt: str | None = None) -> Dict[str, Any]:
+        text = self._request(prompt, expect_json=True)
+        try:
+            return _extract_json_object(text)
+        except LLMBackendError:
+            retry_prompt = repair_prompt or (
+                "Return only a valid JSON object with no prose.\n\nOriginal task:\n" + prompt
+            )
+            repaired = self._request(retry_prompt, expect_json=True)
+            return _extract_json_object(repaired)
+
+    def generate_text(self, prompt: str) -> str:
+        return self._request(prompt, expect_json=False)
+
+
+@dataclass
+class BigModelBackend:
+    provider: str = "bigmodel"
+    mode: str = "provider"
+    model: str = "glm-4.7-flashx"
+    api_key_env: str = "BIGMODEL_API_KEY"
+    base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    timeout_sec: float = 60.0
+    temperature: float = 0.0
+    max_tokens: int = 2000
+    max_retries: int = 3
+    thinking_type: str = "disabled"
+    clear_thinking: bool | None = None
+
+    def _retry_delay(self, attempt: int, retry_after: str | None) -> float:
+        if retry_after:
+            try:
+                return max(0.0, float(retry_after))
+            except ValueError:
+                pass
+        backoff = [2.0, 5.0, 10.0]
+        index = max(0, min(attempt - 1, len(backoff) - 1))
+        return backoff[index]
+
+    def _api_key(self) -> str:
+        api_key = os.getenv(self.api_key_env, "").strip()
+        if not api_key:
+            raise LLMBackendError(f"Missing API key in env var {self.api_key_env}.")
+        return api_key
+
+    def _timeout(self) -> httpx.Timeout:
+        return httpx.Timeout(
+            connect=10.0,
+            read=float(self.timeout_sec),
+            write=10.0,
+            pool=5.0,
+        )
+
+    def _request(self, prompt: str, *, expect_json: bool) -> str:
+        del expect_json
+        body: Dict[str, Any] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+        }
+        thinking_type = str(self.thinking_type or "").strip().lower()
+        if thinking_type:
+            body["thinking"] = {"type": thinking_type}
+            if self.clear_thinking is not None:
+                body["thinking"]["clear_thinking"] = bool(self.clear_thinking)
+        timeout = self._timeout()
+        try:
+            with httpx.Client(timeout=timeout, trust_env=False) as client:
+                for attempt in range(1, self.max_retries + 1):
+                    try:
+                        response = client.post(
+                            f"{self.base_url.rstrip('/')}/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {self._api_key()}",
+                                "Content-Type": "application/json",
+                            },
+                            json=body,
+                        )
+                        response.raise_for_status()
+                        break
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code == 429 and attempt < self.max_retries:
+                            time.sleep(self._retry_delay(attempt, exc.response.headers.get("Retry-After")))
+                            continue
+                        raise
+        except httpx.ConnectTimeout as exc:
+            raise LLMBackendError(
+                f"BigModel connect timeout after {timeout.connect:.1f}s: {exc}"
+            ) from exc
+        except httpx.ReadTimeout as exc:
+            raise LLMBackendError(
+                f"BigModel read timeout after {timeout.read:.1f}s while waiting for the response body: {exc}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise LLMBackendError(f"BigModel transport failed: {exc}") from exc
+        payload = response.json()
+        try:
+            message = payload["choices"][0]["message"]
+            content = message.get("content")
+            if isinstance(content, list):
+                text_parts = [
+                    str(part.get("text") or "")
+                    for part in content
+                    if isinstance(part, dict) and part.get("type") == "text"
+                ]
+                content = "".join(text_parts)
+            content_text = str(content or "")
+            if content_text.strip():
+                return content_text
+            reasoning_text = str(message.get("reasoning_content") or "").strip()
+            if reasoning_text:
+                raise LLMBackendError(
+                    "BigModel returned reasoning_content but empty content. "
+                    "Disable thinking with llm.thinking_type=disabled for non-reasoning text generation."
+                )
+            return content_text
+        except Exception as exc:
+            raise LLMBackendError(f"BigModel returned unexpected payload: {payload}") from exc
 
     def generate_json(self, prompt: str, *, repair_prompt: str | None = None) -> Dict[str, Any]:
         text = self._request(prompt, expect_json=True)
@@ -186,6 +342,21 @@ def get_llm(config: Dict[str, Any] | None = None):
             timeout_sec=float(llm_cfg.get("timeout_sec", 60.0)),
             temperature=float(llm_cfg.get("temperature", 0.0)),
             max_tokens=int(llm_cfg.get("max_tokens", llm_cfg.get("max_tokens_structured", 2000))),
+            max_retries=int(llm_cfg.get("max_retries", 3)),
+        )
+    if provider == "bigmodel":
+        return BigModelBackend(
+            provider=provider,
+            mode=mode,
+            model=str(llm_cfg.get("model", "glm-4.7-flashx")),
+            api_key_env=str(llm_cfg.get("api_key_env", "BIGMODEL_API_KEY")),
+            base_url=str(llm_cfg.get("base_url", "https://open.bigmodel.cn/api/paas/v4")),
+            timeout_sec=float(llm_cfg.get("timeout_sec", 60.0)),
+            temperature=float(llm_cfg.get("temperature", 0.0)),
+            max_tokens=int(llm_cfg.get("max_tokens", llm_cfg.get("max_tokens_structured", 2000))),
+            max_retries=int(llm_cfg.get("max_retries", 3)),
+            thinking_type=str(llm_cfg.get("thinking_type", "disabled")),
+            clear_thinking=llm_cfg.get("clear_thinking"),
         )
     if provider == "gemini":
         return GeminiBackend(
