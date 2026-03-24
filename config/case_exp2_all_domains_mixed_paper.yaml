@@ -1,0 +1,68 @@
+# All-domain mixed paper-grade RM101 gearbox diagnosis configuration.
+
+name: "exp2_rm101_all_domains_mixed_paper"
+save_dir: "/home/user/LQ/B_Signal/PHMGA/artifacts/exp2_rm101_all_domains_mixed_paper"
+metadata_path: "/home/user/data/PHMbenchdata/PHM-Vibench/gear_metadata.xlsx"
+h5_path: "/home/user/data/PHMbenchdata/PHM-Vibench/RM_101_THU_GEARBOX.h5"
+state_save_path: "/home/user/LQ/B_Signal/PHMGA/artifacts/exp2_rm101_all_domains_mixed_paper/exp2_rm101_all_domains_mixed_paper_built_state.pkl"
+report_path: "/home/user/LQ/B_Signal/PHMGA/artifacts/exp2_rm101_all_domains_mixed_paper/exp2_rm101_all_domains_mixed_paper_final_report.md"
+use_window: false
+
+data:
+  dataset_name: "RM101"
+  metadata_path: "/home/user/data/PHMbenchdata/PHM-Vibench/gear_metadata.xlsx"
+  h5_path: "/home/user/data/PHMbenchdata/PHM-Vibench/RM_101_THU_GEARBOX.h5"
+  selection:
+    dataset_id: 101
+    domain_ids: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+    drop_invalid_labels: true
+  split:
+    strategy: stratified_ratio
+    train_ratio: 0.6
+    val_ratio: 0.2
+    test_ratio: 0.2
+    seed: 0
+  window:
+    window_size: 4096
+    stride: 4096
+    slice_mode: sliding
+    drop_last_window: false
+
+ref_ids:
+  - 101073
+  - 101001
+  - 101037
+  - 101085
+  - 101097
+  - 101205
+  - 101133
+  - 101169
+
+test_ids:
+  - 101074
+  - 101002
+  - 101038
+  - 101086
+  - 101098
+  - 101206
+  - 101134
+  - 101170
+
+builder:
+  graph: executor
+  min_depth: 3
+  min_width: 2
+  max_depth: 3
+
+llm:
+  provider: openrouter
+  mode: provider
+  model: z-ai/glm-4.5-air:free
+  api_key_env: OPENROUTER_API_KEY
+  timeout_sec: 20
+  max_tokens_structured: 800
+
+user_instruction: >
+  Analyze the gearbox signals for multi-class fault diagnosis using all 12 operating domains.
+  Use a mixed-domain stratified train/val/test split at the raw-sample level, then perform
+  split-before-windowing with 4096-point non-overlapping windows for downstream evaluation.

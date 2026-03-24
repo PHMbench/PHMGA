@@ -24,6 +24,7 @@ from . import transform_schemas
 from . import expand_schemas
 from . import decision_schemas
 from . import multi_schemas
+from . import rm101_variable_speed_schemas
 
 # Import other tools that might be useful
 from .comparator_tool import compare_processed_nodes
