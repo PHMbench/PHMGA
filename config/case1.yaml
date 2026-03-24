@@ -28,6 +28,7 @@ test_ids:
   - 47057
 
 builder:
+  graph: builder
   min_depth: 4
   max_depth: 8
 

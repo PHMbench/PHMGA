@@ -1,7 +1,0 @@
-data_preset: ottawa
-experiment_preset: ml
-llm:
-  provider: gemini
-  mode: provider
-  model: gemini-2.5-pro
-  api_key_env: GEMINI_API_KEY

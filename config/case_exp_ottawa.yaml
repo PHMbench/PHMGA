@@ -2,57 +2,37 @@
 
 # File paths
 name: "exp2.5ottawa"
-save_dir: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save" # Add a general save directory
-metadata_path: "/mnt/crucial/LQ/PHM-Vibench/metadata_6_11.xlsx"
-h5_path: "/mnt/crucial/LQ/PHM-Vibench/cache.h5"
-state_save_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/exp2.5ottawa/exp2.5_built_state_ottawa.pkl"
-report_path: "/home/lq/LQcode/2_project/PHMBench/PHMGA/save/exp2.5ottawa/exp2.5_final_report_ottawa.md"
+save_dir: "/home/user/LQ/B_Signal/PHMGA/artifacts/exp2.5ottawa_slice3"
+metadata_path: "/mnt/shared/PHMbench/PHM-Vibench/metadata_6_11.xlsx"
+h5_path: "/mnt/shared/PHMbench/PHM-Vibench/RM_017_Ottawa19.h5"
+state_save_path: "/home/user/LQ/B_Signal/PHMGA/artifacts/exp2.5ottawa_slice3/exp2.5_built_state_ottawa.pkl"
+report_path: "/home/user/LQ/B_Signal/PHMGA/artifacts/exp2.5ottawa_slice3/exp2.5_final_report_ottawa.md"
+use_window: false
 
 # Data selection
 ref_ids:
 - 47007
-- 47008
-- 47009
-- 47016
-- 47017
-- 47018
 - 47019
-- 47020
-- 47021
-- 47028
-- 47029
-- 47030
 - 47031
-- 47032
-- 47033
-- 47040
-- 47041
-- 47042
 
 test_ids:
 - 47010
-- 47011
-- 47012
-- 47013
-- 47014
-- 47015
 - 47022
-- 47023
-- 47024
-- 47025
-- 47026
-- 47027
 - 47034
-- 47035
-- 47036
-- 47037
-- 47038
-- 47039
 
 
 builder:
-  min_depth: 4
-  max_depth: 8
+  graph: executor
+  min_depth: 2
+  max_depth: 2
+
+llm:
+  provider: openrouter
+  mode: provider
+  model: z-ai/glm-4.5-air:free
+  api_key_env: OPENROUTER_API_KEY
+  timeout_sec: 20
+  max_tokens_structured: 800
 
 # User instruction for the LLM
 user_instruction: >

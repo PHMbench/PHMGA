@@ -1,7 +1,0 @@
-data_preset: rm101
-experiment_preset: ml
-llm:
-  provider: openrouter
-  mode: provider
-  model: z-ai/glm-4.5-air:free
-  api_key_env: OPENROUTER_API_KEY

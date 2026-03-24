@@ -1,2 +1,0 @@
-graph_path: dag_only
-user_instruction: Build a valid PHM feature DAG for the configured dataset.
