@@ -29,17 +29,11 @@ USE_REAL_LLM="1"
 
 ### 3. **Run Demo Cases**
 ```bash
-# Method 1: Using main.py
-python main.py case_exp2      # 5-state bearing fault diagnosis
-python main.py case_exp2.5    # Alternative 5-state configuration  
-python main.py case_exp_ottawa # 3-state variable speed dataset
-
-# Method 2: Direct execution
-python src/cases/case1.py case_exp2
-python src/cases/case1.py case_exp_ottawa
-
-# Method 3: Default case (ottawa)
-python src/cases/case1.py
+# Run by case config name under config/
+python main.py case1
+python main.py case_exp2
+python main.py case_exp2.5
+python main.py case_exp_ottawa
 ```
 
 ## 🏗️ System Architecture
@@ -50,9 +44,14 @@ python src/cases/case1.py
 
 **Agent Workflow:**
 ```
-START → Plan Agent → Execute Agent → Reflect Agent → END
-  ↑                                     ↓
-  └─────────── Plan Again? ←────────────┘
+with_report:
+START → Plan → Execute → Reflect → (Plan | Inquire) → Prepare → Train → Report → END
+
+builder:
+START → Plan → Execute → Reflect → (Plan | END)
+
+executor:
+START → Inquire → Prepare → Train → Report → END
 ```
 
 ## 📊 Demo Cases
@@ -96,11 +95,15 @@ Each case uses a YAML configuration file with:
 - **Data paths**: Metadata and signal data locations
 - **Signal IDs**: Reference and test signal identifiers  
 - **User instruction**: Natural language task description
-- **Builder settings**: DAG depth and construction parameters
+- **Builder settings**: DAG depth and graph selection parameters
 
 **Example configuration:**
 ```yaml
 name: "case_exp2"
+builder:
+  graph: with_report
+  min_depth: 4
+  max_depth: 8
 user_instruction: >
   Analyze bearing signals for potential faults. The reference set contains
   signals for 5 different states. Classify each test signal accordingly.
@@ -118,25 +121,17 @@ test_ids: [47051, 47045, 47048, 47054, 47057]
 
 ## 🧪 Expected Output
 
-```bash
-🚀 Running PHM Graph Agent Demo: case_exp_ottawa
-📋 Configuration: config/case_exp_ottawa.yaml
-==================================================
---- Loading configuration from config/case_exp_ottawa.yaml ---
---- [Part 0] Initializing State ---
---- [Part 1] Starting DAG Builder Workflow ---
---- Builder Iteration 1 ---
---- Builder Node Executed: plan ---
---- Builder Node Executed: execute ---
---- Builder Node Executed: reflect ---
-Current DAG depth: 4
-
---- [Case Complete] DAG Construction Finished ---
-✅ Successfully built DAG with 12 nodes
-✅ Final DAG depth: 4
-✅ State saved to: save/exp2.5ottawa/exp2.5_built_state_ottawa.pkl
-==================================================
-✅ Demo completed successfully!
+```json
+{
+  "status": "ok",
+  "case_name": "case_exp_ottawa",
+  "graph": "with_report",
+  "state_save_path": ".../exp2.5_built_state_ottawa.pkl",
+  "report_path": ".../exp2.5_final_report_ottawa.md",
+  "dag_depth": 4,
+  "dag_nodes": 12,
+  "has_final_report": true
+}
 ```
 
 ## 🤝 Support

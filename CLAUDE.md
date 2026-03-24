@@ -33,14 +33,9 @@ LANGCHAIN_TRACING_V2=true
 
 ### Running Cases
 ```bash
-# Run specific case with config
-python main.py case1 --config config/case1.yaml
-
-# Run case directly
-python -m src.cases.case1
-
-# Run from Jupyter notebooks
-jupyter notebook src/cases/case1.ipynb
+# Run a case config from config/<case>.yaml
+python main.py case1
+python main.py case_exp_ottawa
 ```
 
 ### Testing Agents Individually
@@ -65,11 +60,12 @@ export LANGCHAIN_PROJECT="phmga-debug"
 
 **Outer Layer (Static Workflow):**
 - Managed by LangGraph StateGraph
-- Flow: `START → Plan → Execute → Reflect → (Plan|Report) → END`
+- Flow defaults to `with_report`: `START → Plan → Execute → Reflect → (Plan|Inquire) → Prepare → Train → Report → END`
 - Defined in `src/phm_outer_graph.py`
-- Two main graphs:
+- Three selectable graphs:
   - `build_builder_graph()`: Iterative DAG construction with plan-execute-reflect loop
-  - `build_executor_graph()`: Final execution with inquire-prepare-train-report pipeline
+  - `build_executor_graph()`: Execution with inquire-prepare-train-report pipeline
+  - `build_outer_graph()`: Full builder-to-report pipeline used by `with_report`
 
 **Inner Layer (Dynamic DAG):**
 - Signal processing computational graph
