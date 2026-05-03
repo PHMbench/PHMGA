@@ -1,0 +1,17 @@
+{
+  "experiment_id": "ottawa_torch_pilot_v1",
+  "dataset": "Ottawa",
+  "graph_path": "torch",
+  "phase": "compiled",
+  "output_policy": "terminal_only",
+  "llm_mode": "offline_stub",
+  "control_mode": "fixed",
+  "output_dir": "artifacts/paper/ottawa_torch_pilot_v1",
+  "artifact_contract_pass": "n/a",
+  "feature_separability_pass": "n/a",
+  "selection_eligible": "n/a",
+  "accuracy": 0.333,
+  "macro_f1": 0.167,
+  "keep": "accept",
+  "note": "pilot smoke (offline_stub)"
+}

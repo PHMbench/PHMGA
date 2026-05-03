@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-03-19T14:21:23.886635+00:00",
+  "source_ledger_path": "doc/experiments/01_result_ledger.md",
+  "experiment_count": 22,
+  "stage_counts": {
+    "stage_a_pilot": 4,
+    "stage_b_backend_comparison": 6,
+    "stage_c_formal_main": 4,
+    "stage_d_ablation": 8
+  },
+  "selected_global_best_backend": {
+    "provider": "pending",
+    "model": "pending",
+    "snapshot": null,
+    "status": "pending",
+    "selected_from_stage_b": false,
+    "selection_basis": "mean macro_f1 over Ottawa + RM101 canonical ml mainline"
+  },
+  "bundle_mode": "self_contained_snapshot"
+}

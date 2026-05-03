@@ -1,0 +1,101 @@
+{
+  "experiment_id": "rm101_ml_codex_v1",
+  "ledger_row": {
+    "experiment_id": "rm101_ml_codex_v1",
+    "dataset": "RM101",
+    "graph_path": "ml",
+    "phase": "compiled",
+    "output_policy": "terminal_only",
+    "llm_mode": "provider",
+    "control_mode": "fixed",
+    "output_dir": "artifacts/paper/rm101_ml_codex_v1",
+    "artifact_contract_pass": "fail",
+    "feature_separability_pass": "fail",
+    "selection_eligible": "no",
+    "accuracy": null,
+    "macro_f1": null,
+    "keep": "reject",
+    "note": "backend comparison candidate: codex_cli / gpt-5.3-codex; planner failed to return within a bounded 180s Stage B window"
+  },
+  "worker_result": {
+    "metadata": {
+      "worker_id": "backend-comparison-owner",
+      "ticket_id": "06_backend_comparison_owner.md",
+      "run_type": "backend_comparison",
+      "experiment_id": "rm101_ml_codex_v1",
+      "command": "`timeout 180 ./scripts/sh/ablation/provider/rm101_ml_codex.sh`",
+      "start_time": "2026-03-19T16:40:00+08:00",
+      "end_time": "2026-03-19T16:43:00+08:00",
+      "provider/model": "codex_cli / gpt-5.3-codex",
+      "output_dir": "`artifacts/paper/rm101_ml_codex_v1`",
+      "artifact_contract_pass": "fail",
+      "feature_separability_pass": "fail",
+      "status": "reject",
+      "ledger_updated": "yes"
+    },
+    "artifact_checklist": {
+      "validated_dag.json": "no",
+      "compiled_dag_manifest.json": "no",
+      "feature_pipeline.json": "no",
+      "feature_list.json": "no",
+      "feature_separability_summary.json": "no",
+      "artifact_index.json": "no",
+      "metrics.json": "no",
+      "final_report.md": "no"
+    },
+    "required_evidence": {
+      "feature_list": "Not generated. Planner transport did not complete.",
+      "feature_separability_summary": "Not generated. No runtime-native ML evidence was emitted.",
+      "progress_record": "- Wrapper started with `codex_cli / gpt-5.3-codex`.\n- RM101 real-data Stage B run entered `plan_agent`.\n- Run was bounded with `timeout 180` to avoid indefinite blocking.\n- `codex exec` did not return a planner result within the timeout window.\n- No runtime artifacts were created."
+    },
+    "metrics_summary": "Unavailable. The run did not reach compile or ML evaluation.",
+    "failure_summary": "The active Codex tuple did not complete planner generation within a bounded Stage B window on RM101.",
+    "notes": "This row is rejected for the current Stage B round. A future rerun is only justified after a transport-level latency fix or an active-set change.",
+    "raw_markdown": "# Worker Result\n\n- worker_id: backend-comparison-owner\n- ticket_id: 06_backend_comparison_owner.md\n- run_type: backend_comparison\n- experiment_id: rm101_ml_codex_v1\n- command: `timeout 180 ./scripts/sh/ablation/provider/rm101_ml_codex.sh`\n- start_time: 2026-03-19T16:40:00+08:00\n- end_time: 2026-03-19T16:43:00+08:00\n- provider/model: codex_cli / gpt-5.3-codex\n- output_dir: `artifacts/paper/rm101_ml_codex_v1`\n- artifact_contract_pass: fail\n- feature_separability_pass: fail\n- status: reject\n- ledger_updated: yes\n\n## Artifact Checklist\n\n- validated_dag.json: no\n- compiled_dag_manifest.json: no\n- feature_pipeline.json: no\n- feature_list.json: no\n- feature_separability_summary.json: no\n- artifact_index.json: no\n- metrics.json: no\n- final_report.md: no\n\n## Required Evidence\n\n### feature_list\n\nNot generated. Planner transport did not complete.\n\n### feature_separability_summary\n\nNot generated. No runtime-native ML evidence was emitted.\n\n### progress_record\n\n- Wrapper started with `codex_cli / gpt-5.3-codex`.\n- RM101 real-data Stage B run entered `plan_agent`.\n- Run was bounded with `timeout 180` to avoid indefinite blocking.\n- `codex exec` did not return a planner result within the timeout window.\n- No runtime artifacts were created.\n\n## Metrics Summary\n\nUnavailable. The run did not reach compile or ML evaluation.\n\n## Failure Summary\n\nThe active Codex tuple did not complete planner generation within a bounded Stage B window on RM101.\n\n## Notes\n\nThis row is rejected for the current Stage B round. A future rerun is only justified after a transport-level latency fix or an active-set change.\n",
+    "path": "doc/experiments/handoff/results/rm101_ml_codex_v1.md"
+  },
+  "copied_artifacts": [],
+  "artifact_presence_map": {
+    "dag.json": false,
+    "validated_dag.json": false,
+    "compiled_dag_manifest.json": false,
+    "dag_graph.md": false,
+    "resolved_splits.json": false,
+    "resolved_dataset_manifest.json": false,
+    "resolved_config.json": false,
+    "workflow_state.json": false,
+    "artifact_index.json": false,
+    "dag_quality_summary.json": false,
+    "dataset_level_runtime_trace.json": false,
+    "decision_side_outputs.json": false,
+    "feature_pipeline.json": false,
+    "feature_list.json": false,
+    "feature_separability_summary.json": false,
+    "metrics.json": false,
+    "predictions.json": false,
+    "importance.json": false,
+    "similarity_artifacts.json": false,
+    "model_build_plan.json": false,
+    "training_curves.json": false,
+    "checkpoint.json": false,
+    "control_statistics.json": false,
+    "planner_transport_trace.json": false,
+    "planner_normalization_trace.json": false,
+    "planner_raw_response.txt": false,
+    "planner_repair_response.txt": false,
+    "final_report.md": false
+  },
+  "derived_stage_name": "stage_b_backend_comparison",
+  "derived_run_type": "backend_comparison",
+  "derived_backend_tuple": {
+    "provider": "codex_cli",
+    "model": "gpt-5.3-codex"
+  },
+  "artifact_mismatch": false,
+  "validated_dag_alias": null,
+  "source_provenance": {
+    "ledger_path": "doc/experiments/01_result_ledger.md",
+    "worker_results_dir": "doc/experiments/handoff/results",
+    "artifacts_root": "artifacts/paper"
+  }
+}

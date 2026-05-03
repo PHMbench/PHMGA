@@ -92,6 +92,10 @@ python -m pytest tests/unit tests/smoke
 - [doc/experiments/05_worker_result_template.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/05_worker_result_template.md)
 - [doc/experiments/incidents/03_openrouter_api_analysis.md](/home/user/LQ/B_Signal/PHMGA/doc/experiments/incidents/03_openrouter_api_analysis.md)
 
+论文证据快照：
+
+- `paper_phmga/` is a self-contained experiment snapshot exported from `doc/experiments/01_result_ledger.md` for paper and thesis evidence review.
+
 归档分析材料：
 
 - `doc/archive/debug/`

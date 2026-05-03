@@ -1,0 +1,30 @@
+{
+  "package_name": "thesis_rm101_case",
+  "source_package": "artifacts/paper/rm101_all_domains_mixed_simulated_v1",
+  "best_run_dir": "artifacts/rm101_all_domains/openrouter__google__gemini-2.5-pro__simulated_mixed_paper_v1",
+  "best_model_label": "Gemini 2.5 Pro (simulated, all-domain mixed)",
+  "best_leaf": "torque_normalize_24_rms_10_stft_06_ch6",
+  "best_branch_summary": "stft -> rms -> torque_normalize",
+  "best_test_accuracy": 0.8865248226950354,
+  "best_test_macro_f1": 0.8864772952124089,
+  "baseline_label": "BigModel / GLM-4.7-FlashX (real baseline)",
+  "baseline_test_accuracy": 0.8140514184397163,
+  "baseline_test_macro_f1": 0.8229110215858482,
+  "cross_dag_late_fusion_accuracy": 0.8241356382978723,
+  "cross_dag_late_fusion_macro_f1": 0.8298924465603508,
+  "protocol": {
+    "dataset_id": 101,
+    "domain_ids": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "split": "mixed-domain stratified split",
+    "split_before_windowing": true,
+    "window_size": 4096,
+    "stride": 4096,
+    "slice_mode": "sliding",
+    "n_train_ids": 146,
+    "n_val_ids": 46,
+    "n_test_ids": 48,
+    "n_train_windows": 27448,
+    "n_val_windows": 8648,
+    "n_test_windows": 9024
+  }
+}

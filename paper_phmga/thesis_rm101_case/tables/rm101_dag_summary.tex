@@ -1,0 +1,17 @@
+\begin{table}[!htbp]
+\centering
+\caption{RM101 主图谱的结构复杂度对比}
+\label{tab:rm101_dag_summary}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+\textbf{方法} & \textbf{深度} & \textbf{节点数} & \textbf{边数} & \textbf{关键算子摘要} \\
+\midrule
+BigModel / GLM-4.7-FlashX & 3 & 20 & 12 & crest\_factor, kurtosis, psd, rms, spectral\_centroid \\
+Gemini 2.0 Flash（模拟） & 3 & 20 & 12 & fft, psd, rms, kurtosis, crest\_factor, spectral\_centroid \\
+Gemini 2.5 Flash（模拟） & 4 & 28 & 26 & coherence, order\_track\_resample, sideband\_ratio, torque\_normalize \\
+Gemini 2.5 Pro（模拟） & \textbf{5} & \textbf{52} & \textbf{56} & fft, psd, stft, patch, order\_track\_resample, tsa\_cycle\_average, torque\_normalize \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

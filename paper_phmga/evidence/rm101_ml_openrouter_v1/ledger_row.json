@@ -1,0 +1,17 @@
+{
+  "experiment_id": "rm101_ml_openrouter_v1",
+  "dataset": "RM101",
+  "graph_path": "ml",
+  "phase": "compiled",
+  "output_policy": "terminal_only",
+  "llm_mode": "provider",
+  "control_mode": "fixed",
+  "output_dir": "artifacts/paper/rm101_ml_openrouter_v1",
+  "artifact_contract_pass": "fail",
+  "feature_separability_pass": "fail",
+  "selection_eligible": "no",
+  "accuracy": null,
+  "macro_f1": null,
+  "keep": "reject",
+  "note": "historical comparison failure: openrouter / stepfun/step-3.5-flash:free; planner output was not normalizable into `StepPlan` after repair; not in current active Stage B set"
+}

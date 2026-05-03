@@ -1,0 +1,17 @@
+{
+  "experiment_id": "rm101_ml_pilot_v1",
+  "dataset": "RM101",
+  "graph_path": "ml",
+  "phase": "compiled",
+  "output_policy": "terminal_only",
+  "llm_mode": "offline_stub",
+  "control_mode": "fixed",
+  "output_dir": "artifacts/paper/rm101_ml_pilot_v1",
+  "artifact_contract_pass": "n/a",
+  "feature_separability_pass": "n/a",
+  "selection_eligible": "n/a",
+  "accuracy": 0.25,
+  "macro_f1": 0.125,
+  "keep": "accept",
+  "note": "pilot smoke (offline_stub)"
+}

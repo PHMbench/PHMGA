@@ -1,0 +1,18 @@
+\begin{table}[!htbp]
+\centering
+\caption{RM101 最优图谱中代表性终端叶子结果}
+\label{tab:rm101_top_leaves}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccc}
+\toprule
+\textbf{叶子节点} & \textbf{分支摘要} & \textbf{算法} & \textbf{特征维数} & \textbf{Val Macro-F1} & \textbf{Test Macro-F1} \\
+\midrule
+torque\_normalize\_24\_rms\_10\_stft\_06\_ch6 & stft $\rightarrow$ rms $\rightarrow$ torque\_normalize & MLP & 129 & \textbf{0.8172} & \textbf{0.8865} \\
+crest\_factor\_15\_patch\_03\_fft\_08\_ch8 & fft $\rightarrow$ patch $\rightarrow$ crest\_factor & SVM & 64 & 0.4619 & 0.4397 \\
+crest\_factor\_12\_stft\_08\_ch8 & stft $\rightarrow$ crest\_factor & SVM & 129 & 0.4551 & 0.4441 \\
+kurtosis\_11\_stft\_07\_ch7 & stft $\rightarrow$ kurtosis & SVM & 129 & 0.4085 & 0.3682 \\
+rms\_13\_patch\_01\_fft\_tsa\_06\_tsa\_06\_ch6 & tsa\_cycle\_average $\rightarrow$ fft $\rightarrow$ patch $\rightarrow$ rms & RandomForest & 4 & 0.3532 & 0.3267 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

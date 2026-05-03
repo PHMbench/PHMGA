@@ -1,0 +1,17 @@
+\begin{table}[!htbp]
+\centering
+\caption{RM101 all-domain mixed 设定下的主结果对比}
+\label{tab:rm101_main_results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccl}
+\toprule
+\textbf{方法} & \textbf{Test Accuracy} & \textbf{Test Macro-F1} & \textbf{Final Choice} & \textbf{备注} \\
+\midrule
+BigModel / GLM-4.7-FlashX（真实基线） & 0.8141 & 0.8229 & best\_single\_leaf & real baseline \\
+Gemini 2.0 Flash（模拟，all-domain mixed） & 0.1539 & 0.1305 & weighted\_ensemble & simulated planner variant \\
+Gemini 2.5 Flash（模拟，all-domain mixed） & 0.2585 & 0.2525 & best\_single\_leaf & simulated planner variant \\
+Gemini 2.5 Pro（模拟，all-domain mixed） & \textbf{0.8865} & \textbf{0.8865} & best\_single\_leaf & richest simulated planner variant \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

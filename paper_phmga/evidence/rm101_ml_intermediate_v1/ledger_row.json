@@ -1,0 +1,17 @@
+{
+  "experiment_id": "rm101_ml_intermediate_v1",
+  "dataset": "RM101",
+  "graph_path": "ml",
+  "phase": "compiled",
+  "output_policy": "include_intermediate_features",
+  "llm_mode": "provider",
+  "control_mode": "fixed",
+  "output_dir": "artifacts/paper/rm101_ml_intermediate_v1",
+  "artifact_contract_pass": "pending",
+  "feature_separability_pass": "pending",
+  "selection_eligible": "n/a",
+  "accuracy": null,
+  "macro_f1": null,
+  "keep": null,
+  "note": "ablation on selected_global_best_backend: output_policy"
+}

@@ -1,0 +1,32 @@
+{
+  "stage_a_pilot": [
+    "ottawa_ml_pilot_v1",
+    "ottawa_torch_pilot_v1",
+    "rm101_ml_pilot_v1",
+    "rm101_torch_pilot_v1"
+  ],
+  "stage_b_backend_comparison": [
+    "ottawa_ml_codex_v1",
+    "ottawa_ml_openrouter_glm_v1",
+    "rm101_ml_codex_v1",
+    "rm101_ml_openrouter_glm_v1",
+    "ottawa_ml_openrouter_v1",
+    "rm101_ml_openrouter_v1"
+  ],
+  "stage_c_formal_main": [
+    "ottawa_ml_main_v1",
+    "ottawa_torch_main_v1",
+    "rm101_ml_main_v1",
+    "rm101_torch_main_v1"
+  ],
+  "stage_d_ablation": [
+    "ottawa_ml_intermediate_v1",
+    "rm101_ml_intermediate_v1",
+    "ottawa_torch_module_runtime_v1",
+    "rm101_torch_module_runtime_v1",
+    "ottawa_torch_gated_v1",
+    "rm101_torch_gated_v1",
+    "ottawa_torch_attention_v1",
+    "rm101_torch_attention_v1"
+  ]
+}

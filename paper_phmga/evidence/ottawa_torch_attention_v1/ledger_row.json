@@ -1,0 +1,17 @@
+{
+  "experiment_id": "ottawa_torch_attention_v1",
+  "dataset": "Ottawa",
+  "graph_path": "torch",
+  "phase": "learnable_control",
+  "output_policy": "terminal_only",
+  "llm_mode": "provider",
+  "control_mode": "attention",
+  "output_dir": "artifacts/paper/ottawa_torch_attention_v1",
+  "artifact_contract_pass": "pending",
+  "feature_separability_pass": "n/a",
+  "selection_eligible": "n/a",
+  "accuracy": null,
+  "macro_f1": null,
+  "keep": null,
+  "note": "ablation on selected_global_best_backend: attention control"
+}

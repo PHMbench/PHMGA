@@ -1,0 +1,26 @@
+{
+  "active_stage_b_set": {
+    "codex": {
+      "provider": "codex_cli",
+      "model": "gpt-5.3-codex",
+      "snapshot": null
+    },
+    "openrouter": {
+      "provider": "openrouter",
+      "model": "z-ai/glm-4.5-air:free",
+      "snapshot": null
+    }
+  },
+  "selected_global_best_backend": {
+    "provider": "pending",
+    "model": "pending",
+    "snapshot": null,
+    "status": "pending",
+    "selected_from_stage_b": false,
+    "selection_basis": "mean macro_f1 over Ottawa + RM101 canonical ml mainline"
+  },
+  "historical_failure_not_in_active_set": [
+    "ottawa_ml_openrouter_v1",
+    "rm101_ml_openrouter_v1"
+  ]
+}
