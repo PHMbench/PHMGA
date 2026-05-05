@@ -5,7 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any, Dict, Optional, Union
 
-from langgraph.graph import END, START, StateGraph
+from langgraph.graph import END, StateGraph
 
 from src.agents import execute_agent, inquirer_agent, plan_agent, reflect_agent, report_agent
 from src.bridge import CompiledDagManifest, DagArtifacts, FeaturePipelinePlan, ModelBuildPlan, compile_dag_for_path
@@ -84,6 +84,34 @@ def _dag_hash(state: PHMState) -> str:
     return hash_payload(state.dag.model_dump())
 
 
+def _can_compile_current_state(state: PHMState) -> bool:
+    return state.dag is not None and bool(state.dag.nodes) and not state.execution_gaps
+
+
+def _restore_last_stable_for_compile(state: PHMState) -> bool:
+    if state.last_stable_dag is None:
+        return False
+    state.dag = state.last_stable_dag.model_copy(deep=True)
+    state.execution_results = deepcopy(state.last_stable_execution_results)
+    state.step_plan = None
+    state.status = "max_iteration_stable_compile"
+    return True
+
+
+def _max_iteration_compile_exit(state: PHMState) -> dict[str, Any] | None:
+    if not state.reflection_results or state.iteration_index < state.max_iterations:
+        return None
+    decision = state.reflection_results[-1].decision
+    if decision == "finish":
+        return None
+    return {
+        "reason": f"max_iterations={state.max_iterations} reached before finish",
+        "compiled_for_rejection_evidence": True,
+        "last_reflection_decision": decision,
+        "last_reflection_reason": state.reflection_results[-1].reason,
+    }
+
+
 def build_phm_graph(protocol, catalog: OperatorCatalog, runtime_config: Dict[str, Any], llm_override=None):
     builder = StateGraph(PHMState)
 
@@ -149,6 +177,9 @@ def build_phm_graph(protocol, catalog: OperatorCatalog, runtime_config: Dict[str
         )
         split_records = None if state.graph_path == "dag_only" else materialize_split_signals(protocol)
         path_artifacts = _run_path(state.graph_path, compiled, split_records, runtime_config, catalog, protocol.dataset_name)
+        workflow_exit = _max_iteration_compile_exit(state)
+        if workflow_exit is not None:
+            path_artifacts["workflow_exit"] = workflow_exit
         decision_outputs = _decision_side_outputs(state)
         if decision_outputs:
             path_artifacts["decision_side_outputs"] = decision_outputs
@@ -185,12 +216,22 @@ def build_phm_graph(protocol, catalog: OperatorCatalog, runtime_config: Dict[str
             return "compile_ready"
         if decision == "need_patch":
             if state.iteration_index >= state.max_iterations:
-                state.halt_reason = f"Workflow exceeded max_iterations={state.max_iterations} without reaching finish."
+                if _can_compile_current_state(state):
+                    state.reflection_history.append(
+                        f"max_iterations={state.max_iterations} reached; compiling executable weak DAG for rejection evidence."
+                    )
+                    return "compile_ready"
+                state.halt_reason = f"Workflow exceeded max_iterations={state.max_iterations} without executable DAG."
                 return "halt"
             return "plan"
         if decision == "need_replan":
             if state.iteration_index >= state.max_iterations:
-                state.halt_reason = f"Workflow exceeded max_iterations={state.max_iterations} without reaching finish."
+                if _restore_last_stable_for_compile(state):
+                    state.reflection_history.append(
+                        f"max_iterations={state.max_iterations} reached during replan; compiling last stable DAG for rejection evidence."
+                    )
+                    return "compile_ready"
+                state.halt_reason = f"Workflow exceeded max_iterations={state.max_iterations} without stable DAG."
                 return "halt"
             return "rollback"
         return "halt"
@@ -205,7 +246,7 @@ def build_phm_graph(protocol, catalog: OperatorCatalog, runtime_config: Dict[str
     builder.add_node("report", report_node)
     builder.add_node("halt", halt_node)
 
-    builder.add_edge(START, "plan")
+    builder.set_entry_point("plan")
     builder.add_edge("plan", "execute")
     builder.add_edge("execute", "dag_quality")
     builder.add_edge("dag_quality", "reflect")
@@ -282,7 +323,7 @@ def build_supervisor_proving_graph(
     builder.add_node("compile", compile_node)
     builder.add_node("verify", verify_node)
 
-    builder.add_edge(START, "plan")
+    builder.set_entry_point("plan")
     builder.add_edge("plan", "execute")
     builder.add_edge("execute", "compile")
     builder.add_edge("compile", "verify")
@@ -384,7 +425,7 @@ def build_simple_fullchain_graph(
     builder.add_node("report", report_node)
     builder.add_node("halt", halt_node)
 
-    builder.add_edge(START, "plan")
+    builder.set_entry_point("plan")
     builder.add_edge("plan", "execute")
     builder.add_edge("execute", "reflect")
     builder.add_conditional_edges(
@@ -411,7 +452,7 @@ def run_phm_graph(
     llm_override=None,
 ) -> PHMState:
     graph = build_phm_graph(protocol, catalog, runtime_config, llm_override)
-    return PHMState.model_validate(graph.invoke(state))
+    return PHMState.model_validate(graph.invoke(state.model_dump()))
 
 
 def run_supervisor_proving_graph(
@@ -422,7 +463,7 @@ def run_supervisor_proving_graph(
     llm_override=None,
 ) -> PHMState:
     graph = build_supervisor_proving_graph(protocol, catalog, runtime_config, llm_override)
-    return PHMState.model_validate(graph.invoke(state))
+    return PHMState.model_validate(graph.invoke(state.model_dump()))
 
 
 def run_simple_fullchain_graph(
@@ -433,4 +474,4 @@ def run_simple_fullchain_graph(
     llm_override=None,
 ) -> PHMState:
     graph = build_simple_fullchain_graph(protocol, catalog, runtime_config, llm_override)
-    return PHMState.model_validate(graph.invoke(state))
+    return PHMState.model_validate(graph.invoke(state.model_dump()))

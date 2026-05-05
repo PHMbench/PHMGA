@@ -15,6 +15,8 @@ def _default_api_key_env(provider: str) -> str:
         return "OPENAI_API_KEY"
     if normalized == "codex_cli":
         return ""
+    if normalized == "bigmodel":
+        return "BIGMODEL_API_KEY"
     return "OPENROUTER_API_KEY"
 
 
@@ -24,6 +26,8 @@ def _default_base_url(provider: str) -> str:
         return "https://api.openai.com/v1"
     if normalized == "codex_cli":
         return ""
+    if normalized == "bigmodel":
+        return "https://open.bigmodel.cn/api/paas/v4"
     return "https://openrouter.ai/api/v1"
 
 
@@ -31,6 +35,8 @@ def _default_model(provider: str) -> str:
     normalized = provider.strip().lower()
     if normalized in {"openai", "codex_cli"}:
         return "gpt-5.3-codex"
+    if normalized == "bigmodel":
+        return "glm-4.7-flash"
     return "z-ai/glm-4.5-air:free"
 
 
@@ -43,6 +49,8 @@ def _stage_b_active_model(llm_cfg: Dict[str, Any], provider: str) -> str:
         return str(stage_b_cfg.get("codex_active_model") or "")
     if normalized == "openrouter":
         return str(stage_b_cfg.get("openrouter_active_model") or "")
+    if normalized == "bigmodel":
+        return str(stage_b_cfg.get("bigmodel_active_model") or "")
     return ""
 
 

@@ -18,7 +18,6 @@ from src.bridge import FeaturePipelinePlan, ModelBuildPlan
 from src.data import DatasetView, SignalRecord, TorchDatasetView, build_dataset_views
 from src.model import build_similarity_artifacts, run_shallow_ml_baseline
 from src.operators import OperatorCatalog
-from .module_runtime import GraphModule
 
 try:
     import torch
@@ -484,6 +483,8 @@ def _run_graph_module_torch_pipeline(
     attention_dropout: float,
 ) -> Dict[str, object]:
     torch_module = _require_torch()
+    from .module_runtime import GraphModule
+
     resolved_device = _resolve_torch_device(device)
     split_views = _build_raw_tensor_views(split_records, device=resolved_device)
     train_view = split_views["train"]
