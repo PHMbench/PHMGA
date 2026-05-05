@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 from scripts.run_case import _run_frontend_loop
+import src.phm_outer_graph as phm_outer_graph_module
 from src.bridge import compile_dag_for_path
 from src.config import load_runtime_config
 from src.data import build_dataset_views, build_protocol_from_config, materialize_split_signals
 from src.llm.client import OfflineLLM
 from src.model import build_similarity_artifacts, run_shallow_ml_baseline
 from src.operators import get_operator_catalog
+from src.phm_outer_graph import run_phm_graph
 from src.states import StepPlan, WorkflowState
 from src.training import run_ml_pipeline
 
@@ -111,3 +114,39 @@ def test_frontend_loop_rolls_back_on_need_replan():
     assert state.round_history[0].reflection_result.decision == "need_replan"
     assert state.dag is not None
     assert any(node.op_uid == "signal.normalize" for node in state.dag.nodes)
+
+
+def test_rich_graph_compiles_executable_weak_dag_at_max_iterations(monkeypatch):
+    config = load_runtime_config(ROOT / "config/runs/rm101_synth_ml.yaml")
+    protocol = build_protocol_from_config(config)
+    catalog = get_operator_catalog()
+    config["runtime"]["max_iterations"] = 1
+
+    def _patch_candidate_summary(*args, **kwargs):
+        return SimpleNamespace(
+            dataset_level={},
+            model_dump=lambda: {
+                "recommendation_hint": "patch_candidate",
+                "issues": ["synthetic weak proxy evidence"],
+                "dataset_level": {},
+            },
+        )
+
+    monkeypatch.setattr(phm_outer_graph_module, "build_dag_quality_summary", _patch_candidate_summary)
+    state = WorkflowState(
+        user_instruction="Compile a weak but executable DAG for rejection evidence.",
+        dataset_name=protocol.dataset_name,
+        graph_path="ml",
+        max_iterations=1,
+        data_context={"min_depth": 99, "min_width": 1, "max_depth": 120, "stage": "TEST"},
+    )
+
+    state = run_phm_graph(state, protocol, catalog, config, llm_override=OfflineLLM())
+
+    assert state.halt_reason is None
+    assert state.status == "reported"
+    assert state.compiled_manifest
+    assert state.path_artifacts
+    assert state.final_report
+    assert state.path_artifacts["workflow_exit"]["compiled_for_rejection_evidence"] is True
+    assert state.path_artifacts["workflow_exit"]["last_reflection_decision"] == "need_patch"

@@ -7,12 +7,22 @@ from src.bridge import compile_dag_for_path
 from src.config import load_runtime_config
 from src.data import build_protocol_from_config
 from src.evaluation import build_dag_quality_summary
-from src.llm import get_llm
+from src.llm import LLMProviderError, get_llm
 from src.operators import get_operator_catalog
 from src.states import WorkflowState
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+class _RateLimitedReportLLM:
+    provider = "test"
+    mode = "provider"
+    model = "rate-limited-reporter"
+    api_key_env = "TEST_API_KEY"
+
+    def render_report(self, **kwargs):
+        raise LLMProviderError("rate limited")
 
 
 def _reflected_state(config_name: str) -> tuple[WorkflowState, object, object]:
@@ -93,3 +103,25 @@ def test_report_agent_writes_ml_and_torch_sections():
     assert "## Torch Evidence" in torch_report
     assert "## DAG Quality" in torch_report
     assert "## Dataset-Level Diagnosis Evidence" in torch_report
+
+
+def test_report_agent_falls_back_to_artifact_report_on_provider_error():
+    state, protocol, _llm = _reflected_state("config/runs/rm101_synth_ml.yaml")
+    manifest = compile_dag_for_path(state.dag, "ml").manifest
+
+    report = report_agent(
+        state,
+        protocol,
+        manifest,
+        {
+            "feature_pipeline": {"output_policy": "terminal_only"},
+            "metrics": {"test": {"accuracy": 0.8, "macro_f1": 0.7}},
+        },
+        _RateLimitedReportLLM(),
+    )
+
+    assert "Provider report fallback" in report
+    assert "## ML Evidence" in report
+    assert "## DAG Quality" in report
+    assert "## Dataset-Level Diagnosis Evidence" in report
+    assert "Reflection decision" in report

@@ -66,11 +66,13 @@ def test_formal_run_presets_hold_runtime_semantics():
         ROOT / "config/runs/ottawa_synth_ml_simple.yaml",
         ROOT / "config/runs/ottawa_ml_codex_simple.yaml",
         ROOT / "config/runs/ottawa_ml_codex_v3.yaml",
+        ROOT / "config/runs/ottawa_ml_bigmodel_glm47_v1.yaml",
         ROOT / "config/runs/ottawa_ml_openrouter_nemotron_v3.yaml",
         ROOT / "config/runs/ottawa_torch.yaml",
         ROOT / "config/runs/rm101_ml.yaml",
         ROOT / "config/runs/rm101_ml_codex_simple.yaml",
         ROOT / "config/runs/rm101_ml_codex_v3.yaml",
+        ROOT / "config/runs/rm101_ml_bigmodel_glm47_v1.yaml",
         ROOT / "config/runs/rm101_ml_openrouter_nemotron_v3.yaml",
         ROOT / "config/runs/rm101_torch.yaml",
         ROOT / "config/runs/ottawa_ml_test.yaml",
@@ -135,3 +137,11 @@ def test_formal_run_presets_hold_runtime_semantics():
     assert "model: nvidia/nemotron-3-super-120b-a12b:free" in openrouter_formal_v3
     assert "min_depth: 3" in openrouter_formal_v3
     assert "max_depth: 8" in openrouter_formal_v3
+
+    bigmodel_formal = (ROOT / "config/runs/ottawa_ml_bigmodel_glm47_v1.yaml").read_text(encoding="utf-8")
+    assert "workflow_mode: rich" in bigmodel_formal
+    assert "provider: bigmodel" in bigmodel_formal
+    assert "model: glm-4.7-flash" in bigmodel_formal
+    assert "api_key_env: BIGMODEL_API_KEY" in bigmodel_formal
+    assert "min_depth: 3" in bigmodel_formal
+    assert "max_depth: 8" in bigmodel_formal

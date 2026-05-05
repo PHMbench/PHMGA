@@ -21,6 +21,8 @@ def test_plan_prompt_preserves_strict_json_contract_and_phm_guidance():
     assert "Time-domain analysis" in prompt
     assert "Envelope analysis" in prompt
     assert "You may branch from any legal existing node" in prompt
+    assert "Do not reference nodes that would be created earlier in the same JSON response" in prompt
+    assert "the DAG must end with executable aggregate feature outputs" in prompt
 
 
 def test_supervisor_proving_prompt_stays_narrow_and_contract_strict():

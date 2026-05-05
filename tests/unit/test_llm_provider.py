@@ -12,7 +12,7 @@ from src.bridge import compile_dag_for_path
 from src.config import load_runtime_config
 from src.configuration import Configuration
 from src.data import build_protocol_from_config
-from src.llm import CodexCliLLM, LLMProviderError, LLMSchemaError, OfflineLLM, OpenAICodexLLM, OpenRouterLLM, get_llm
+from src.llm import BigModelLLM, CodexCliLLM, LLMProviderError, LLMSchemaError, OfflineLLM, OpenAICodexLLM, OpenRouterLLM, get_llm
 from src.operators import get_operator_catalog
 from src.states import ReflectionResult, SignalContext, StepPlan, WorkflowState
 
@@ -63,7 +63,7 @@ def _mock_codex_exec(monkeypatch: pytest.MonkeyPatch, outputs: list[dict[str, ob
     monkeypatch.setattr("src.llm.client.subprocess.run", fake_run)
 
 
-def test_get_llm_dispatches_offline_codex_cli_openai_and_openrouter_providers():
+def test_get_llm_dispatches_offline_codex_cli_openai_openrouter_and_bigmodel_providers():
     config = load_runtime_config(ROOT / "config/runs/rm101_synth_dag.yaml")
     llm = get_llm(config)
     assert isinstance(llm, OfflineLLM)
@@ -83,6 +83,14 @@ def test_get_llm_dispatches_offline_codex_cli_openai_and_openrouter_providers():
     config["llm"]["model"] = "openai/gpt-4.1-mini"
     llm = get_llm(config)
     assert isinstance(llm, OpenRouterLLM)
+
+    config["llm"]["provider"] = "bigmodel"
+    config["llm"]["model"] = ""
+    llm = get_llm(config)
+    assert isinstance(llm, BigModelLLM)
+    assert llm.model == "glm-4.7-flash"
+    assert llm.api_key_env == "BIGMODEL_API_KEY"
+    assert llm.base_url == "https://open.bigmodel.cn/api/paas/v4"
 
 
 def test_stage_b_active_model_defaults_drive_openrouter_model_selection():
@@ -105,17 +113,39 @@ def test_stage_b_active_model_defaults_drive_openrouter_model_selection():
     assert llm.model == "z-ai/glm-4.5-air:free"
 
 
+def test_stage_b_active_model_defaults_drive_bigmodel_model_selection():
+    runtime_config = {
+        "llm": {
+            "provider": "bigmodel",
+            "mode": "provider",
+            "model": "",
+            "stage_b": {
+                "bigmodel_active_model": "glm-4.7-flash",
+            },
+        },
+        "runtime": {"provider_retry_once": True},
+    }
+    cfg = Configuration.from_runtime_config(runtime_config)
+    llm = get_llm(runtime_config)
+    assert cfg.model == "glm-4.7-flash"
+    assert isinstance(llm, BigModelLLM)
+    assert llm.model == "glm-4.7-flash"
+
+
 def test_llm_public_imports_match_client_shim_exports():
     from src.llm import CodexCliLLM as public_codex
     from src.llm import OfflineLLM as public_offline
+    from src.llm import BigModelLLM as public_bigmodel
     from src.llm import get_llm as public_get_llm
     from src.llm.client import CodexCliLLM as shim_codex
     from src.llm.client import OfflineLLM as shim_offline
+    from src.llm.client import BigModelLLM as shim_bigmodel
     from src.llm.client import get_llm as shim_get_llm
 
     assert public_get_llm is shim_get_llm
     assert public_codex is shim_codex
     assert public_offline is shim_offline
+    assert public_bigmodel is shim_bigmodel
 
 
 def test_openrouter_planner_parses_structured_step_plan(monkeypatch: pytest.MonkeyPatch):
@@ -759,7 +789,10 @@ def test_openrouter_provider_writes_transport_trace_on_http_error(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    llm = OpenRouterLLM(http_client=_mock_client(lambda request: httpx.Response(429, json={"error": "rate limited"})))
+    llm = OpenRouterLLM(
+        http_client=_mock_client(lambda request: httpx.Response(429, json={"error": "rate limited"})),
+        retry_backoff_sec=0.0,
+    )
     with pytest.raises(LLMProviderError):
         llm.generate_step_plan(
             prompt="planner prompt",
@@ -789,7 +822,7 @@ def test_openrouter_provider_retries_once_on_429(monkeypatch: pytest.MonkeyPatch
             json={"choices": [{"message": {"content": json.dumps({"plan": [{"parent": "ch1", "op_name": "normalize", "params": {}}]})}}]},
         )
 
-    llm = OpenRouterLLM(http_client=_mock_client(handler), retry_once=True)
+    llm = OpenRouterLLM(http_client=_mock_client(handler), retry_once=True, retry_backoff_sec=0.0)
     plan = llm.generate_step_plan(
         prompt="planner prompt",
         instruction="plan",
@@ -967,6 +1000,32 @@ def test_parse_plan_text_payload_requires_repair_lane_for_dsl():
         allow_text_fallback=True,
     )
     assert payload == {"plan": [{"parent": "ch1", "op_name": "normalize", "params": {"eps": 1e-6}}]}
+
+
+def test_parse_plan_text_payload_recovers_markdown_arrow_plan_items():
+    from src.llm.structured import _parse_plan_text_payload
+
+    text = """
+    4. Select Operators:
+        *   `hilbert_envelope_01_ch1` -> `kurtosis`
+        *   `band_power_03_fft_02_ch1` -> `rms`
+        *   `ch2` -> `fft`
+    """
+
+    payload = _parse_plan_text_payload(
+        text,
+        model="glm-4.7-flash",
+        provider="bigmodel",
+        allow_text_fallback=True,
+    )
+
+    assert payload == {
+        "plan": [
+            {"parent": "hilbert_envelope_01_ch1", "op_name": "kurtosis", "params": {}},
+            {"parent": "band_power_03_fft_02_ch1", "op_name": "rms", "params": {}},
+            {"parent": "ch2", "op_name": "fft", "params": {}},
+        ]
+    }
 
 
 def test_codex_cli_param_resolution_uses_structured_schema(monkeypatch: pytest.MonkeyPatch):

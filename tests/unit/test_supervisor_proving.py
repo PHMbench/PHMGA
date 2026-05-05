@@ -66,12 +66,13 @@ def test_run_case_supervisor_proving_uses_light_graph_and_writes_auditable_artif
         assert (output_dir / artifact_name).exists()
 
 
-def test_preflight_requires_openrouter_key_for_provider_runs(monkeypatch: pytest.MonkeyPatch):
+def test_preflight_requires_openrouter_key_for_provider_runs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     runtime_config = load_runtime_config(ROOT / "config/runs/ottawa_synth_ml.yaml")
     runtime_config["llm"]["mode"] = "provider"
     runtime_config["llm"]["provider"] = "openrouter"
     runtime_config["llm"]["model"] = "z-ai/glm-4.5-air:free"
     runtime_config["llm"]["api_key_env"] = "OPENROUTER_API_KEY"
+    runtime_config["llm"]["env_file"] = str(tmp_path / "missing.env")
 
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
@@ -84,3 +85,41 @@ def test_preflight_requires_openrouter_key_for_provider_runs(monkeypatch: pytest
     assert payload["llm_transport"]["provider"] == "openrouter"
     assert payload["llm_transport"]["credential_found"] is True
     assert payload["llm_transport"]["api_key_env"] == "OPENROUTER_API_KEY"
+
+
+def test_preflight_requires_bigmodel_key_for_provider_runs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    runtime_config = load_runtime_config(ROOT / "config/runs/ottawa_synth_ml.yaml")
+    runtime_config["llm"]["mode"] = "provider"
+    runtime_config["llm"]["provider"] = "bigmodel"
+    runtime_config["llm"]["model"] = "glm-4.7-flash"
+    runtime_config["llm"]["api_key_env"] = "BIGMODEL_API_KEY"
+    runtime_config["llm"]["env_file"] = str(tmp_path / "missing.env")
+
+    monkeypatch.delenv("BIGMODEL_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="BIGMODEL_API_KEY"):
+        run_preflight(runtime_config)
+
+    monkeypatch.setenv("BIGMODEL_API_KEY", "test-bigmodel-key")
+    payload = run_preflight(runtime_config)
+
+    assert payload["status"] == "ok"
+    assert payload["llm_transport"]["provider"] == "bigmodel"
+    assert payload["llm_transport"]["credential_found"] is True
+    assert payload["llm_transport"]["api_key_env"] == "BIGMODEL_API_KEY"
+
+
+def test_preflight_loads_provider_key_from_dotenv(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    runtime_config = load_runtime_config(ROOT / "config/runs/ottawa_synth_ml.yaml")
+    runtime_config["llm"]["mode"] = "provider"
+    runtime_config["llm"]["provider"] = "bigmodel"
+    runtime_config["llm"]["model"] = "glm-4.7-flash"
+    runtime_config["llm"]["api_key_env"] = "BIGMODEL_API_KEY"
+    runtime_config["llm"]["env_file"] = str(tmp_path / ".env")
+    (tmp_path / ".env").write_text("BIGMODEL_API_KEY=test-bigmodel-key\n", encoding="utf-8")
+
+    monkeypatch.delenv("BIGMODEL_API_KEY", raising=False)
+    payload = run_preflight(runtime_config)
+
+    assert payload["status"] == "ok"
+    assert payload["llm_transport"]["provider"] == "bigmodel"
+    assert payload["llm_transport"]["credential_found"] is True

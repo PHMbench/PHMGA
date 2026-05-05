@@ -65,6 +65,25 @@ def test_execute_agent_records_unknown_operator_gap_without_silent_fallback():
     assert all(node.kind == "input" for node in state.dag.nodes)
 
 
+def test_execute_agent_records_gap_when_decision_side_output_is_reused_as_numeric_parent():
+    state, protocol, catalog = _manual_state(
+        "config/runs/rm101_synth_ml.yaml",
+        {
+            "plan": [
+                {"parent": "ch1", "op_name": "mean", "params": {}},
+                {"parent": "mean_01_ch1", "op_name": "threshold", "params": {}},
+                {"parent": "threshold_02_mean_01_ch1", "op_name": "std", "params": {}},
+            ]
+        },
+    )
+
+    state = execute_agent(state, protocol, catalog, SpyLLM())
+
+    assert state.execution_gaps
+    assert "non-numeric side-output dict" in state.execution_gaps[-1].message
+    assert any(node.kind == "decision" for node in state.dag.nodes)
+
+
 class SpyLLM:
     provider = "test"
     mode = "provider"
