@@ -6,8 +6,10 @@ defaults:
 
 llm:
   mode: provider
-  provider: codex_cli
-  model: gpt-5.3-codex
+  provider: bigmodel
+  model: glm-4.7-flash
+  api_key_env: BIGMODEL_API_KEY
+  max_tokens_structured: 2000
 
 runtime:
   workflow_mode: rich
@@ -15,4 +17,4 @@ runtime:
   min_depth: 3
   min_width: 1
   max_depth: 8
-  output_dir: artifacts/paper/rm101_ml_codex_v3
+  output_dir: artifacts/paper/rm101_ml_bigmodel_glm47_v1

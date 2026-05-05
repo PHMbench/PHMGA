@@ -17,4 +17,4 @@ runtime:
   min_depth: 3
   min_width: 1
   max_depth: 8
-  output_dir: /home/user/LQ/B_Signal/PHMGA/artifacts/paper/ottawa_ml_openrouter_nemotron_v3
+  output_dir: artifacts/paper/ottawa_ml_openrouter_nemotron_v3

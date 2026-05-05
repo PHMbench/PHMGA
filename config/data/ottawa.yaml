@@ -2,8 +2,8 @@ key: ottawa
 dataset_name: RM_017_Ottawa19
 catalog: PHM-Vibench
 metadata_schema_version: v1
-metadata_path: /home/user/data/PHMbenchdata/PHM-Vibench/metadata.xlsx
-h5_path: /home/user/data/PHMbenchdata/PHM-Vibench/RM_017_Ottawa19.h5
+metadata_path: /mnt/k/D01_vibench/metadata.xlsx
+h5_path: /mnt/k/D01_vibench/RM_017_Ottawa19.h5
 selected_channels: null
 selection:
   name: RM_017_Ottawa19

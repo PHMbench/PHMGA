@@ -2,8 +2,8 @@ key: rm101
 dataset_name: RM_101_THU_GEARBOX
 catalog: PHM-Vibench
 metadata_schema_version: v1
-metadata_path: /home/user/data/PHMbenchdata/PHM-Vibench/gear_metadata.xlsx
-h5_path: /home/user/data/PHMbenchdata/PHM-Vibench/RM_101_THU_GEARBOX.h5
+metadata_path: /mnt/k/D01_vibench/gear_metadata.xlsx
+h5_path: /mnt/k/D01_vibench/RM_101_THU_GEARBOX.h5
 selected_channels: null
 selection:
   name: RM_101_THU_GEARBOX

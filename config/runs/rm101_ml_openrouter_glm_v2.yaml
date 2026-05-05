@@ -17,4 +17,4 @@ runtime:
   min_depth: 3
   min_width: 1
   max_depth: 8
-  output_dir: /home/user/LQ/B_Signal/PHMGA/artifacts/paper/rm101_ml_openrouter_glm_v2
+  output_dir: artifacts/paper/rm101_ml_openrouter_glm_v2

@@ -6,9 +6,9 @@ defaults:
 
 llm:
   mode: provider
-  provider: openrouter
-  model: z-ai/glm-4.5-air:free
-  api_key_env: OPENROUTER_API_KEY
+  provider: bigmodel
+  model: glm-4.7-flash
+  api_key_env: BIGMODEL_API_KEY
   max_tokens_structured: 2000
 
 runtime:
@@ -17,4 +17,4 @@ runtime:
   min_depth: 3
   min_width: 1
   max_depth: 8
-  output_dir: artifacts/paper/ottawa_ml_openrouter_glm_v2
+  output_dir: artifacts/paper/ottawa_ml_bigmodel_glm47_v1
