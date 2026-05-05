@@ -48,9 +48,15 @@ Strategic guidance:
    - Nodes already reduced to feature vectors should not receive another layer of aggregate statistics.
    - Expand or transform operators may create new axes that later aggregate operators can legally reduce.
 8. Think about the user goal. For diagnosis-oriented tasks, prefer plans that increase discriminative feature diversity instead of repeating one operator family.
+9. For ML diagnosis rows, the DAG must end with executable aggregate feature outputs, not only transforms, multi-input helpers, or decisions.
 
 Rules:
 - Add a single new DAG layer only. Do not create multi-step chains within one plan item.
+- `parent` must be an exact node id already present in Current DAG `existing_node_ids` or in `signal_context.root_node_ids`.
+- Do not reference nodes that would be created earlier in the same JSON response.
+- Do not invent parent ids such as `normalize_ch1`, `fft_normalize_ch2`, or other guessed future node names.
+- When the current DAG already contains transform branches and is approaching `Minimum depth`, add multiple aggregate feature operators such as `rms`, `kurtosis`, `crest_factor`, `band_power`, `spectral_centroid`, `mean`, or `std`.
+- Avoid `threshold`/decision operators unless aggregate feature outputs already exist and will remain terminal ML outputs.
 - Each plan item must contain `parent`, `op_name`, and `params`.
 - `params` must be a JSON object, not a string.
 - The only allowed top-level JSON key is `plan`. Any other top-level key is invalid.
@@ -173,7 +179,7 @@ def _render_dag_summary(dag_json: Optional[Dict[str, Any]]) -> str:
             f"- node_count: {len(nodes)}",
             f"- edge_count: {len(edges)}",
             f"- existing_node_ids: {node_ids or 'none'}",
-            "- Use existing_node_ids and operator legality to choose the next layer. Do not echo or restate DAG metadata.",
+            "- Use only existing_node_ids or root_node_ids as plan parents. Do not reference nodes created in the same plan.",
         ]
     )
 

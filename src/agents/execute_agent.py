@@ -95,6 +95,20 @@ def _validate_parent_contract(operator, parent_results: List[np.ndarray]) -> str
     return None
 
 
+def _coerce_parent_result(parent_id: str, value: Any) -> tuple[np.ndarray | None, str | None]:
+    if isinstance(value, dict):
+        keys = ", ".join(sorted(str(key) for key in value.keys()))
+        return (
+            None,
+            f"Parent node '{parent_id}' produced non-numeric side-output dict"
+            f" with keys [{keys}], so it cannot feed numeric operator input.",
+        )
+    try:
+        return np.asarray(value, dtype=float), None
+    except (TypeError, ValueError) as exc:
+        return None, f"Parent node '{parent_id}' could not be converted to numeric array: {exc}"
+
+
 def _seed_input_roots(state: PHMState, protocol: DatasetProtocol, tracker: DAGTracker) -> None:
     if state.signal_context is None:
         raise ValueError("signal_context must be initialized before execute_agent runs.")
@@ -207,7 +221,25 @@ def execute_agent(
             )
             continue
 
-        parent_results = [np.asarray(state.execution_results[parent_id], dtype=float) for parent_id in parent_ids]
+        parent_results: List[np.ndarray] = []
+        parent_result_errors: List[str] = []
+        for parent_id in parent_ids:
+            parent_result, parent_error = _coerce_parent_result(parent_id, state.execution_results[parent_id])
+            if parent_error:
+                parent_result_errors.append(parent_error)
+            elif parent_result is not None:
+                parent_results.append(parent_result)
+        if parent_result_errors:
+            state.execution_gaps.append(
+                ExecutionGap(
+                    step_index=step_index,
+                    parent=step.parent,
+                    op_name=step.op_name,
+                    message="; ".join(parent_result_errors),
+                    recoverable=False,
+                )
+            )
+            continue
         contract_error = _validate_parent_contract(operator, parent_results)
         if contract_error:
             state.execution_gaps.append(

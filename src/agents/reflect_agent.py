@@ -5,7 +5,7 @@ from __future__ import annotations
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.configuration import Configuration
-from src.llm import LLMClient
+from src.llm import LLMClient, LLMProviderError, LLMSchemaError
 from src.model import LangChainLLMAdapter, get_llm
 from src.prompts import render_reflect_prompt
 from src.states import PHMState, ReflectionResult
@@ -27,6 +27,71 @@ def _resolve_llm(state: PHMState, llm: LLMClient | None) -> LangChainLLMAdapter:
     if llm is not None:
         return LangChainLLMAdapter(llm)
     return get_llm(Configuration.from_runtime_config(state.runtime_config))
+
+
+def _apply_quality_override(result: ReflectionResult, dag_quality_summary: dict) -> ReflectionResult:
+    """Do not allow provider judgment to ignore deterministic DAG quality gates."""
+
+    hint = str(dag_quality_summary.get("recommendation_hint", "")).strip()
+    if result.decision == "halt" or hint in {"", "finish_candidate"}:
+        return result
+
+    forced_decision = result.decision
+    if hint == "halt_candidate" and result.decision == "finish":
+        forced_decision = "halt"
+    elif hint == "replan_candidate" and result.decision in {"finish", "need_patch"}:
+        forced_decision = "need_replan"
+    elif hint == "patch_candidate" and result.decision == "finish":
+        forced_decision = "need_patch"
+
+    if forced_decision == result.decision:
+        return result
+
+    issues = list(dag_quality_summary.get("issues", []) or [])
+    dataset_level = dag_quality_summary.get("dataset_level", {})
+    if isinstance(dataset_level, dict):
+        issues.extend(list(dataset_level.get("issues", []) or []))
+    issue_preview = "; ".join(str(item) for item in issues[:3]) or f"quality recommendation was {hint}"
+    warnings = list(result.structural_warnings)
+    warnings.append(f"deterministic_quality_override: {hint}; {issue_preview}")
+    return result.model_copy(
+        update={
+            "decision": forced_decision,
+            "reason": f"{forced_decision} required by DAG quality gate: {issue_preview}",
+            "structural_warnings": warnings,
+        }
+    )
+
+
+def _quality_issue_preview(dag_quality_summary: dict) -> str:
+    issues = list(dag_quality_summary.get("issues", []) or [])
+    dataset_level = dag_quality_summary.get("dataset_level", {})
+    if isinstance(dataset_level, dict):
+        issues.extend(list(dataset_level.get("issues", []) or []))
+    return "; ".join(str(item) for item in issues[:3]) or "no quality issue details available"
+
+
+def _fallback_reflection_from_quality(dag_quality_summary: dict, exc: LLMProviderError | LLMSchemaError) -> ReflectionResult:
+    hint = str(dag_quality_summary.get("recommendation_hint", "")).strip()
+    decision_by_hint = {
+        "finish_candidate": "finish",
+        "patch_candidate": "need_patch",
+        "replan_candidate": "need_replan",
+        "halt_candidate": "halt",
+    }
+    decision = decision_by_hint.get(hint)
+    if decision is None:
+        raise exc
+    issue_preview = _quality_issue_preview(dag_quality_summary)
+    return ReflectionResult(
+        decision=decision,
+        reason=f"{decision} selected by deterministic quality fallback after provider error: {issue_preview}",
+        missing_operators=[],
+        shape_risks=[],
+        structural_warnings=[
+            f"provider_reflection_fallback: {type(exc).__name__}; recommendation_hint={hint}; {issue_preview}"
+        ],
+    )
 
 
 def reflect_agent(state: PHMState, llm: LLMClient | None = None) -> PHMState:
@@ -64,8 +129,12 @@ def reflect_agent(state: PHMState, llm: LLMClient | None = None) -> PHMState:
         current_depth=current_depth,
         execution_gaps=state.execution_gaps,
     )
-    response = chain.invoke({"prompt": prompt})
-    result = ReflectionResult.model_validate_json(response.content)
+    try:
+        response = chain.invoke({"prompt": prompt})
+        result = ReflectionResult.model_validate_json(response.content)
+    except (LLMProviderError, LLMSchemaError) as exc:
+        result = _fallback_reflection_from_quality(state.dag_quality_summary, exc)
+    result = _apply_quality_override(result, state.dag_quality_summary)
     state.reflection_results.append(result)
     state.reflection_history.append(result.reason)
     state.status = "reflected"
