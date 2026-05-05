@@ -2,9 +2,10 @@
 
 from .base import LLMClient, LLMProviderError, LLMSchemaError
 from .factory import get_llm
-from .providers import CodexCliLLM, OfflineLLM, OpenAICodexLLM, OpenRouterLLM
+from .providers import BigModelLLM, CodexCliLLM, OfflineLLM, OpenAICodexLLM, OpenRouterLLM
 
 __all__ = [
+    "BigModelLLM",
     "CodexCliLLM",
     "LLMClient",
     "LLMProviderError",

@@ -33,10 +33,21 @@ def _provider_structured_mode_for_model(model: str) -> Literal["json_mode", "tex
         "stepfun/step-3.5-flash:free",
         "stepfun/step-3.5-flash",
         "z-ai/glm-4.5-air:free",
+        "glm-4.7-flash",
     }
     if any(normalized == item or normalized.startswith(item.split(":")[0]) for item in text_mode_models):
         return "text_mode"
     return "json_mode"
+
+
+def _sanitize_provider_error_text(text: str) -> str:
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    if isinstance(payload, dict) and "user_id" in payload:
+        payload["user_id"] = "<redacted>"
+    return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
 
 @dataclass
@@ -53,6 +64,8 @@ class OpenRouterLLM:
     max_tokens_structured: int = 800
     max_tokens_report: int = 2000
     retry_once: bool = True
+    retry_backoff_sec: float = 2.0
+    retry_max_backoff_sec: float = 10.0
     http_referer: Optional[str] = None
     app_title: Optional[str] = "PHMGA"
     http_client: Optional[httpx.Client] = field(default=None, repr=False)
@@ -126,6 +139,16 @@ class OpenRouterLLM:
         self.http_client = httpx.Client(timeout=self.timeout_sec)
         return self.http_client
 
+    def _retry_delay_sec(self, response: httpx.Response, attempt_index: int) -> float:
+        retry_after = response.headers.get("retry-after", "").strip()
+        if retry_after:
+            try:
+                return max(0.0, min(float(retry_after), self.retry_max_backoff_sec))
+            except ValueError:
+                pass
+        delay = self.retry_backoff_sec * (2**attempt_index)
+        return max(0.0, min(delay, self.retry_max_backoff_sec))
+
     def _request_text(self, *, prompt: str, max_tokens: int, expect_json: bool) -> str:
         structured_mode = _provider_structured_mode_for_model(self.model)
         body: Dict[str, Any] = {
@@ -154,10 +177,13 @@ class OpenRouterLLM:
                 retryable = status_code == 429 or 500 <= status_code < 600
                 last_error = exc
                 if retryable and attempt_index + 1 < attempts:
-                    time.sleep(0.05)
+                    delay = self._retry_delay_sec(exc.response, attempt_index)
+                    if delay > 0.0:
+                        time.sleep(delay)
                     continue
+                error_text = _sanitize_provider_error_text(exc.response.text)
                 raise LLMProviderError(
-                    f"{self.provider} request failed with status {status_code}: {exc.response.text}"
+                    f"{self.provider} request failed with status {status_code}: {error_text}"
                 ) from exc
             except httpx.HTTPError as exc:
                 last_error = exc
@@ -506,4 +532,16 @@ class OpenAICodexLLM(OpenRouterLLM):
     app_title: Optional[str] = None
 
 
-__all__ = ["OpenAICodexLLM", "OpenRouterLLM"]
+@dataclass
+class BigModelLLM(OpenRouterLLM):
+    """BigModel GLM chat-completions client for free GLM-4.7-Flash runs."""
+
+    provider: str = "bigmodel"
+    mode: str = "provider"
+    model: str = "glm-4.7-flash"
+    api_key_env: str = "BIGMODEL_API_KEY"
+    base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    app_title: Optional[str] = None
+
+
+__all__ = ["BigModelLLM", "OpenAICodexLLM", "OpenRouterLLM"]

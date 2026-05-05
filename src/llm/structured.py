@@ -429,6 +429,11 @@ def _parse_plan_text_payload(
 
     compact_patterns = [
         re.compile(
+            r"^\s*(?:[-*]|\d+[.)])\s*`?(?P<parent>[A-Za-z0-9_,.-]+)`?\s*->\s*`?(?P<op>[A-Za-z_][\w.]*)`?"
+            r"(?:\s+(?:with\s+)?params?\s*(?:=|:)?\s*(?P<params>\{.*\}|\".*\"|'.*'))?\s*$",
+            re.I,
+        ),
+        re.compile(
             r"^\s*(?:[-*]|\d+[.)])\s*(?P<op>[A-Za-z_][\w.]*)\s+(?:to|on|from|for)\s+(?P<parent>[A-Za-z0-9_,.-]+)"
             r"(?:\s+(?:with\s+)?params?\s*(?:=|:)?\s*(?P<params>\{.*\}|\".*\"|'.*'))?\s*$",
             re.I,
