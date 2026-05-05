@@ -1,12 +1,12 @@
 # Worker Result
 
-- worker_id: backend-comparison-owner
+- worker_id: codex-local
 - ticket_id: 06_backend_comparison_owner.md
 - run_type: backend_comparison
 - experiment_id: ottawa_ml_openrouter_glm_v2
-- command: `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy .venv/bin/python main.py +runs=ottawa_ml_openrouter_glm_v2`
-- start_time: 2026-03-21T17:05:07+08:00
-- end_time: 2026-03-21T17:07:44+08:00
+- command: `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy /mnt/k/2_work/lqql_os/lqql_06_工作与项目/03_论文流水线/p02_agent_langraph/.venv/bin/python main.py +runs=ottawa_ml_openrouter_glm_v2`
+- start_time: 2026-05-04T12:37:00+08:00
+- end_time: 2026-05-04T12:39:00+08:00
 - provider/model: openrouter / z-ai/glm-4.5-air:free
 - output_dir: `artifacts/paper/ottawa_ml_openrouter_glm_v2`
 - artifact_contract_pass: fail
@@ -24,6 +24,8 @@
 - artifact_index.json: no
 - metrics.json: no
 - final_report.md: no
+- planner_normalization_trace.json: yes
+- planner_transport_trace.json: yes
 
 ## Required Evidence
 
@@ -37,11 +39,11 @@ Not generated. No ML artifact bundle was emitted.
 
 ### progress_record
 
-- Preflight passed for `Ottawa / ml / openrouter`.
-- Initial planner call normalized a single-step response: `hilbert_envelope` on `ch1`.
-- A later planner round failed to satisfy the strict `StepPlan` contract after reflection asked for additional depth and symmetry.
-- Repair also returned prose instead of strict JSON.
-- The run terminated in `plan_agent`; no validated DAG or downstream artifacts were emitted.
+- Preflight passed for `Ottawa / ml / openrouter` on `/mnt/k/D01_vibench`.
+- Initial planner response did not contain strict StepPlan JSON and was recorded in `planner_normalization_trace.json`.
+- Repair produced a normalized two-step plan.
+- The subsequent planner call failed with HTTP 429 from OpenRouter upstream for `z-ai/glm-4.5-air:free`.
+- No validated DAG, compiled artifacts, metrics, or final report were emitted.
 
 ## Metrics Summary
 
@@ -49,8 +51,8 @@ Unavailable. The run never reached compile or ML evaluation.
 
 ## Failure Summary
 
-`z-ai/glm-4.5-air:free` failed the planner normalization contract on a later rich-lane iteration. The first round produced a usable one-step plan, but the backend then answered with prose describing the DAG state instead of returning strict `{"plan":[...]}` JSON, and the repair pass also failed.
+`z-ai/glm-4.5-air:free` is currently rate-limited upstream through OpenRouter free routing. This is a provider availability/rate-limit failure, not evidence that the API key is missing. The row remains rejected for the current attempt and must not enter main tables or backend selection.
 
 ## Notes
 
-This row is rejected for the current Stage B round. The failure mode is schema/repair instability under iterative rich-lane planning, not transport refusal.
+The provider trace redacts provider user identifiers and does not contain API keys.

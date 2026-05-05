@@ -7,6 +7,7 @@ import shutil
 from typing import Any, Dict
 
 from src.data import build_protocol_from_config
+from src.llm.env import load_runtime_dotenv
 from src.operators import get_operator_catalog
 
 
@@ -15,6 +16,7 @@ def run_preflight(runtime_config: Dict[str, Any]) -> Dict[str, Any]:
     protocol = build_protocol_from_config(runtime_config)
     catalog = get_operator_catalog()
     llm_cfg = dict(runtime_config.get("llm", {}))
+    load_runtime_dotenv(llm_cfg.get("env_file"))
     provider = str(llm_cfg.get("provider", "codex_cli"))
     mode = str(llm_cfg.get("mode", "offline_stub"))
     llm_transport = {
@@ -39,6 +41,19 @@ def run_preflight(runtime_config: Dict[str, Any]) -> Dict[str, Any]:
         if not credential_found:
             raise RuntimeError(
                 f"OpenRouter preflight failed: expected non-empty credential in env var {api_key_env}."
+            )
+        llm_transport = {
+            "provider": provider,
+            "mode": mode,
+            "credential_found": credential_found,
+            "api_key_env": api_key_env,
+        }
+    elif mode == "provider" and provider == "bigmodel":
+        api_key_env = str(llm_cfg.get("api_key_env") or "BIGMODEL_API_KEY")
+        credential_found = bool(os.getenv(api_key_env, "").strip())
+        if not credential_found:
+            raise RuntimeError(
+                f"BigModel preflight failed: expected non-empty credential in env var {api_key_env}."
             )
         llm_transport = {
             "provider": provider,

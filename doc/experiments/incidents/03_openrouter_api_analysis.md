@@ -57,7 +57,7 @@ This means the current contract is:
 - provider remains `openrouter`
 - `z-ai/glm-4.5-air:free` remains a retained historical OpenRouter comparison row (`v2`)
 - `stepfun/step-3.5-flash:free` remains a historical comparison failure and registry candidate
-- `nvidia/nemotron-3-super-120b-a12b:free` is the current active OpenRouter backend comparison candidate
+- `nvidia/nemotron-3-super-120b-a12b:free` was a prior OpenRouter backend comparison candidate; the active free-model policy now uses `z-ai/glm-4.5-air:free`.
 - structured agent calls no longer hard depend on JSON mode
 - it is not the formal main default
 - an OpenRouter tuple only becomes eligible for `selected_global_best_backend` if it passes Stage B artifact and feature separability gates on both datasets
@@ -73,6 +73,18 @@ but neither is part of the current selection round.
 - Do not switch provider family to chase the incident.
 - Keep StepFun as a historical comparison failure and registry candidate.
 - Keep `z-ai/glm-4.5-air:free` as retained historical comparison evidence.
-- Treat `nvidia/nemotron-3-super-120b-a12b:free` as the current active OpenRouter comparison candidate.
+- Treat `z-ai/glm-4.5-air:free` as the current active OpenRouter comparison candidate.
 - Do not freeze any OpenRouter tuple into formal main unless it wins Stage B backend comparison.
 - Judge success by whether the full PHMGA chain works, artifacts are complete, and feature separability evidence passes, not by whether JSON mode is used.
+
+## 2026-05-04 Local Rerun: Upstream Free-Model Rate Limit
+
+The local rerun of `ottawa_ml_openrouter_glm_v2` used the active free-model tuple:
+
+- provider: `openrouter`
+- model: `z-ai/glm-4.5-air:free`
+- data root: `/mnt/k/D01_vibench`
+
+Preflight passed on Ottawa real data, but the formal run did not reach compile or ML evaluation. The first planner response required repair, the repair normalized a two-step plan, and the next planner request failed with HTTP 429 from the OpenRouter upstream provider for the free Z.AI route.
+
+This attempt is recorded as a rejected Stage B row because it produced no validated DAG, no artifact bundle, no feature separability summary, and no metrics. It must not be used in main tables or backend selection.

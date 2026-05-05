@@ -35,7 +35,8 @@ worker、harness engineer 和 coordinator 只依赖以下材料：
 - Stage C / D 只围绕 `selected_global_best_backend`
 - 当前 active Stage B set 是：
   - `codex_cli / gpt-5.3-codex`
-  - `openrouter / nvidia/nemotron-3-super-120b-a12b:free`
+  - `openrouter / z-ai/glm-4.5-air:free`
+  - `bigmodel / glm-4.7-flash`
 - 当前 formal comparison round 统一使用 `v3` presets，不再依赖 wrapper 默认 tuple 充当实验真值
 
 ## Roles
@@ -72,6 +73,9 @@ worker、harness engineer 和 coordinator 只依赖以下材料：
   - `codex login` 已完成
 - OpenRouter comparison 额外需要：
   - `OPENROUTER_API_KEY`
+- BigModel comparison 额外需要：
+  - `BIGMODEL_API_KEY`
+- Provider credentials may be exported in the process environment or loaded from the nearest parent `.env`; PHMGA only records the env var name and credential presence, never the key value.
 - OpenRouter comparison 还需要清掉本地坏代理环境变量：
   - `HTTP_PROXY`
   - `HTTPS_PROXY`

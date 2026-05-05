@@ -53,3 +53,16 @@ The RM101 OpenRouter formal row failed at the provider boundary with `429 Too Ma
 ## Notes
 
 This row is rejected for the current Stage B round. Any future rerun must account for upstream rate limits on `z-ai/glm-4.5-air:free`.
+
+## 2026-05-05 Local Offline Probe
+
+- command: `python main.py runtime.action=preflight +runs=rm101_ml_openrouter_glm_v2`
+- result: pass
+- evidence: preflight reported `dataset_name=RM_101_THU_GEARBOX`, `sample_count=240`, `source_mode=real`, `provider=openrouter`, `model=z-ai/glm-4.5-air:free`, and `credential_found=true`.
+- provider run: not executed in this session because sending real-data-derived workflow context to OpenRouter requires explicit external-disclosure approval.
+- local probe command: `python main.py +runs=rm101_ml_openrouter_glm_v2 llm.mode=offline_stub runtime.output_dir=artifacts/paper/rm101_ml_openrouter_glm_v2_offline_probe`
+- local probe result: no artifact bundle was accepted.
+- local code issue found: the first probe crashed when `execute_agent.py` tried to coerce a terminal decision side-output dict into a numeric parent array.
+- local code issue disposition: `src/agents/execute_agent.py` now records an `ExecutionGap` for non-numeric side-output dict parents instead of raising `TypeError`; `tests/unit/test_execute_agent.py` includes a regression case; `python -m pytest tests/unit/test_execute_agent.py` passed with `6 passed`.
+- rerun disposition: after the executor fix, the offline probe exceeded the local runtime window with repeated sklearn convergence warnings and no accepted `artifacts/paper/rm101_ml_openrouter_glm_v2_offline_probe` directory, so it was stopped and remains non-selection evidence.
+- bounded rerun: `timeout 300s python main.py +runs=rm101_ml_openrouter_glm_v2 llm.mode=offline_stub runtime.max_iterations=1 runtime.output_dir=artifacts/paper/rm101_ml_openrouter_glm_v2_offline_probe_iter1` exited `124` after timeout; no accepted `artifacts/paper/rm101_ml_openrouter_glm_v2_offline_probe_iter1` directory was produced.
