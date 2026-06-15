@@ -30,6 +30,7 @@
     "planner_normalization_trace.json": false,
     "planner_raw_response.txt": false,
     "planner_repair_response.txt": false,
+    "step_plan.json": false,
     "final_report.md": false
   },
   "validated_dag_alias": null

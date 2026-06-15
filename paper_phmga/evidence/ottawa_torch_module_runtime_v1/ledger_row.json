@@ -1,17 +1,16 @@
 {
   "experiment_id": "ottawa_torch_module_runtime_v1",
+  "preset_name": "ottawa_torch",
   "dataset": "Ottawa",
   "graph_path": "torch",
-  "phase": "module_runtime",
-  "output_policy": "terminal_only",
-  "llm_mode": "provider",
-  "control_mode": "fixed",
-  "output_dir": "artifacts/paper/ottawa_torch_module_runtime_v1",
+  "run_type": "ablation",
+  "artifact_dir": "artifacts/paper/ottawa_torch_module_runtime_v1",
+  "result_md": "doc/experiments/handoff/results/ottawa_torch_module_runtime_v1.md (missing)",
   "artifact_contract_pass": "pending",
   "feature_separability_pass": "n/a",
   "selection_eligible": "n/a",
   "accuracy": null,
   "macro_f1": null,
-  "keep": null,
-  "note": "ablation on selected_global_best_backend: module_runtime"
+  "keep": "pending",
+  "note": "ablation on `selected_global_best_backend`: module_runtime"
 }

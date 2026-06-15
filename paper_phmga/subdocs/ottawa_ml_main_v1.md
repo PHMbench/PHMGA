@@ -2,7 +2,7 @@
 experiment_id: ottawa_ml_main_v1
 dataset: Ottawa
 graph_path: ml
-phase: compiled
+phase: null
 run_type: main
 provider: pending
 model: pending
@@ -10,7 +10,7 @@ status: pending
 artifact_contract_pass: pending
 feature_separability_pass: pending
 selection_eligible: n/a
-output_dir: artifacts/paper/ottawa_ml_main_v1
+output_dir: null
 bundle_evidence_dir: evidence/ottawa_ml_main_v1
 ---
 
@@ -21,7 +21,7 @@ bundle_evidence_dir: evidence/ottawa_ml_main_v1
 # Status
 
 - stage: `stage_c_formal_main`
-- phase: `compiled`
+- phase: `None`
 - artifact_contract_pass: `pending`
 - feature_separability_pass: `pending`
 - selection_eligible: `n/a`
@@ -45,4 +45,4 @@ No runtime-native feature separability evidence is available in this bundle.
 
 # Failure Or Pending Notes
 
-Ledger note: formal main using selected_global_best_backend on canonical diagnosis mainline
+Ledger note: formal main using `selected_global_best_backend` on canonical diagnosis mainline

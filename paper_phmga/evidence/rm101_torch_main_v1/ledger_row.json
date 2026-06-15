@@ -1,17 +1,16 @@
 {
   "experiment_id": "rm101_torch_main_v1",
+  "preset_name": "rm101_torch",
   "dataset": "RM101",
   "graph_path": "torch",
-  "phase": "compiled",
-  "output_policy": "terminal_only",
-  "llm_mode": "provider",
-  "control_mode": "fixed",
-  "output_dir": "artifacts/paper/rm101_torch_main_v1",
+  "run_type": "main",
+  "artifact_dir": "artifacts/paper/rm101_torch_main_v1",
+  "result_md": "doc/experiments/handoff/results/rm101_torch_main_v1.md (missing)",
   "artifact_contract_pass": "pending",
   "feature_separability_pass": "n/a",
   "selection_eligible": "n/a",
   "accuracy": null,
   "macro_f1": null,
-  "keep": null,
-  "note": "path comparison using selected_global_best_backend"
+  "keep": "pending",
+  "note": "path comparison using `selected_global_best_backend"
 }

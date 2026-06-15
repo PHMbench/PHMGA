@@ -2,7 +2,7 @@
 experiment_id: rm101_torch_gated_v1
 dataset: RM101
 graph_path: torch
-phase: learnable_control
+phase: null
 run_type: ablation
 provider: pending
 model: pending
@@ -10,7 +10,7 @@ status: pending
 artifact_contract_pass: pending
 feature_separability_pass: n/a
 selection_eligible: n/a
-output_dir: artifacts/paper/rm101_torch_gated_v1
+output_dir: null
 bundle_evidence_dir: evidence/rm101_torch_gated_v1
 ---
 
@@ -21,7 +21,7 @@ bundle_evidence_dir: evidence/rm101_torch_gated_v1
 # Status
 
 - stage: `stage_d_ablation`
-- phase: `learnable_control`
+- phase: `None`
 - artifact_contract_pass: `pending`
 - feature_separability_pass: `n/a`
 - selection_eligible: `n/a`
@@ -45,4 +45,4 @@ No runtime-native feature separability evidence is available in this bundle.
 
 # Failure Or Pending Notes
 
-Ledger note: ablation on selected_global_best_backend: gated control
+Ledger note: ablation on `selected_global_best_backend`: gated control

@@ -1,0 +1,108 @@
+{
+  "experiment_id": "ottawa_ml_openrouter_glm_v2",
+  "ledger_row": {
+    "experiment_id": "ottawa_ml_openrouter_glm_v2",
+    "preset_name": "ottawa_ml_openrouter_glm_v2",
+    "dataset": "Ottawa",
+    "graph_path": "ml",
+    "run_type": "backend_comparison",
+    "artifact_dir": "artifacts/paper/ottawa_ml_openrouter_glm_v2",
+    "result_md": "doc/experiments/handoff/results/ottawa_ml_openrouter_glm_v2.md",
+    "artifact_contract_pass": "fail",
+    "feature_separability_pass": "fail",
+    "selection_eligible": "no",
+    "accuracy": null,
+    "macro_f1": null,
+    "keep": "reject",
+    "note": "2026-05-04 rerun rejected: preflight passed, planner repair normalized a two-step plan, then OpenRouter free upstream returned HTTP 429 for `z-ai/glm-4.5-air:free`; no validated DAG or ML artifacts"
+  },
+  "worker_result": {
+    "metadata": {
+      "worker_id": "codex-local",
+      "ticket_id": "06_backend_comparison_owner.md",
+      "run_type": "backend_comparison",
+      "experiment_id": "ottawa_ml_openrouter_glm_v2",
+      "command": "`env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy /mnt/k/2_work/lqql_os/lqql_06_工作与项目/03_论文流水线/p02_agent_langraph/.venv/bin/python main.py +runs=ottawa_ml_openrouter_glm_v2`",
+      "start_time": "2026-05-04T12:37:00+08:00",
+      "end_time": "2026-05-04T12:39:00+08:00",
+      "provider/model": "openrouter / z-ai/glm-4.5-air:free",
+      "output_dir": "`artifacts/paper/ottawa_ml_openrouter_glm_v2`",
+      "artifact_contract_pass": "fail",
+      "feature_separability_pass": "fail",
+      "status": "reject",
+      "ledger_updated": "yes"
+    },
+    "artifact_checklist": {
+      "validated_dag.json": "no",
+      "compiled_dag_manifest.json": "no",
+      "feature_pipeline.json": "no",
+      "feature_list.json": "no",
+      "feature_separability_summary.json": "no",
+      "artifact_index.json": "no",
+      "metrics.json": "no",
+      "final_report.md": "no",
+      "planner_normalization_trace.json": "yes",
+      "planner_transport_trace.json": "yes"
+    },
+    "required_evidence": {
+      "feature_list": "Not generated. The run failed in planner normalization before compile or feature materialization.",
+      "feature_separability_summary": "Not generated. No ML artifact bundle was emitted.",
+      "progress_record": "- Preflight passed for `Ottawa / ml / openrouter` on `/mnt/k/D01_vibench`.\n- Initial planner response did not contain strict StepPlan JSON and was recorded in `planner_normalization_trace.json`.\n- Repair produced a normalized two-step plan.\n- The subsequent planner call failed with HTTP 429 from OpenRouter upstream for `z-ai/glm-4.5-air:free`.\n- No validated DAG, compiled artifacts, metrics, or final report were emitted."
+    },
+    "metrics_summary": "Unavailable. The run never reached compile or ML evaluation.",
+    "failure_summary": "`z-ai/glm-4.5-air:free` is currently rate-limited upstream through OpenRouter free routing. This is a provider availability/rate-limit failure, not evidence that the API key is missing. The row remains rejected for the current attempt and must not enter main tables or backend selection.",
+    "notes": "The provider trace redacts provider user identifiers and does not contain API keys.",
+    "raw_markdown": "# Worker Result\n\n- worker_id: codex-local\n- ticket_id: 06_backend_comparison_owner.md\n- run_type: backend_comparison\n- experiment_id: ottawa_ml_openrouter_glm_v2\n- command: `env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy /mnt/k/2_work/lqql_os/lqql_06_工作与项目/03_论文流水线/p02_agent_langraph/.venv/bin/python main.py +runs=ottawa_ml_openrouter_glm_v2`\n- start_time: 2026-05-04T12:37:00+08:00\n- end_time: 2026-05-04T12:39:00+08:00\n- provider/model: openrouter / z-ai/glm-4.5-air:free\n- output_dir: `artifacts/paper/ottawa_ml_openrouter_glm_v2`\n- artifact_contract_pass: fail\n- feature_separability_pass: fail\n- status: reject\n- ledger_updated: yes\n\n## Artifact Checklist\n\n- validated_dag.json: no\n- compiled_dag_manifest.json: no\n- feature_pipeline.json: no\n- feature_list.json: no\n- feature_separability_summary.json: no\n- artifact_index.json: no\n- metrics.json: no\n- final_report.md: no\n- planner_normalization_trace.json: yes\n- planner_transport_trace.json: yes\n\n## Required Evidence\n\n### feature_list\n\nNot generated. The run failed in planner normalization before compile or feature materialization.\n\n### feature_separability_summary\n\nNot generated. No ML artifact bundle was emitted.\n\n### progress_record\n\n- Preflight passed for `Ottawa / ml / openrouter` on `/mnt/k/D01_vibench`.\n- Initial planner response did not contain strict StepPlan JSON and was recorded in `planner_normalization_trace.json`.\n- Repair produced a normalized two-step plan.\n- The subsequent planner call failed with HTTP 429 from OpenRouter upstream for `z-ai/glm-4.5-air:free`.\n- No validated DAG, compiled artifacts, metrics, or final report were emitted.\n\n## Metrics Summary\n\nUnavailable. The run never reached compile or ML evaluation.\n\n## Failure Summary\n\n`z-ai/glm-4.5-air:free` is currently rate-limited upstream through OpenRouter free routing. This is a provider availability/rate-limit failure, not evidence that the API key is missing. The row remains rejected for the current attempt and must not enter main tables or backend selection.\n\n## Notes\n\nThe provider trace redacts provider user identifiers and does not contain API keys.\n",
+    "path": "doc/experiments/handoff/results/ottawa_ml_openrouter_glm_v2.md"
+  },
+  "copied_artifacts": [
+    "planner_normalization_trace.json",
+    "planner_raw_response.txt",
+    "planner_repair_response.txt",
+    "planner_transport_trace.json"
+  ],
+  "artifact_presence_map": {
+    "dag.json": false,
+    "validated_dag.json": false,
+    "compiled_dag_manifest.json": false,
+    "dag_graph.md": false,
+    "resolved_splits.json": false,
+    "resolved_dataset_manifest.json": false,
+    "resolved_config.json": false,
+    "workflow_state.json": false,
+    "artifact_index.json": false,
+    "dag_quality_summary.json": false,
+    "dataset_level_runtime_trace.json": false,
+    "decision_side_outputs.json": false,
+    "feature_pipeline.json": false,
+    "feature_list.json": false,
+    "feature_separability_summary.json": false,
+    "metrics.json": false,
+    "predictions.json": false,
+    "importance.json": false,
+    "similarity_artifacts.json": false,
+    "model_build_plan.json": false,
+    "training_curves.json": false,
+    "checkpoint.json": false,
+    "control_statistics.json": false,
+    "planner_transport_trace.json": true,
+    "planner_normalization_trace.json": true,
+    "planner_raw_response.txt": true,
+    "planner_repair_response.txt": true,
+    "step_plan.json": false,
+    "final_report.md": false
+  },
+  "derived_stage_name": "stage_b_backend_comparison",
+  "derived_run_type": "backend_comparison",
+  "derived_backend_tuple": {
+    "provider": "openrouter",
+    "model": "z-ai/glm-4.5-air:free"
+  },
+  "artifact_mismatch": false,
+  "validated_dag_alias": null,
+  "source_provenance": {
+    "ledger_path": "doc/experiments/01_result_ledger.md",
+    "worker_results_dir": "doc/experiments/handoff/results",
+    "artifacts_root": "artifacts/paper"
+  }
+}

@@ -1,17 +1,16 @@
 {
   "experiment_id": "ottawa_ml_intermediate_v1",
+  "preset_name": "ottawa_ml",
   "dataset": "Ottawa",
   "graph_path": "ml",
-  "phase": "compiled",
-  "output_policy": "include_intermediate_features",
-  "llm_mode": "provider",
-  "control_mode": "fixed",
-  "output_dir": "artifacts/paper/ottawa_ml_intermediate_v1",
+  "run_type": "ablation",
+  "artifact_dir": "artifacts/paper/ottawa_ml_intermediate_v1",
+  "result_md": "doc/experiments/handoff/results/ottawa_ml_intermediate_v1.md (missing)",
   "artifact_contract_pass": "pending",
   "feature_separability_pass": "pending",
   "selection_eligible": "n/a",
   "accuracy": null,
   "macro_f1": null,
-  "keep": null,
-  "note": "ablation on selected_global_best_backend: output_policy"
+  "keep": "pending",
+  "note": "ablation on `selected_global_best_backend`: output_policy"
 }

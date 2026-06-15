@@ -1,17 +1,16 @@
 {
   "experiment_id": "ottawa_ml_main_v1",
+  "preset_name": "ottawa_ml",
   "dataset": "Ottawa",
   "graph_path": "ml",
-  "phase": "compiled",
-  "output_policy": "terminal_only",
-  "llm_mode": "provider",
-  "control_mode": "fixed",
-  "output_dir": "artifacts/paper/ottawa_ml_main_v1",
+  "run_type": "main",
+  "artifact_dir": "artifacts/paper/ottawa_ml_main_v1",
+  "result_md": "doc/experiments/handoff/results/ottawa_ml_main_v1.md (missing)",
   "artifact_contract_pass": "pending",
   "feature_separability_pass": "pending",
   "selection_eligible": "n/a",
   "accuracy": null,
   "macro_f1": null,
-  "keep": null,
-  "note": "formal main using selected_global_best_backend on canonical diagnosis mainline"
+  "keep": "pending",
+  "note": "formal main using `selected_global_best_backend` on canonical diagnosis mainline"
 }

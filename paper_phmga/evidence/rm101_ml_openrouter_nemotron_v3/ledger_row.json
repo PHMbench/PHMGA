@@ -1,0 +1,16 @@
+{
+  "experiment_id": "rm101_ml_openrouter_nemotron_v3",
+  "preset_name": "rm101_ml_openrouter_nemotron_v3",
+  "dataset": "RM101",
+  "graph_path": "ml",
+  "run_type": "backend_comparison",
+  "artifact_dir": "artifacts/paper/rm101_ml_openrouter_nemotron_v3_qualityfix1",
+  "result_md": "doc/experiments/handoff/results/rm101_ml_openrouter_nemotron_v3.md",
+  "artifact_contract_pass": "pass",
+  "feature_separability_pass": "pass",
+  "selection_eligible": "no",
+  "accuracy": 0.2371657754010695,
+  "macro_f1": 0.18337824193501234,
+  "keep": "reject",
+  "note": "2026-05-04 qualityfix1 emitted a complete reject-evidence bundle with `nvidia/nemotron-3-super-120b-a12b:free`; artifact/feature gates passed but workflow_exit shows max_iterations reached before finish with last_reflection_decision=need_replan, so it is not selection-eligible"
+}

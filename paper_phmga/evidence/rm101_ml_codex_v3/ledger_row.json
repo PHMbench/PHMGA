@@ -1,0 +1,16 @@
+{
+  "experiment_id": "rm101_ml_codex_v3",
+  "preset_name": "rm101_ml_codex_v3",
+  "dataset": "RM101",
+  "graph_path": "ml",
+  "run_type": "backend_comparison",
+  "artifact_dir": "artifacts/paper/rm101_ml_codex_v3",
+  "result_md": "doc/experiments/handoff/results/rm101_ml_codex_v3.md (expected)",
+  "artifact_contract_pass": "pending",
+  "feature_separability_pass": "pending",
+  "selection_eligible": "no",
+  "accuracy": null,
+  "macro_f1": null,
+  "keep": "pending",
+  "note": "backend comparison candidate: `codex_cli / gpt-5.3-codex`; active v3 comparison row with DAG depth target `3-8"
+}

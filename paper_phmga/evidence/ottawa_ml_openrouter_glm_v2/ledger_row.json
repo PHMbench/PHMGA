@@ -1,0 +1,16 @@
+{
+  "experiment_id": "ottawa_ml_openrouter_glm_v2",
+  "preset_name": "ottawa_ml_openrouter_glm_v2",
+  "dataset": "Ottawa",
+  "graph_path": "ml",
+  "run_type": "backend_comparison",
+  "artifact_dir": "artifacts/paper/ottawa_ml_openrouter_glm_v2",
+  "result_md": "doc/experiments/handoff/results/ottawa_ml_openrouter_glm_v2.md",
+  "artifact_contract_pass": "fail",
+  "feature_separability_pass": "fail",
+  "selection_eligible": "no",
+  "accuracy": null,
+  "macro_f1": null,
+  "keep": "reject",
+  "note": "2026-05-04 rerun rejected: preflight passed, planner repair normalized a two-step plan, then OpenRouter free upstream returned HTTP 429 for `z-ai/glm-4.5-air:free`; no validated DAG or ML artifacts"
+}

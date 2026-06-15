@@ -1,17 +1,14 @@
 {
-  "stage_a_pilot": [
-    "ottawa_ml_pilot_v1",
-    "ottawa_torch_pilot_v1",
-    "rm101_ml_pilot_v1",
-    "rm101_torch_pilot_v1"
-  ],
+  "stage_a_pilot": [],
   "stage_b_backend_comparison": [
-    "ottawa_ml_codex_v1",
-    "ottawa_ml_openrouter_glm_v1",
-    "rm101_ml_codex_v1",
-    "rm101_ml_openrouter_glm_v1",
-    "ottawa_ml_openrouter_v1",
-    "rm101_ml_openrouter_v1"
+    "ottawa_ml_codex_v3",
+    "ottawa_ml_openrouter_glm_v2",
+    "ottawa_ml_openrouter_nemotron_v3",
+    "ottawa_ml_bigmodel_glm47_v1",
+    "rm101_ml_codex_v3",
+    "rm101_ml_openrouter_glm_v2",
+    "rm101_ml_openrouter_nemotron_v3",
+    "rm101_ml_bigmodel_glm47_v1"
   ],
   "stage_c_formal_main": [
     "ottawa_ml_main_v1",

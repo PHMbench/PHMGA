@@ -1,0 +1,16 @@
+{
+  "experiment_id": "rm101_ml_bigmodel_glm47_v1",
+  "preset_name": "rm101_ml_bigmodel_glm47_v1",
+  "dataset": "RM101",
+  "graph_path": "ml",
+  "run_type": "backend_comparison",
+  "artifact_dir": "artifacts/paper/rm101_ml_bigmodel_glm47_v1_qualityfix7",
+  "result_md": "doc/experiments/handoff/results/rm101_ml_bigmodel_glm47_v1.md",
+  "artifact_contract_pass": "pass",
+  "feature_separability_pass": "pass",
+  "selection_eligible": "no",
+  "accuracy": 0.2429144385026738,
+  "macro_f1": 0.18934628733653974,
+  "keep": "reject",
+  "note": "2026-05-04 qualityfix7 emitted a complete reject-evidence bundle with deterministic provider fallbacks; workflow_exit shows max_iterations reached before finish with last_reflection_decision=need_patch, so it is not selection-eligible despite artifact/feature gates passing"
+}

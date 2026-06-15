@@ -1,0 +1,16 @@
+{
+  "experiment_id": "ottawa_ml_openrouter_nemotron_v3",
+  "preset_name": "ottawa_ml_openrouter_nemotron_v3",
+  "dataset": "Ottawa",
+  "graph_path": "ml",
+  "run_type": "backend_comparison",
+  "artifact_dir": "artifacts/paper/ottawa_ml_openrouter_nemotron_v3_qualityfix1",
+  "result_md": "doc/experiments/handoff/results/ottawa_ml_openrouter_nemotron_v3.md",
+  "artifact_contract_pass": "pass",
+  "feature_separability_pass": "pass",
+  "selection_eligible": "yes",
+  "accuracy": 0.8770491803278688,
+  "macro_f1": 0.8774661249538376,
+  "keep": "accept",
+  "note": "2026-05-04 qualityfix1 emitted a complete artifact bundle with `nvidia/nemotron-3-super-120b-a12b:free`; artifact contract and feature separability passed, final report was provider-authored, and workflow reached finish through deterministic quality fallback after invalid reflection output"
+}

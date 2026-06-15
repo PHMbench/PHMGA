@@ -24,6 +24,16 @@ LEDGER_PATH = ROOT / "doc/experiments/01_result_ledger.md"
 WORKER_RESULTS_DIR = ROOT / "doc/experiments/handoff/results"
 ARTIFACTS_ROOT = ROOT / "artifacts/paper"
 DEFAULT_OUTPUT_DIR = ROOT / "paper_phmga"
+GENERATED_TOP_LEVEL_PATHS = [
+    "README.md",
+    "manifest.json",
+    "experiment_index.json",
+    "stage_index.json",
+    "selection_status.json",
+    "historical_incidents.json",
+    "historical_incidents.md",
+    "stages",
+]
 TEXT_ARTIFACT_SUFFIXES = {".json", ".md", ".txt"}
 KNOWN_ARTIFACTS = [
     "dag.json",
@@ -111,6 +121,40 @@ def parse_ledger(path: Path = LEDGER_PATH) -> Tuple[Dict[str, Any], List[Dict[st
     return yaml_block, rows
 
 
+def parse_historical_incidents(path: Path = LEDGER_PATH) -> List[Dict[str, Any]]:
+    text = path.read_text(encoding="utf-8")
+    marker = "## Historical Comparison Incidents Retained Outside Formal Selection"
+    if marker not in text:
+        return []
+    section = text.split(marker, 1)[1]
+    incidents: List[Dict[str, Any]] = []
+    for line in section.splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("- "):
+            continue
+        experiment_match = re.match(r"- `([^`]+)`\s*→\s*(.*)", stripped)
+        if experiment_match:
+            experiment_id, target = experiment_match.groups()
+            incidents.append(
+                {
+                    "experiment_id": experiment_id,
+                    "target": target.strip(),
+                    "selection_scope": "historical_incident_not_formal_selection",
+                }
+            )
+            continue
+        doc_match = re.match(r"- `([^`]+)`", stripped)
+        if doc_match:
+            incidents.append(
+                {
+                    "experiment_id": None,
+                    "target": doc_match.group(1),
+                    "selection_scope": "incident_document_not_formal_selection",
+                }
+            )
+    return incidents
+
+
 def _parse_key_value_bullets(lines: Iterable[str]) -> Dict[str, str]:
     payload: Dict[str, str] = {}
     for line in lines:
@@ -180,6 +224,16 @@ def parse_worker_result(path: Path) -> Dict[str, Any]:
 
 
 def _stage_name_from_row(row: Dict[str, Any]) -> str:
+    run_type = str(row.get("run_type") or "")
+    if run_type == "backend_comparison":
+        return "stage_b_backend_comparison"
+    if run_type == "main":
+        return "stage_c_formal_main"
+    if run_type == "ablation":
+        return "stage_d_ablation"
+    if run_type == "pilot":
+        return "stage_a_pilot"
+
     note = str(row.get("note") or "")
     experiment_id = str(row["experiment_id"])
     if experiment_id.endswith("_pilot_v1") or "pilot smoke" in note:
@@ -213,7 +267,9 @@ def _parse_provider_model(text: str) -> Tuple[Optional[str], Optional[str]]:
     match = re.search(r"([A-Za-z0-9_.-]+)\s*/\s*([^;\n]+)", text)
     if not match:
         return None, None
-    return match.group(1).strip(), match.group(2).strip()
+    provider = match.group(1).strip().strip("`").strip()
+    model = match.group(2).strip().strip("`").strip()
+    return provider, model
 
 
 def _derive_provider_model(
@@ -245,7 +301,7 @@ def _derive_provider_model(
 
 
 def _output_dir_for_row(row: Dict[str, Any]) -> Optional[Path]:
-    raw = row.get("output_dir")
+    raw = row.get("output_dir") or row.get("artifact_dir")
     if raw in {None, "", "n/a"}:
         return None
     candidate = ROOT / str(raw)
@@ -495,8 +551,12 @@ def _build_stage_doc(
             [
                 "Current active Stage B set and selection state are sourced from `selection_status.json`.",
                 "",
-                f"- active_codex: `{selection_status['active_stage_b_set']['codex']['provider']} / {selection_status['active_stage_b_set']['codex']['model']}`",
-                f"- active_openrouter: `{selection_status['active_stage_b_set']['openrouter']['provider']} / {selection_status['active_stage_b_set']['openrouter']['model']}`",
+            ]
+        )
+        for backend_name, backend in sorted(selection_status.get("active_stage_b_set", {}).items()):
+            lines.append(f"- active_{backend_name}: `{backend['provider']} / {backend['model']}`")
+        lines.extend(
+            [
                 f"- selected_backend_status: `{selection_status['selected_global_best_backend']['status']}`",
                 "",
             ]
@@ -522,6 +582,7 @@ def _build_stage_doc(
 
 def export_paper_phmga(output_dir: Path = DEFAULT_OUTPUT_DIR) -> Dict[str, Any]:
     ledger_meta, rows = parse_ledger()
+    historical_incidents = parse_historical_incidents()
     worker_results = {
         path.stem: parse_worker_result(path)
         for path in sorted(WORKER_RESULTS_DIR.glob("*.md"))
@@ -529,7 +590,12 @@ def export_paper_phmga(output_dir: Path = DEFAULT_OUTPUT_DIR) -> Dict[str, Any]:
     }
 
     if output_dir.exists():
-        shutil.rmtree(output_dir)
+        for rel_path in GENERATED_TOP_LEVEL_PATHS:
+            target = output_dir / rel_path
+            if target.is_dir():
+                shutil.rmtree(target)
+            elif target.exists():
+                target.unlink()
     ensure_dir(output_dir)
     subdocs_dir = ensure_dir(output_dir / "subdocs")
     evidence_root = ensure_dir(output_dir / "evidence")
@@ -548,7 +614,10 @@ def export_paper_phmga(output_dir: Path = DEFAULT_OUTPUT_DIR) -> Dict[str, Any]:
         stage_name = _stage_name_from_row(row)
         stage_index[stage_name].append(experiment_id)
 
-        evidence_dir = ensure_dir(evidence_root / experiment_id)
+        evidence_dir_path = evidence_root / experiment_id
+        if evidence_dir_path.exists():
+            shutil.rmtree(evidence_dir_path)
+        evidence_dir = ensure_dir(evidence_dir_path)
         worker_result = worker_results.get(experiment_id)
         artifact_manifest = _copy_artifacts(row, evidence_dir)
         write_json(row, evidence_dir / "ledger_row.json")
@@ -594,6 +663,22 @@ def export_paper_phmga(output_dir: Path = DEFAULT_OUTPUT_DIR) -> Dict[str, Any]:
     }
     write_json(selection_status, output_dir / "selection_status.json")
 
+    write_json(historical_incidents, output_dir / "historical_incidents.json")
+    historical_lines = [
+        "# Historical Incidents",
+        "",
+        "These rows are retained for failure and incident traceability. They are not part of the current formal selection set and must not enter main tables.",
+        "",
+        "| experiment_id | target | selection_scope |",
+        "| --- | --- | --- |",
+    ]
+    for incident in historical_incidents:
+        historical_lines.append(
+            f"| {incident.get('experiment_id') or 'n/a'} | {incident.get('target')} | {incident.get('selection_scope')} |"
+        )
+    historical_lines.append("")
+    write_text("\n".join(historical_lines), output_dir / "historical_incidents.md")
+
     for stage_name, experiment_ids in stage_index.items():
         stage_rows = [row for row in rows if str(row["experiment_id"]) in experiment_ids]
         write_text(_build_stage_doc(stage_name, stage_rows, selection_status), stages_dir / f"{stage_name}.md")
@@ -625,6 +710,7 @@ def export_paper_phmga(output_dir: Path = DEFAULT_OUTPUT_DIR) -> Dict[str, Any]:
         "",
         "- `subdocs/*.md`: one child document per `experiment_id`",
         "- `selection_status.json`: current Stage B active set and winner state",
+        "- `historical_incidents.md`: retained comparison failures and incident evidence that must not enter main tables",
         "- `manifest.json`: bundle-level metadata",
         "- `evidence/<experiment_id>/`: self-contained evidence package",
         "",

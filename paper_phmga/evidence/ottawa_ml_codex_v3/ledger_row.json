@@ -1,0 +1,16 @@
+{
+  "experiment_id": "ottawa_ml_codex_v3",
+  "preset_name": "ottawa_ml_codex_v3",
+  "dataset": "Ottawa",
+  "graph_path": "ml",
+  "run_type": "backend_comparison",
+  "artifact_dir": "artifacts/paper/ottawa_ml_codex_v3",
+  "result_md": "doc/experiments/handoff/results/ottawa_ml_codex_v3.md",
+  "artifact_contract_pass": "pending",
+  "feature_separability_pass": "pending",
+  "selection_eligible": "no",
+  "accuracy": 0.8770491803278688,
+  "macro_f1": 0.8774661249538376,
+  "keep": "pending",
+  "note": "2026-05-30 sandboxed run emitted complete artifacts and feature separability pass evidence, but `planner_transport_trace.json` and `workflow_state.json` show Codex provider fallback after `LLMProviderError` / read-only filesystem app-server initialization failure; treat as `needs_rerun`, not selection-eligible, until a clean Codex provider run is authorized and reviewed"
+}

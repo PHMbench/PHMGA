@@ -1,0 +1,67 @@
+[
+  {
+    "experiment_id": "ottawa_ml_codex_v1",
+    "target": "`doc/experiments/handoff/results/ottawa_ml_codex_v1.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "ottawa_ml_codex_v2",
+    "target": "`doc/experiments/handoff/results/ottawa_ml_codex_v2.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "ottawa_ml_openrouter_glm_v1",
+    "target": "no worker result file; superseded by `ottawa_ml_openrouter_glm_v2`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "ottawa_ml_openrouter_glm_v2",
+    "target": "`doc/experiments/handoff/results/ottawa_ml_openrouter_glm_v2.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "ottawa_ml_openrouter_nemotron_v3",
+    "target": "`doc/experiments/handoff/results/ottawa_ml_openrouter_nemotron_v3.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "ottawa_ml_openrouter_v1",
+    "target": "`doc/experiments/handoff/results/ottawa_ml_openrouter_v1.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "rm101_ml_codex_v1",
+    "target": "`doc/experiments/handoff/results/rm101_ml_codex_v1.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "rm101_ml_codex_v2",
+    "target": "`doc/experiments/handoff/results/rm101_ml_codex_v2.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "rm101_ml_openrouter_glm_v1",
+    "target": "no worker result file; superseded by `rm101_ml_openrouter_glm_v2`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "rm101_ml_openrouter_glm_v2",
+    "target": "`doc/experiments/handoff/results/rm101_ml_openrouter_glm_v2.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "rm101_ml_openrouter_nemotron_v3",
+    "target": "`doc/experiments/handoff/results/rm101_ml_openrouter_nemotron_v3.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": "rm101_ml_openrouter_v1",
+    "target": "`doc/experiments/handoff/results/rm101_ml_openrouter_v1.md`",
+    "selection_scope": "historical_incident_not_formal_selection"
+  },
+  {
+    "experiment_id": null,
+    "target": "doc/experiments/incidents/03_openrouter_api_analysis.md",
+    "selection_scope": "incident_document_not_formal_selection"
+  }
+]
